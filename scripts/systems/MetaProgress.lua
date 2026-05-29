@@ -443,6 +443,49 @@ function MetaProgress.GetTalentEffects()
 end
 
 -- ============================================================================
+-- GM 调试方法（免费获取，不扣金币）
+-- ============================================================================
+
+--- GM：免费给予物品
+function MetaProgress.GMGrantItem(itemId)
+    data.ownedItems[itemId] = true
+    MetaProgress.Save()
+end
+
+--- GM：免费解锁天赋
+function MetaProgress.GMGrantTalent(talentId)
+    data.unlockedTalents[talentId] = true
+    MetaProgress.Save()
+end
+
+--- GM：装备全部已拥有物品（无视上限）
+function MetaProgress.GMEquipAll()
+    data.equippedItems = {}
+    for _, item in ipairs(MetaProgress.ITEMS) do
+        if data.ownedItems[item.id] then
+            table.insert(data.equippedItems, item.id)
+        end
+    end
+    MetaProgress.Save()
+end
+
+--- GM：清空装备
+function MetaProgress.GMUnequipAll()
+    data.equippedItems = {}
+    MetaProgress.Save()
+end
+
+--- GM：重置全部存档
+function MetaProgress.GMReset()
+    data.gold = 0
+    data.unlockedTalents = {}
+    data.ownedItems = {}
+    data.equippedItems = {}
+    data.stats = { totalRuns = 0, totalExtractions = 0, totalGoldEarned = 0 }
+    MetaProgress.Save()
+end
+
+-- ============================================================================
 -- 初始化
 -- ============================================================================
 

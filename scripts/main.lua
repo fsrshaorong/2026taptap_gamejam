@@ -156,6 +156,7 @@ function ShowMenuPage(page)
     setVisible("menuPage_main", page == "main")
     setVisible("menuPage_equip", page == "equip")
     setVisible("menuPage_talent", page == "talent")
+    setVisible("menuPage_gm", page == "gm")
 
     if page == "main" then
         RefreshMainMenu()
@@ -163,6 +164,8 @@ function ShowMenuPage(page)
         RefreshEquipPage()
     elseif page == "talent" then
         RefreshTalentPage()
+    elseif page == "gm" then
+        RefreshGMPanel()
     end
 end
 
@@ -379,6 +382,65 @@ function OnTalentClick(talentId)
         print("[Menu] UnlockTalent failed: " .. err)
     end
     RefreshTalentPage()
+end
+
+-- ============================================================================
+-- GM 调试功能
+-- ============================================================================
+
+function RefreshGMPanel()
+    local goldLabel = uiRoot_ and uiRoot_:FindById("gmGoldLabel")
+    if goldLabel then
+        goldLabel:SetText("当前金币: " .. MetaProgress.GetGold())
+    end
+
+    local statusLabel = uiRoot_ and uiRoot_:FindById("gmStatusLabel")
+    if statusLabel then
+        local equipped = MetaProgress.GetEquippedItems()
+        local talentCount = 0
+        for _, t in ipairs(MetaProgress.TALENTS) do
+            if MetaProgress.HasTalent(t.id) then talentCount = talentCount + 1 end
+        end
+        local itemCount = 0
+        for _, item in ipairs(MetaProgress.ITEMS) do
+            if MetaProgress.OwnsItem(item.id) then itemCount = itemCount + 1 end
+        end
+        statusLabel:SetText(
+            "物品: " .. itemCount .. "/" .. #MetaProgress.ITEMS ..
+            " | 装备中: " .. #equipped ..
+            " | 天赋: " .. talentCount .. "/" .. #MetaProgress.TALENTS
+        )
+    end
+end
+
+function GMUnlockAllItems()
+    for _, item in ipairs(MetaProgress.ITEMS) do
+        if not MetaProgress.OwnsItem(item.id) then
+            MetaProgress.GMGrantItem(item.id)
+        end
+    end
+end
+
+function GMUnlockAllTalents()
+    for _, talent in ipairs(MetaProgress.TALENTS) do
+        if not MetaProgress.HasTalent(talent.id) then
+            MetaProgress.GMGrantTalent(talent.id)
+        end
+    end
+end
+
+function GMEquipAll()
+    -- 先解锁全部，再装备全部（忽略上限）
+    GMUnlockAllItems()
+    MetaProgress.GMEquipAll()
+end
+
+function GMUnequipAll()
+    MetaProgress.GMUnequipAll()
+end
+
+function GMResetSave()
+    MetaProgress.GMReset()
 end
 
 -- ============================================================================
@@ -1130,6 +1192,144 @@ function CreateUI()
                         fontSize = 11,
                         fontColor = { 120, 130, 150, 180 },
                         marginTop = 6,
+                    },
+                    UI.Button {
+                        text = "🔧 GM",
+                        width = 60,
+                        height = 24,
+                        marginTop = 4,
+                        onClick = function()
+                            ShowMenuPage("gm")
+                        end,
+                    },
+                }
+            },
+            -- === GM 调试面板 ===
+            UI.Panel {
+                id = "menuPage_gm",
+                visible = false,
+                width = "90%",
+                maxWidth = 400,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 40, 20, 20, 240 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 200, 80, 80, 120 },
+                children = {
+                    UI.Label {
+                        text = "🔧 GM 调试面板",
+                        fontSize = 18,
+                        fontColor = { 255, 100, 100, 255 },
+                    },
+                    UI.Label {
+                        id = "gmGoldLabel",
+                        text = "当前金币: 0",
+                        fontSize = 13,
+                        fontColor = { 255, 220, 80, 255 },
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        flexWrap = "wrap",
+                        gap = 8,
+                        width = "100%",
+                        children = {
+                            UI.Button {
+                                text = "+100 金币",
+                                width = 100,
+                                onClick = function()
+                                    MetaProgress.AddGold(100)
+                                    RefreshGMPanel()
+                                end,
+                            },
+                            UI.Button {
+                                text = "+500 金币",
+                                width = 100,
+                                onClick = function()
+                                    MetaProgress.AddGold(500)
+                                    RefreshGMPanel()
+                                end,
+                            },
+                            UI.Button {
+                                text = "+9999 金币",
+                                width = 100,
+                                onClick = function()
+                                    MetaProgress.AddGold(9999)
+                                    RefreshGMPanel()
+                                end,
+                            },
+                        }
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        flexWrap = "wrap",
+                        gap = 8,
+                        width = "100%",
+                        children = {
+                            UI.Button {
+                                text = "解锁全部物品",
+                                width = 120,
+                                onClick = function()
+                                    GMUnlockAllItems()
+                                    RefreshGMPanel()
+                                end,
+                            },
+                            UI.Button {
+                                text = "解锁全部天赋",
+                                width = 120,
+                                onClick = function()
+                                    GMUnlockAllTalents()
+                                    RefreshGMPanel()
+                                end,
+                            },
+                        }
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        flexWrap = "wrap",
+                        gap = 8,
+                        width = "100%",
+                        children = {
+                            UI.Button {
+                                text = "装备全部物品",
+                                width = 120,
+                                onClick = function()
+                                    GMEquipAll()
+                                    RefreshGMPanel()
+                                end,
+                            },
+                            UI.Button {
+                                text = "清空装备",
+                                width = 100,
+                                onClick = function()
+                                    GMUnequipAll()
+                                    RefreshGMPanel()
+                                end,
+                            },
+                        }
+                    },
+                    UI.Button {
+                        text = "⚠️ 重置存档",
+                        width = 120,
+                        onClick = function()
+                            GMResetSave()
+                            RefreshGMPanel()
+                        end,
+                    },
+                    UI.Label {
+                        id = "gmStatusLabel",
+                        text = "",
+                        fontSize = 11,
+                        fontColor = { 200, 200, 200, 200 },
+                        numberOfLines = 3,
+                    },
+                    UI.Button {
+                        text = "← 返回",
+                        width = 100,
+                        marginTop = 8,
+                        onClick = function()
+                            ShowMenuPage("main")
+                        end,
                     },
                 }
             },
