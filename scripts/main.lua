@@ -33,6 +33,13 @@ local visitedCells = {}
 -- 房间内角色位置。扫雷坐标由 run.player 记录，这里只控制当前房间里的表现位置。
 local playerRoomPos = { x = 0.5, y = 0.5 }
 
+-- 本局搜刮收益。只有撤离成功才算带出。
+local runInventory = {
+    gold = 0,
+    parts = 0,
+    searchedRooms = {},
+}
+
 local ROOM = {
     margin = 60,
     topOffset = 40,
@@ -40,6 +47,8 @@ local ROOM = {
     doorSize = 36,
     playerRadius = 16,
     moveStep = 34,
+    searchW = 56,
+    searchH = 34,
 }
 
 -- 游戏阶段
@@ -139,6 +148,7 @@ function StartNewGame()
     visitedCells = {}
     local spawn = minefield:GetSpawn()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
+    ResetRunInventory()
     ResetRoomPlayer()
 
     phase = PHASE.PLAYING
@@ -152,6 +162,16 @@ function StartNewGame()
     -- 隐藏菜单
     local menu = uiRoot_:FindById("menuOverlay")
     if menu then menu:Hide() end
+end
+
+function CellKey(x, y)
+    return tostring(x) .. "," .. tostring(y)
+end
+
+function ResetRunInventory()
+    runInventory.gold = 0
+    runInventory.parts = 0
+    runInventory.searchedRooms = {}
 end
 
 --- 取得当前房间绘制布局
@@ -275,6 +295,8 @@ function MovePlayer(dx, dy)
 
         if result.status == "at_exit" then
             ShowMessage("你到达了撤离点！按 E 撤离。")
+        elseif CanSearchCurrentRoom() then
+            ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
         else
             -- 显示当前格信息
             local cell = minefield:GetCellView(p.x, p.y)
@@ -301,6 +323,89 @@ function MovePlayer(dx, dy)
     UpdateHUD()
 end
 
+function GetRoomReward(x, y)
+    local cell = minefield:GetCellView(x, y)
+    local adjacent = (cell and cell.adjacent) or 0
+    local seed = minefield.seed or 1
+    local roll = (x * 37 + y * 53 + seed * 7) % 100
+
+    local gold = 6 + adjacent * 3 + (roll % 9)
+    local parts = 0
+    if roll % 5 == 0 then parts = parts + 1 end
+    if adjacent >= 3 then parts = parts + 1 end
+
+    return { gold = gold, parts = parts }
+end
+
+function GetSearchState()
+    if not run or not minefield then
+        return { canSearch = false, searched = false, reason = "not_ready" }
+    end
+
+    local p = run:GetPlayer()
+    local cell = minefield:GetCellView(p.x, p.y)
+    local key = CellKey(p.x, p.y)
+    local searched = runInventory.searchedRooms[key] == true
+
+    if not cell or not cell.revealed or cell.mine then
+        return { canSearch = false, searched = searched, reason = "unsafe" }
+    end
+    if cell.spawn then
+        return { canSearch = false, searched = searched, reason = "spawn" }
+    end
+    if cell.exitId then
+        return { canSearch = false, searched = searched, reason = "exit" }
+    end
+    if searched then
+        return { canSearch = false, searched = true, reason = "searched" }
+    end
+
+    return {
+        canSearch = true,
+        searched = false,
+        reward = GetRoomReward(p.x, p.y),
+    }
+end
+
+function CanSearchCurrentRoom()
+    return GetSearchState().canSearch == true
+end
+
+function SearchCurrentRoom()
+    if phase ~= PHASE.PLAYING then return end
+    if not run then return end
+
+    local search = GetSearchState()
+    if not search.canSearch then
+        if search.reason == "searched" then
+            ShowMessage("这个房间已经搜过了。")
+        elseif search.reason == "spawn" then
+            ShowMessage("出生点没有可带走的物资。")
+        elseif search.reason == "exit" then
+            ShowMessage("这里是撤离点，准备好就按 E 撤离。")
+        else
+            ShowMessage("当前房间无法搜索。")
+        end
+        return
+    end
+
+    local p = run:GetPlayer()
+    local key = CellKey(p.x, p.y)
+    local reward = search.reward
+
+    runInventory.searchedRooms[key] = true
+    runInventory.gold = runInventory.gold + reward.gold
+    runInventory.parts = runInventory.parts + reward.parts
+
+    if reward.parts > 0 then
+        ShowMessage("搜索完成：金币 +" .. reward.gold .. "，零件 +" .. reward.parts .. "。")
+    else
+        ShowMessage("搜索完成：金币 +" .. reward.gold .. "。")
+    end
+
+    UpdateHUD()
+end
+
 --- 传送到已访问的安全格
 function TeleportTo(x, y)
     if not run then return end
@@ -315,7 +420,11 @@ function TeleportTo(x, y)
     run.player.y = y
     ResetRoomPlayer()
 
-    ShowMessage("传送成功！")
+    if CanSearchCurrentRoom() then
+        ShowMessage("传送成功。这个房间还有物资可搜。")
+    else
+        ShowMessage("传送成功！")
+    end
     MapOverlay.Hide()
     phase = PHASE.PLAYING
     RefreshMapData()
@@ -328,9 +437,20 @@ function DoExtract()
     local result = run:Extract()
     if result.ok then
         phase = PHASE.EXTRACTED
-        ShowMessage("撤离成功！回合数：" .. result.turn)
+        local searchedCount = 0
+        for _ in pairs(runInventory.searchedRooms) do
+            searchedCount = searchedCount + 1
+        end
+
+        ShowMessage("撤离成功！带出金币 " .. runInventory.gold .. "，零件 " .. runInventory.parts .. "。")
         local winPanel = uiRoot_:FindById("winPanel")
         if winPanel then winPanel:Show() end
+        local winInfo = uiRoot_:FindById("winInfo")
+        if winInfo then
+            winInfo:SetText("带出金币：" .. runInventory.gold ..
+                "\n带出零件：" .. runInventory.parts ..
+                "\n搜索房间：" .. searchedCount .. " | 回合：" .. result.turn)
+        end
     else
         ShowMessage("当前位置无法撤离。")
     end
@@ -358,7 +478,8 @@ function UpdateHUD()
     local statusLabel = uiRoot_:FindById("statusLabel")
     if statusLabel then
         local canEx = run:CanExtract()
-        local statusText = "位置: (" .. p.x .. "," .. p.y .. ") | 回合: " .. run.turn
+        local statusText = "位置: (" .. p.x .. "," .. p.y .. ") | 回合: " .. run.turn ..
+            " | 金币: " .. runInventory.gold .. " | 零件: " .. runInventory.parts
         if canEx then
             statusText = statusText .. " | [撤离点]"
         end
@@ -396,6 +517,81 @@ function HandleNanoVGRender(eventType, eventData)
     end
 
     nvgEndFrame(nvgScene)
+end
+
+function GetSearchPointRect(layout)
+    return {
+        x = layout.x + layout.w * 0.68 - ROOM.searchW / 2,
+        y = layout.y + layout.h * 0.58 - ROOM.searchH / 2,
+        w = ROOM.searchW,
+        h = ROOM.searchH,
+    }
+end
+
+function DrawSearchPoint(vg, layout)
+    local search = GetSearchState()
+    if not search.canSearch and not search.searched then
+        return
+    end
+
+    local rect = GetSearchPointRect(layout)
+    local bodyColor = search.searched and nvgRGBA(75, 65, 55, 180) or nvgRGBA(145, 95, 45, 240)
+    local lidColor = search.searched and nvgRGBA(95, 85, 75, 180) or nvgRGBA(190, 135, 65, 255)
+
+    -- 简易资源箱占位表现
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, rect.x, rect.y + rect.h * 0.25, rect.w, rect.h * 0.75, 4)
+    nvgFillColor(vg, bodyColor)
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(65, 45, 25, 220))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, rect.x + 4, rect.y, rect.w - 8, rect.h * 0.35, 4)
+    nvgFillColor(vg, lidColor)
+    nvgFill(vg)
+
+    nvgBeginPath(vg)
+    nvgRect(vg, rect.x + rect.w * 0.45, rect.y + rect.h * 0.25, rect.w * 0.1, rect.h * 0.7)
+    nvgFillColor(vg, nvgRGBA(210, 180, 85, search.searched and 120 or 240))
+    nvgFill(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 12)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+    if search.searched then
+        nvgFillColor(vg, nvgRGBA(170, 160, 145, 180))
+        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, "已搜索")
+    else
+        nvgFillColor(vg, nvgRGBA(255, 230, 140, 230))
+        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, "F 搜索")
+    end
+end
+
+function DrawExitDevice(vg, layout)
+    local p = run:GetPlayer()
+    local cell = minefield:GetCellView(p.x, p.y)
+    if not cell or not cell.exitId then
+        return
+    end
+
+    local cx = layout.x + layout.w / 2
+    local y = layout.y + 54
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, cx - 54, y - 16, 108, 32, 6)
+    nvgFillColor(vg, nvgRGBA(30, 95, 60, 220))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(100, 255, 140, 220))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 14)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(150, 255, 170, 255))
+    nvgText(vg, cx, y, "撤离装置")
 end
 
 --- 绘制当前房间场景
@@ -468,6 +664,9 @@ function DrawRoomScene(vg, w, h)
             nvgText(vg, door.x + doorSize / 2, door.y + doorSize / 2, door.dir)
         end
     end
+
+    DrawSearchPoint(vg, layout)
+    DrawExitDevice(vg, layout)
 
     -- 房间内玩家
     local playerCX = roomX + playerRoomPos.x * roomW
@@ -569,6 +768,11 @@ function CreateUI()
                 text = "E:撤离",
                 fontSize = 11,
                 fontColor = { 100, 255, 100, 220 },
+            },
+            UI.Label {
+                text = "F:搜索",
+                fontSize = 11,
+                fontColor = { 255, 220, 120, 220 },
             },
             UI.Label {
                 text = "ESC:关闭地图",
@@ -782,6 +986,8 @@ function HandleKeyDown(eventType, eventData)
         MoveScenePlayer(1, 0)
     elseif key == KEY_E then
         DoExtract()
+    elseif key == KEY_F then
+        SearchCurrentRoom()
     elseif key == KEY_M then
         -- 打开放大地图
         phase = PHASE.MAP_OPEN
@@ -821,11 +1027,32 @@ function HandleMouseDown(eventType, eventData)
 
     -- 点击房间门移动
     if button == MOUSEB_LEFT and run then
+        if HitTestSearchPoint(mx, my) then
+            SearchCurrentRoom()
+            return
+        end
+
         local doorHit = HitTestDoor(mx, my)
         if doorHit then
             MovePlayer(doorHit.dx, doorHit.dy)
         end
     end
+end
+
+--- 检测点击是否命中搜索点
+---@param mx number
+---@param my number
+---@return boolean
+function HitTestSearchPoint(mx, my)
+    local search = GetSearchState()
+    if not search.canSearch and not search.searched then
+        return false
+    end
+
+    local layout = GetRoomLayout()
+    local rect = GetSearchPointRect(layout)
+    return mx >= rect.x and mx <= rect.x + rect.w
+       and my >= rect.y and my <= rect.y + rect.h
 end
 
 --- 检测点击是否命中门
