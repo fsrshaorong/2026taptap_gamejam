@@ -58,6 +58,19 @@ local monsterFleeTimer = 0       -- 逃跑倒计时（秒）
 local monsterFleeActive = false  -- 是否处于逃跑窗口中
 local MONSTER_FLEE_BASE = 3.0    -- 基础逃跑时间（秒）
 
+-- VS 战斗演出
+local battleState = {
+    active = false,       -- 是否在演出中
+    phase = "none",       -- "vs" | "result"
+    timer = 0,            -- 当前阶段计时
+    enemy = nil,          -- 敌人信息 { name, power }
+    result = nil,         -- 战斗结果（FightEnemy 返回值）
+    cellX = 0,            -- 战斗发生的格子
+    cellY = 0,
+}
+local BATTLE_VS_DURATION = 1.2    -- VS 展示时间
+local BATTLE_RESULT_DURATION = 1.5 -- 结果展示时间
+
 -- 菜单子页面状态
 local menuPage = "main"  -- "main" | "equip" | "talent"
 
@@ -613,6 +626,47 @@ function ApplyFailureSalvage(choice)
     ShowMessage(text)
 end
 
+--- 启动 VS 战斗演出（替代直接结算）
+---@param enemy table 敌人信息
+---@param cx number 格子 x
+---@param cy number 格子 y
+function StartBattle(enemy, cx, cy)
+    battleState.active = true
+    battleState.phase = "vs"
+    battleState.timer = BATTLE_VS_DURATION
+    battleState.enemy = { name = enemy.name, power = enemy.power }
+    battleState.result = nil
+    battleState.cellX = cx
+    battleState.cellY = cy
+end
+
+--- VS 演出阶段结束，执行实际战斗结算
+function ResolveBattle()
+    local fightResult = Combat.FightEnemy(battleState.cellX, battleState.cellY)
+    battleState.result = fightResult
+    battleState.phase = "result"
+    battleState.timer = BATTLE_RESULT_DURATION
+end
+
+--- 战斗演出完全结束，处理后续
+function FinishBattle()
+    local result = battleState.result
+    local enemy = battleState.enemy
+    battleState.active = false
+    battleState.phase = "none"
+
+    if not result or not result.fought then return end
+
+    if result.dead then
+        ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
+    elseif result.playerWin then
+        ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
+    else
+        ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. result.damage .. " HP (剩余 " .. Combat.hp .. ")")
+    end
+    UpdateHUD()
+end
+
 --- 威压天赋：逃跑时间到或玩家主动战斗
 function ForceFightCurrentEnemy()
     if not run then return end
@@ -622,18 +676,7 @@ function ForceFightCurrentEnemy()
         monsterFleeActive = false
         return
     end
-
-    local fightResult = Combat.FightEnemy(p.x, p.y)
-    if fightResult.fought then
-        if fightResult.dead then
-            ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
-        elseif fightResult.playerWin then
-            ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
-        else
-            ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
-        end
-    end
-    UpdateHUD()
+    StartBattle(enemy, p.x, p.y)
 end
 
 --- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
@@ -735,17 +778,8 @@ function MovePlayer(dx, dy)
                     ShowMessage("⚠️ 遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")！" ..
                         math.floor(monsterFleeTimer) .. "秒内可逃跑，或按 F 战斗")
                 else
-                    -- 无天赋直接战斗
-                    local fightResult = Combat.FightEnemy(p.x, p.y)
-                    if fightResult.fought then
-                        if fightResult.dead then
-                            ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
-                        elseif fightResult.playerWin then
-                            ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
-                        else
-                            ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
-                        end
-                    end
+                    -- 无天赋直接进入 VS 演出
+                    StartBattle(enemy, p.x, p.y)
                 end
             elseif result.status == "at_exit" then
                 local cell = minefield:GetCellView(p.x, p.y)
@@ -1018,6 +1052,139 @@ end
 -- NanoVG 渲染
 -- ============================================================================
 
+--- 绘制 VS 战斗演出
+function DrawBattleOverlay(vg, w, h)
+    local combat = Combat.GetStatus()
+    local enemy = battleState.enemy
+    if not enemy then return end
+
+    -- 半透明背景遮罩
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(0, 0, 0, 160))
+    nvgFill(vg)
+
+    local cx = w / 2
+    local cy = h / 2
+
+    if battleState.phase == "vs" then
+        -- === VS 阶段：展示双方 ===
+        local progress = 1.0 - (battleState.timer / BATTLE_VS_DURATION)
+        local slideIn = math.min(1.0, progress * 3.0) -- 快速滑入
+
+        -- 玩家侧（左）
+        local playerX = cx - 120 * slideIn
+        nvgFontFace(vg, "sans")
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+
+        -- 玩家圆形头像背景
+        nvgBeginPath(vg)
+        nvgCircle(vg, playerX, cy - 20, 36)
+        nvgFillColor(vg, nvgRGBA(40, 120, 200, 220))
+        nvgFill(vg)
+
+        -- 玩家图标
+        nvgFontSize(vg, 32)
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
+        nvgText(vg, playerX, cy - 20, "🧑")
+
+        -- 玩家战力
+        nvgFontSize(vg, 14)
+        nvgFillColor(vg, nvgRGBA(100, 200, 255, 255))
+        nvgText(vg, playerX, cy + 28, "战力 " .. combat.power)
+
+        -- 玩家血量
+        nvgFontSize(vg, 12)
+        nvgFillColor(vg, nvgRGBA(255, 140, 140, 230))
+        nvgText(vg, playerX, cy + 46, "HP " .. combat.hp .. "/" .. combat.maxHp)
+
+        -- VS 文字（中间脉冲）
+        local pulse = math.abs(math.sin(progress * math.pi * 3)) * 0.3 + 0.7
+        nvgFontSize(vg, 42 * pulse)
+        nvgFillColor(vg, nvgRGBA(255, 60, 60, math.floor(255 * pulse)))
+        nvgText(vg, cx, cy - 10, "VS")
+
+        -- 敌人侧（右）
+        local enemyX = cx + 120 * slideIn
+
+        -- 敌人圆形头像背景
+        nvgBeginPath(vg)
+        nvgCircle(vg, enemyX, cy - 20, 36)
+        nvgFillColor(vg, nvgRGBA(180, 40, 40, 220))
+        nvgFill(vg)
+
+        -- 敌人图标
+        nvgFontSize(vg, 32)
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
+        nvgText(vg, enemyX, cy - 20, "👹")
+
+        -- 敌人名称
+        nvgFontSize(vg, 13)
+        nvgFillColor(vg, nvgRGBA(255, 180, 100, 255))
+        nvgText(vg, enemyX, cy + 28, enemy.name)
+
+        -- 敌人战力
+        nvgFontSize(vg, 14)
+        nvgFillColor(vg, nvgRGBA(255, 80, 80, 255))
+        nvgText(vg, enemyX, cy + 46, "战力 " .. enemy.power)
+
+        -- 底部提示
+        nvgFontSize(vg, 11)
+        nvgFillColor(vg, nvgRGBA(180, 180, 200, math.floor(150 + 80 * pulse)))
+        nvgText(vg, cx, cy + 80, "按任意键跳过")
+
+    elseif battleState.phase == "result" then
+        -- === 结果阶段 ===
+        local result = battleState.result
+        if not result then return end
+
+        local progress = 1.0 - (battleState.timer / BATTLE_RESULT_DURATION)
+        local scaleIn = math.min(1.0, progress * 4.0)
+
+        if result.playerWin then
+            -- 胜利
+            nvgFontSize(vg, 36 * scaleIn)
+            nvgFontFace(vg, "sans")
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(80, 255, 120, 255))
+            nvgText(vg, cx, cy - 20, "胜利！")
+
+            nvgFontSize(vg, 14)
+            nvgFillColor(vg, nvgRGBA(200, 255, 200, 220))
+            nvgText(vg, cx, cy + 20, "战力 " .. combat.power .. " > " .. enemy.power .. " 毫发无损")
+        elseif result.dead then
+            -- 死亡
+            nvgFontSize(vg, 36 * scaleIn)
+            nvgFontFace(vg, "sans")
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(255, 50, 50, 255))
+            nvgText(vg, cx, cy - 20, "败北...")
+
+            nvgFontSize(vg, 14)
+            nvgFillColor(vg, nvgRGBA(255, 150, 150, 220))
+            nvgText(vg, cx, cy + 20, "受到 " .. result.damage .. " 伤害，血量归零")
+        else
+            -- 惨胜
+            nvgFontSize(vg, 36 * scaleIn)
+            nvgFontFace(vg, "sans")
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(255, 200, 60, 255))
+            nvgText(vg, cx, cy - 20, "惨胜")
+
+            nvgFontSize(vg, 14)
+            nvgFillColor(vg, nvgRGBA(255, 220, 150, 220))
+            nvgText(vg, cx, cy + 20, "击败敌人但受伤 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
+        end
+
+        -- 底部提示
+        local pulse = math.abs(math.sin(progress * math.pi * 2)) * 0.4 + 0.6
+        nvgFontSize(vg, 11)
+        nvgFillColor(vg, nvgRGBA(180, 180, 200, math.floor(150 + 80 * pulse)))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgText(vg, cx, cy + 60, "按任意键继续")
+    end
+end
+
 function HandleNanoVGRender(eventType, eventData)
     if not nvgScene then return end
 
@@ -1043,6 +1210,11 @@ function HandleNanoVGRender(eventType, eventData)
         if minefield then
             local visMap = minefield:GetVisibleMap()
             MiniMap.Draw(nvgScene, visMap, p.x, p.y, minefield.width, minefield.height)
+        end
+
+        -- VS 战斗演出叠加层
+        if battleState.active then
+            DrawBattleOverlay(nvgScene, w, h)
         end
     elseif phase == PHASE.MAP_OPEN then
         -- 绘制放大地图
@@ -1748,6 +1920,20 @@ function HandleUpdate(eventType, eventData)
     DungeonRoom.Update(dt)
     MiniMap.Update(dt)
 
+    -- VS 战斗演出计时
+    if battleState.active then
+        battleState.timer = battleState.timer - dt
+        if battleState.timer <= 0 then
+            if battleState.phase == "vs" then
+                -- VS 展示结束，执行结算
+                ResolveBattle()
+            elseif battleState.phase == "result" then
+                -- 结果展示结束
+                FinishBattle()
+            end
+        end
+    end
+
     -- 威压天赋逃跑倒计时
     if monsterFleeActive and monsterFleeTimer > 0 then
         monsterFleeTimer = monsterFleeTimer - dt
@@ -1768,8 +1954,8 @@ function HandleUpdate(eventType, eventData)
         end
     end
 
-    -- 连续移动：按住方向键时按帧平滑移动角色
-    if phase == PHASE.PLAYING and run then
+    -- 连续移动：按住方向键时按帧平滑移动角色（战斗演出中禁止）
+    if phase == PHASE.PLAYING and run and not battleState.active then
         local dx, dy = 0, 0
         if input:GetKeyDown(KEY_W) or input:GetKeyDown(KEY_UP) then dy = -1
         elseif input:GetKeyDown(KEY_S) or input:GetKeyDown(KEY_DOWN) then dy = 1
@@ -1809,6 +1995,16 @@ function HandleKeyDown(eventType, eventData)
 
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
+
+    -- 战斗演出中：任意键可跳过当前阶段
+    if battleState.active then
+        if battleState.phase == "vs" then
+            ResolveBattle()
+        elseif battleState.phase == "result" then
+            FinishBattle()
+        end
+        return
+    end
 
     -- 功能键（移动已改为 Update 中连续检测）
     if key == KEY_W or key == KEY_UP or key == KEY_S or key == KEY_DOWN
@@ -1852,6 +2048,16 @@ function HandleMouseDown(eventType, eventData)
     end
 
     if phase ~= PHASE.PLAYING then return end
+
+    -- 战斗演出中：点击跳过
+    if battleState.active then
+        if battleState.phase == "vs" then
+            ResolveBattle()
+        elseif battleState.phase == "result" then
+            FinishBattle()
+        end
+        return
+    end
 
     -- 点击小地图打开放大视图
     if MiniMap.HitTest(mx, my) then
