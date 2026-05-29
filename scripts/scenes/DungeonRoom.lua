@@ -151,8 +151,8 @@ end
 
 function DungeonRoom.GetSearchPointRect(layout)
     return {
-        x = layout.x + layout.w * 0.68 - CONFIG.searchW / 2,
-        y = layout.y + layout.h * 0.58 - CONFIG.searchH / 2,
+        x = layout.x + layout.w * 0.5 - CONFIG.searchW / 2,
+        y = layout.y + layout.h * 0.5 - CONFIG.searchH / 2,
         w = CONFIG.searchW,
         h = CONFIG.searchH,
     }

@@ -24,6 +24,32 @@ MiniMap.mapY = 12
 MiniMap.maxSize = 160  -- 小地图最大像素尺寸
 MiniMap.padding = 4
 
+-- 邻域感知高亮状态
+MiniMap.highlightCells = {}   -- { ["x,y"] = true }
+MiniMap.highlightTimer = 0    -- 倒计时（秒）
+local HIGHLIGHT_DURATION = 3.0
+
+--- 设置需要高亮的格子列表
+---@param cells table { {x,y}, ... }
+function MiniMap.SetHighlight(cells)
+    MiniMap.highlightCells = {}
+    for _, c in ipairs(cells) do
+        MiniMap.highlightCells[tostring(c.x) .. "," .. tostring(c.y)] = true
+    end
+    MiniMap.highlightTimer = HIGHLIGHT_DURATION
+end
+
+--- 更新高亮计时器
+function MiniMap.Update(dt)
+    if MiniMap.highlightTimer > 0 then
+        MiniMap.highlightTimer = MiniMap.highlightTimer - dt
+        if MiniMap.highlightTimer < 0 then
+            MiniMap.highlightTimer = 0
+            MiniMap.highlightCells = {}
+        end
+    end
+end
+
 --- 计算小地图尺寸
 ---@param fieldWidth number
 ---@param fieldHeight number
@@ -168,6 +194,28 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 nvgClosePath(vg)
                 nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
                 nvgFill(vg)
+            end
+        end
+    end
+
+    -- 邻域感知高亮边框
+    if MiniMap.highlightTimer > 0 then
+        local alpha = math.floor(200 * (MiniMap.highlightTimer / HIGHLIGHT_DURATION))
+        -- 脉冲闪烁效果
+        local pulse = math.abs(math.sin(MiniMap.highlightTimer * 4)) * 0.5 + 0.5
+        alpha = math.floor(alpha * pulse)
+        for y = 1, fieldHeight do
+            for x = 1, fieldWidth do
+                local key = tostring(x) .. "," .. tostring(y)
+                if MiniMap.highlightCells[key] then
+                    local hx = ox + pad + (x - 1) * cs
+                    local hy = oy + pad + (y - 1) * cs
+                    nvgBeginPath(vg)
+                    nvgRect(vg, hx, hy, cs - 1, cs - 1)
+                    nvgStrokeColor(vg, nvgRGBA(255, 220, 80, alpha))
+                    nvgStrokeWidth(vg, 2)
+                    nvgStroke(vg)
+                end
             end
         end
     end

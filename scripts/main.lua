@@ -53,6 +53,11 @@ local blockedWallHintTimer = 0
 -- 事件房交易记录（key = "x,y"）
 local tradedRooms = {}
 
+-- 威压天赋：怪物逃跑窗口
+local monsterFleeTimer = 0       -- 逃跑倒计时（秒）
+local monsterFleeActive = false  -- 是否处于逃跑窗口中
+local MONSTER_FLEE_BASE = 3.0    -- 基础逃跑时间（秒）
+
 -- 菜单子页面状态
 local menuPage = "main"  -- "main" | "equip" | "talent"
 
@@ -608,6 +613,29 @@ function ApplyFailureSalvage(choice)
     ShowMessage(text)
 end
 
+--- 威压天赋：逃跑时间到或玩家主动战斗
+function ForceFightCurrentEnemy()
+    if not run then return end
+    local p = run:GetPlayer()
+    local enemy = Combat.GetEnemy(p.x, p.y)
+    if not enemy then
+        monsterFleeActive = false
+        return
+    end
+
+    local fightResult = Combat.FightEnemy(p.x, p.y)
+    if fightResult.fought then
+        if fightResult.dead then
+            ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
+        elseif fightResult.playerWin then
+            ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
+        else
+            ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
+        end
+    end
+    UpdateHUD()
+end
+
 --- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
 ---@param dx number
 ---@param dy number
@@ -636,9 +664,33 @@ function MovePlayer(dx, dy)
     if result.ok then
         DungeonRoom.PlacePlayerFromEntry(dx, dy, screenW, screenH, dpr)
 
+        -- 威压逃跑：成功离开房间即视为逃跑成功
+        if monsterFleeActive then
+            monsterFleeActive = false
+            monsterFleeTimer = 0
+            ShowMessage("成功逃离怪物！")
+        end
+
         -- 标记为已访问
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
+
+        -- 邻域感知天赋：高亮 8 邻域
+        local talentEffects = MetaProgress.GetTalentEffects()
+        if talentEffects.mapHighlight then
+            local neighbors = {}
+            for ndx = -1, 1 do
+                for ndy = -1, 1 do
+                    if not (ndx == 0 and ndy == 0) then
+                        local nx, ny = p.x + ndx, p.y + ndy
+                        if minefield:IsInside(nx, ny) then
+                            table.insert(neighbors, { x = nx, y = ny })
+                        end
+                    end
+                end
+            end
+            MiniMap.SetHighlight(neighbors)
+        end
 
         if result.status == "hit_mine" then
             local mineResult = Combat.TakeMineHit()
@@ -653,20 +705,46 @@ function MovePlayer(dx, dy)
         elseif result.status == "entered_triggered_mine" then
             ShowMessage("穿过已触发的雷房，不再触发。")
         else
+            -- 0格自动展开：如果 Reveal 触发了 BFS 展开，高亮展开区域
+            local didExpand = false
+            if result.reveal and result.reveal.status == "expanded" and result.reveal.cells then
+                local expandedCells = {}
+                for _, c in ipairs(result.reveal.cells) do
+                    if not (c.x == p.x and c.y == p.y) then
+                        table.insert(expandedCells, { x = c.x, y = c.y })
+                    end
+                end
+                if #expandedCells > 0 then
+                    MiniMap.SetHighlight(expandedCells)
+                    didExpand = true
+                end
+            end
+
             -- 尝试在该格生成敌人
             Combat.TrySpawnEnemy(minefield, p.x, p.y)
 
-            -- 检查是否有敌人并自动战斗
+            -- 检查是否有敌人
             local enemy = Combat.GetEnemy(p.x, p.y)
             if enemy then
-                local fightResult = Combat.FightEnemy(p.x, p.y)
-                if fightResult.fought then
-                    if fightResult.dead then
-                        ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
-                    elseif fightResult.playerWin then
-                        ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
-                    else
-                        ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
+                -- 威压天赋：给予逃跑窗口
+                local fleeBonus = talentEffects.monsterFleeBonus
+                if fleeBonus > 0 then
+                    -- 启动逃跑倒计时，玩家可在窗口内离开房间
+                    monsterFleeActive = true
+                    monsterFleeTimer = MONSTER_FLEE_BASE + fleeBonus
+                    ShowMessage("⚠️ 遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")！" ..
+                        math.floor(monsterFleeTimer) .. "秒内可逃跑，或按 F 战斗")
+                else
+                    -- 无天赋直接战斗
+                    local fightResult = Combat.FightEnemy(p.x, p.y)
+                    if fightResult.fought then
+                        if fightResult.dead then
+                            ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
+                        elseif fightResult.playerWin then
+                            ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
+                        else
+                            ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
+                        end
                     end
                 end
             elseif result.status == "at_exit" then
@@ -690,7 +768,13 @@ function MovePlayer(dx, dy)
                 elseif searchState.isChest then
                     ShowMessage("发现宝箱房！按 F 开启宝箱，奖励丰厚！")
                 elseif searchState.canSearch then
-                    ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
+                    if didExpand then
+                        ShowMessage("安全区域展开！自动揭示了周围格子。按 F 搜索物资。")
+                    else
+                        ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
+                    end
+                elseif didExpand then
+                    ShowMessage("安全区域展开！自动揭示了周围格子。")
                 elseif cell and cell.adjacent and cell.adjacent > 0 then
                     ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间。")
                 else
@@ -1662,6 +1746,19 @@ function HandleUpdate(eventType, eventData)
         blockedWallHintTimer = blockedWallHintTimer - dt
     end
     DungeonRoom.Update(dt)
+    MiniMap.Update(dt)
+
+    -- 威压天赋逃跑倒计时
+    if monsterFleeActive and monsterFleeTimer > 0 then
+        monsterFleeTimer = monsterFleeTimer - dt
+        if monsterFleeTimer <= 0 then
+            -- 时间到，强制战斗
+            monsterFleeActive = false
+            monsterFleeTimer = 0
+            ForceFightCurrentEnemy()
+        end
+    end
+
     if messageTimer > 0 then
         messageTimer = messageTimer - dt
         if messageTimer <= 0 then
@@ -1720,7 +1817,14 @@ function HandleKeyDown(eventType, eventData)
     elseif key == KEY_E then
         DoExtract()
     elseif key == KEY_F then
-        SearchCurrentRoom()
+        -- 威压逃跑窗口中：F 键主动战斗
+        if monsterFleeActive then
+            monsterFleeActive = false
+            monsterFleeTimer = 0
+            ForceFightCurrentEnemy()
+        else
+            SearchCurrentRoom()
+        end
     elseif key == KEY_T then
         DoTrade()
     elseif key == KEY_M then
