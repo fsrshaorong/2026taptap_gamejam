@@ -4,10 +4,11 @@
 -- ============================================================================
 
 local UI = require("urhox-libs/UI")
-local Minefield = require("systems.Minefield")
 local ExtractionRun = require("systems.ExtractionRun")
+local RunInventory = require("systems.RunInventory")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
+local DungeonRoom = require("scenes.DungeonRoom")
 
 -- ============================================================================
 -- 全局状态
@@ -29,27 +30,6 @@ local minefield = nil    -- Minefield 引用（run.minefield）
 
 -- 玩家已访问的格子 { ["x,y"] = true }
 local visitedCells = {}
-
--- 房间内角色位置。扫雷坐标由 run.player 记录，这里只控制当前房间里的表现位置。
-local playerRoomPos = { x = 0.5, y = 0.5 }
-
--- 本局搜刮收益。只有撤离成功才算带出。
-local runInventory = {
-    gold = 0,
-    parts = 0,
-    searchedRooms = {},
-}
-
-local ROOM = {
-    margin = 60,
-    topOffset = 40,
-    bottomSpace = 80,
-    doorSize = 36,
-    playerRadius = 16,
-    moveStep = 34,
-    searchW = 56,
-    searchH = 34,
-}
 
 -- 游戏阶段
 local PHASE = {
@@ -148,8 +128,8 @@ function StartNewGame()
     visitedCells = {}
     local spawn = minefield:GetSpawn()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
-    ResetRunInventory()
-    ResetRoomPlayer()
+    RunInventory.Reset()
+    DungeonRoom.ResetPlayer()
 
     phase = PHASE.PLAYING
 
@@ -164,78 +144,6 @@ function StartNewGame()
     if menu then menu:Hide() end
 end
 
-function CellKey(x, y)
-    return tostring(x) .. "," .. tostring(y)
-end
-
-function ResetRunInventory()
-    runInventory.gold = 0
-    runInventory.parts = 0
-    runInventory.searchedRooms = {}
-end
-
---- 取得当前房间绘制布局
----@param w number|nil
----@param h number|nil
----@return table
-function GetRoomLayout(w, h)
-    w = w or (screenW / dpr)
-    h = h or (screenH / dpr)
-
-    return {
-        x = ROOM.margin,
-        y = ROOM.margin + ROOM.topOffset,
-        w = w - ROOM.margin * 2,
-        h = h - ROOM.margin * 2 - ROOM.bottomSpace,
-        doorSize = ROOM.doorSize,
-    }
-end
-
-function ResetRoomPlayer()
-    playerRoomPos.x = 0.5
-    playerRoomPos.y = 0.5
-end
-
---- 进入相邻房间后，把角色放在新房间的入口处。
----@param dx number
----@param dy number
-function PlaceRoomPlayerFromEntry(dx, dy)
-    local layout = GetRoomLayout()
-    local minX = ROOM.playerRadius / layout.w + 0.03
-    local maxX = 1 - minX
-    local minY = ROOM.playerRadius / layout.h + 0.03
-    local maxY = 1 - minY
-
-    if dx > 0 then
-        playerRoomPos.x = minX
-        playerRoomPos.y = 0.5
-    elseif dx < 0 then
-        playerRoomPos.x = maxX
-        playerRoomPos.y = 0.5
-    elseif dy > 0 then
-        playerRoomPos.x = 0.5
-        playerRoomPos.y = minY
-    elseif dy < 0 then
-        playerRoomPos.x = 0.5
-        playerRoomPos.y = maxY
-    else
-        ResetRoomPlayer()
-    end
-end
-
-function IsAlignedWithDoor(dx, dy, layout)
-    local doorHalfX = (layout.doorSize / 2 + ROOM.playerRadius) / layout.w
-    local doorHalfY = (layout.doorSize / 2 + ROOM.playerRadius) / layout.h
-
-    if dx ~= 0 then
-        return math.abs(playerRoomPos.y - 0.5) <= doorHalfY
-    end
-    if dy ~= 0 then
-        return math.abs(playerRoomPos.x - 0.5) <= doorHalfX
-    end
-    return false
-end
-
 --- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
 ---@param dx number
 ---@param dy number
@@ -243,38 +151,12 @@ function MoveScenePlayer(dx, dy)
     if phase ~= PHASE.PLAYING then return end
     if not run then return end
 
-    local layout = GetRoomLayout()
-    local minX = ROOM.playerRadius / layout.w
-    local maxX = 1 - minX
-    local minY = ROOM.playerRadius / layout.h
-    local maxY = 1 - minY
-
-    local stepX = ROOM.moveStep / layout.w
-    local stepY = ROOM.moveStep / layout.h
-    local nextX = playerRoomPos.x + dx * stepX
-    local nextY = playerRoomPos.y + dy * stepY
-
-    local crossingDoor =
-        (dx < 0 and nextX <= minX) or
-        (dx > 0 and nextX >= maxX) or
-        (dy < 0 and nextY <= minY) or
-        (dy > 0 and nextY >= maxY)
-
-    if crossingDoor then
-        if IsAlignedWithDoor(dx, dy, layout) then
-            MovePlayer(dx, dy)
-            return
-        end
+    local result = DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr)
+    if result.action == "enter" then
+        MovePlayer(result.dx, result.dy)
+    elseif result.action == "blocked_wall" then
         ShowMessage("走到门口才能离开房间。")
     end
-
-    if nextX < minX then nextX = minX end
-    if nextX > maxX then nextX = maxX end
-    if nextY < minY then nextY = minY end
-    if nextY > maxY then nextY = maxY end
-
-    playerRoomPos.x = nextX
-    playerRoomPos.y = nextY
 end
 
 --- 通过门进入相邻扫雷格
@@ -287,7 +169,7 @@ function MovePlayer(dx, dy)
     local result = run:Move(dx, dy)
 
     if result.ok then
-        PlaceRoomPlayerFromEntry(dx, dy)
+        DungeonRoom.PlacePlayerFromEntry(dx, dy, screenW, screenH, dpr)
 
         -- 标记为已访问
         local p = result.player
@@ -323,65 +205,25 @@ function MovePlayer(dx, dy)
     UpdateHUD()
 end
 
-function GetRoomReward(x, y)
-    local cell = minefield:GetCellView(x, y)
-    local adjacent = (cell and cell.adjacent) or 0
-    local seed = minefield.seed or 1
-    local roll = (x * 37 + y * 53 + seed * 7) % 100
-
-    local gold = 6 + adjacent * 3 + (roll % 9)
-    local parts = 0
-    if roll % 5 == 0 then parts = parts + 1 end
-    if adjacent >= 3 then parts = parts + 1 end
-
-    return { gold = gold, parts = parts }
-end
-
 function GetSearchState()
-    if not run or not minefield then
-        return { canSearch = false, searched = false, reason = "not_ready" }
-    end
-
-    local p = run:GetPlayer()
-    local cell = minefield:GetCellView(p.x, p.y)
-    local key = CellKey(p.x, p.y)
-    local searched = runInventory.searchedRooms[key] == true
-
-    if not cell or not cell.revealed or cell.mine then
-        return { canSearch = false, searched = searched, reason = "unsafe" }
-    end
-    if cell.spawn then
-        return { canSearch = false, searched = searched, reason = "spawn" }
-    end
-    if cell.exitId then
-        return { canSearch = false, searched = searched, reason = "exit" }
-    end
-    if searched then
-        return { canSearch = false, searched = true, reason = "searched" }
-    end
-
-    return {
-        canSearch = true,
-        searched = false,
-        reward = GetRoomReward(p.x, p.y),
-    }
+    return RunInventory.GetSearchState(minefield, run)
 end
 
 function CanSearchCurrentRoom()
-    return GetSearchState().canSearch == true
+    return RunInventory.CanSearch(minefield, run)
 end
 
 function SearchCurrentRoom()
     if phase ~= PHASE.PLAYING then return end
     if not run then return end
 
-    local search = GetSearchState()
-    if not search.canSearch then
-        if search.reason == "searched" then
+    local result = RunInventory.SearchCurrentRoom(minefield, run)
+    if not result.ok then
+        if result.status == "searched" then
             ShowMessage("这个房间已经搜过了。")
-        elseif search.reason == "spawn" then
+        elseif result.status == "spawn" then
             ShowMessage("出生点没有可带走的物资。")
-        elseif search.reason == "exit" then
+        elseif result.status == "exit" then
             ShowMessage("这里是撤离点，准备好就按 E 撤离。")
         else
             ShowMessage("当前房间无法搜索。")
@@ -389,14 +231,7 @@ function SearchCurrentRoom()
         return
     end
 
-    local p = run:GetPlayer()
-    local key = CellKey(p.x, p.y)
-    local reward = search.reward
-
-    runInventory.searchedRooms[key] = true
-    runInventory.gold = runInventory.gold + reward.gold
-    runInventory.parts = runInventory.parts + reward.parts
-
+    local reward = result.reward
     if reward.parts > 0 then
         ShowMessage("搜索完成：金币 +" .. reward.gold .. "，零件 +" .. reward.parts .. "。")
     else
@@ -418,7 +253,7 @@ function TeleportTo(x, y)
     -- 直接设置玩家位置
     run.player.x = x
     run.player.y = y
-    ResetRoomPlayer()
+    DungeonRoom.ResetPlayer()
 
     if CanSearchCurrentRoom() then
         ShowMessage("传送成功。这个房间还有物资可搜。")
@@ -437,19 +272,16 @@ function DoExtract()
     local result = run:Extract()
     if result.ok then
         phase = PHASE.EXTRACTED
-        local searchedCount = 0
-        for _ in pairs(runInventory.searchedRooms) do
-            searchedCount = searchedCount + 1
-        end
+        local totals = RunInventory.GetTotals()
 
-        ShowMessage("撤离成功！带出金币 " .. runInventory.gold .. "，零件 " .. runInventory.parts .. "。")
+        ShowMessage("撤离成功！带出金币 " .. totals.gold .. "，零件 " .. totals.parts .. "。")
         local winPanel = uiRoot_:FindById("winPanel")
         if winPanel then winPanel:Show() end
         local winInfo = uiRoot_:FindById("winInfo")
         if winInfo then
-            winInfo:SetText("带出金币：" .. runInventory.gold ..
-                "\n带出零件：" .. runInventory.parts ..
-                "\n搜索房间：" .. searchedCount .. " | 回合：" .. result.turn)
+            winInfo:SetText("带出金币：" .. totals.gold ..
+                "\n带出零件：" .. totals.parts ..
+                "\n搜索房间：" .. totals.searchedRooms .. " | 回合：" .. result.turn)
         end
     else
         ShowMessage("当前位置无法撤离。")
@@ -478,8 +310,9 @@ function UpdateHUD()
     local statusLabel = uiRoot_:FindById("statusLabel")
     if statusLabel then
         local canEx = run:CanExtract()
+        local totals = RunInventory.GetTotals()
         local statusText = "位置: (" .. p.x .. "," .. p.y .. ") | 回合: " .. run.turn ..
-            " | 金币: " .. runInventory.gold .. " | 零件: " .. runInventory.parts
+            " | 金币: " .. totals.gold .. " | 零件: " .. totals.parts
         if canEx then
             statusText = statusText .. " | [撤离点]"
         end
@@ -501,7 +334,11 @@ function HandleNanoVGRender(eventType, eventData)
 
     if phase == PHASE.PLAYING or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
         -- 绘制房间场景背景
-        DrawRoomScene(nvgScene, w, h)
+        DungeonRoom.Draw(nvgScene, w, h, {
+            run = run,
+            minefield = minefield,
+            searchState = GetSearchState(),
+        })
 
         -- 绘制小地图
         if minefield then
@@ -517,194 +354,6 @@ function HandleNanoVGRender(eventType, eventData)
     end
 
     nvgEndFrame(nvgScene)
-end
-
-function GetSearchPointRect(layout)
-    return {
-        x = layout.x + layout.w * 0.68 - ROOM.searchW / 2,
-        y = layout.y + layout.h * 0.58 - ROOM.searchH / 2,
-        w = ROOM.searchW,
-        h = ROOM.searchH,
-    }
-end
-
-function DrawSearchPoint(vg, layout)
-    local search = GetSearchState()
-    if not search.canSearch and not search.searched then
-        return
-    end
-
-    local rect = GetSearchPointRect(layout)
-    local bodyColor = search.searched and nvgRGBA(75, 65, 55, 180) or nvgRGBA(145, 95, 45, 240)
-    local lidColor = search.searched and nvgRGBA(95, 85, 75, 180) or nvgRGBA(190, 135, 65, 255)
-
-    -- 简易资源箱占位表现
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, rect.x, rect.y + rect.h * 0.25, rect.w, rect.h * 0.75, 4)
-    nvgFillColor(vg, bodyColor)
-    nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(65, 45, 25, 220))
-    nvgStrokeWidth(vg, 2)
-    nvgStroke(vg)
-
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, rect.x + 4, rect.y, rect.w - 8, rect.h * 0.35, 4)
-    nvgFillColor(vg, lidColor)
-    nvgFill(vg)
-
-    nvgBeginPath(vg)
-    nvgRect(vg, rect.x + rect.w * 0.45, rect.y + rect.h * 0.25, rect.w * 0.1, rect.h * 0.7)
-    nvgFillColor(vg, nvgRGBA(210, 180, 85, search.searched and 120 or 240))
-    nvgFill(vg)
-
-    nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 12)
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
-    if search.searched then
-        nvgFillColor(vg, nvgRGBA(170, 160, 145, 180))
-        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, "已搜索")
-    else
-        nvgFillColor(vg, nvgRGBA(255, 230, 140, 230))
-        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, "F 搜索")
-    end
-end
-
-function DrawExitDevice(vg, layout)
-    local p = run:GetPlayer()
-    local cell = minefield:GetCellView(p.x, p.y)
-    if not cell or not cell.exitId then
-        return
-    end
-
-    local cx = layout.x + layout.w / 2
-    local y = layout.y + 54
-
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, cx - 54, y - 16, 108, 32, 6)
-    nvgFillColor(vg, nvgRGBA(30, 95, 60, 220))
-    nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(100, 255, 140, 220))
-    nvgStrokeWidth(vg, 2)
-    nvgStroke(vg)
-
-    nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 14)
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(150, 255, 170, 255))
-    nvgText(vg, cx, y, "撤离装置")
-end
-
---- 绘制当前房间场景
-function DrawRoomScene(vg, w, h)
-    if not run then return end
-
-    local p = run:GetPlayer()
-    local cell = minefield:GetCellView(p.x, p.y)
-
-    -- 房间背景色（根据数字变化氛围）
-    local adj = (cell and cell.adjacent) or 0
-    local bgR = 20 + adj * 8
-    local bgG = 25 - adj * 2
-    local bgB = 40 + adj * 5
-    nvgBeginPath(vg)
-    nvgRect(vg, 0, 0, w, h)
-    nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
-    nvgFill(vg)
-
-    -- 房间框
-    local layout = GetRoomLayout(w, h)
-    local roomX = layout.x
-    local roomY = layout.y
-    local roomW = layout.w
-    local roomH = layout.h
-
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, roomX, roomY, roomW, roomH, 8)
-    nvgFillColor(vg, nvgRGBA(25, 30, 45, 200))
-    nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(80, 90, 120, 200))
-    nvgStrokeWidth(vg, 2)
-    nvgStroke(vg)
-
-    -- 四个方向门
-    local doorSize = layout.doorSize
-    local doors = {
-        { dir = "上", dx = 0, dy = -1, x = roomX + roomW / 2 - doorSize / 2, y = roomY - 4 },
-        { dir = "下", dx = 0, dy = 1, x = roomX + roomW / 2 - doorSize / 2, y = roomY + roomH - doorSize + 4 },
-        { dir = "左", dx = -1, dy = 0, x = roomX - 4, y = roomY + roomH / 2 - doorSize / 2 },
-        { dir = "右", dx = 1, dy = 0, x = roomX + roomW - doorSize + 4, y = roomY + roomH / 2 - doorSize / 2 },
-    }
-
-    for _, door in ipairs(doors) do
-        local nx = p.x + door.dx
-        local ny = p.y + door.dy
-
-        if minefield:IsInside(nx, ny) then
-            local neighborCell = minefield:GetCellView(nx, ny)
-            local doorColor
-
-            if neighborCell and neighborCell.flagged then
-                doorColor = nvgRGBA(200, 50, 50, 220) -- 插旗：红色危险门
-            elseif neighborCell and neighborCell.revealed then
-                doorColor = nvgRGBA(60, 160, 80, 220) -- 已探索：绿色
-            else
-                doorColor = nvgRGBA(100, 100, 130, 220) -- 未知
-            end
-
-            nvgBeginPath(vg)
-            nvgRoundedRect(vg, door.x, door.y, doorSize, doorSize, 4)
-            nvgFillColor(vg, doorColor)
-            nvgFill(vg)
-
-            -- 方向文字
-            nvgFontFace(vg, "sans")
-            nvgFontSize(vg, 14)
-            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 220))
-            nvgText(vg, door.x + doorSize / 2, door.y + doorSize / 2, door.dir)
-        end
-    end
-
-    DrawSearchPoint(vg, layout)
-    DrawExitDevice(vg, layout)
-
-    -- 房间内玩家
-    local playerCX = roomX + playerRoomPos.x * roomW
-    local playerCY = roomY + playerRoomPos.y * roomH
-    nvgBeginPath(vg)
-    nvgCircle(vg, playerCX, playerCY, 16)
-    nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
-    nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 200))
-    nvgStrokeWidth(vg, 2)
-    nvgStroke(vg)
-
-    -- 数字显示（当前格的邻近地雷数）
-    if cell and cell.adjacent and cell.adjacent > 0 then
-        nvgFontFace(vg, "sans")
-        nvgFontSize(vg, 28)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBA(255, 200, 80, 200))
-        nvgText(vg, playerCX, playerCY + 40, "附近危险: " .. cell.adjacent)
-    end
-
-    -- 撤离点标记
-    if cell and cell.exitId then
-        nvgFontFace(vg, "sans")
-        nvgFontSize(vg, 20)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
-        nvgFillColor(vg, nvgRGBA(80, 255, 80, 255))
-        nvgText(vg, playerCX, roomY + 20, "[ 撤离点 - 按 E 撤离 ]")
-    end
-
-    -- 出生点标记
-    if cell and cell.spawn then
-        nvgFontFace(vg, "sans")
-        nvgFontSize(vg, 14)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
-        nvgFillColor(vg, nvgRGBA(200, 200, 200, 150))
-        nvgText(vg, playerCX, roomY + roomH - 10, "出生点")
-    end
 end
 
 -- ============================================================================
@@ -1027,67 +676,14 @@ function HandleMouseDown(eventType, eventData)
 
     -- 点击房间门移动
     if button == MOUSEB_LEFT and run then
-        if HitTestSearchPoint(mx, my) then
+        if DungeonRoom.HitTestSearchPoint(mx, my, screenW, screenH, dpr, GetSearchState()) then
             SearchCurrentRoom()
             return
         end
 
-        local doorHit = HitTestDoor(mx, my)
+        local doorHit = DungeonRoom.HitTestDoor(mx, my, screenW, screenH, dpr, run, minefield)
         if doorHit then
             MovePlayer(doorHit.dx, doorHit.dy)
         end
     end
-end
-
---- 检测点击是否命中搜索点
----@param mx number
----@param my number
----@return boolean
-function HitTestSearchPoint(mx, my)
-    local search = GetSearchState()
-    if not search.canSearch and not search.searched then
-        return false
-    end
-
-    local layout = GetRoomLayout()
-    local rect = GetSearchPointRect(layout)
-    return mx >= rect.x and mx <= rect.x + rect.w
-       and my >= rect.y and my <= rect.y + rect.h
-end
-
---- 检测点击是否命中门
----@param mx number
----@param my number
----@return table|nil {dx, dy}
-function HitTestDoor(mx, my)
-    local w = screenW / dpr
-    local h = screenH / dpr
-
-    local layout = GetRoomLayout(w, h)
-    local roomX = layout.x
-    local roomY = layout.y
-    local roomW = layout.w
-    local roomH = layout.h
-    local doorSize = layout.doorSize
-
-    local p = run:GetPlayer()
-
-    local doors = {
-        { dx = 0, dy = -1, x = roomX + roomW / 2 - doorSize / 2, y = roomY - 4 },
-        { dx = 0, dy = 1, x = roomX + roomW / 2 - doorSize / 2, y = roomY + roomH - doorSize + 4 },
-        { dx = -1, dy = 0, x = roomX - 4, y = roomY + roomH / 2 - doorSize / 2 },
-        { dx = 1, dy = 0, x = roomX + roomW - doorSize + 4, y = roomY + roomH / 2 - doorSize / 2 },
-    }
-
-    for _, door in ipairs(doors) do
-        local nx = p.x + door.dx
-        local ny = p.y + door.dy
-        if minefield:IsInside(nx, ny) then
-            if mx >= door.x and mx <= door.x + doorSize and my >= door.y and my <= door.y + doorSize then
-                return { dx = door.dx, dy = door.dy }
-            end
-        end
-    end
-
-    return nil
 end

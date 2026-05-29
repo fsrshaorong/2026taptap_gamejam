@@ -18,3 +18,5 @@
 
 - `scripts/systems/Minefield.lua`
 - `scripts/systems/ExtractionRun.lua`
+- `scripts/systems/RunInventory.lua`
+- `scripts/scenes/DungeonRoom.lua`
