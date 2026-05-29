@@ -38,6 +38,7 @@ local PHASE = {
     MENU = "menu",
     PLAYING = "playing",
     MAP_OPEN = "map_open",
+    CONFIRM_EXTRACT = "confirm_extract",
     GAME_OVER = "game_over",
     EXTRACTED = "extracted",
 }
@@ -47,6 +48,9 @@ local phase = PHASE.MENU
 local message = ""
 local messageTimer = 0
 local blockedWallHintTimer = 0
+
+-- 事件房交易记录（key = "x,y"）
+local tradedRooms = {}
 
 local function setVisible(id, visible)
     if not uiRoot_ then return end
@@ -147,6 +151,7 @@ function StartNewGame()
     Combat.Reset()
     Protocol.Reset()
     DungeonRoom.ResetPlayer()
+    tradedRooms = {}
 
     phase = PHASE.PLAYING
 
@@ -172,19 +177,29 @@ function ShowFailurePanel(reason)
 
     ShowMessage(reason)
     setVisible("gameOverPanel", true)
-    setVisible("failureChoicePanel", true)
     setVisible("restartAfterFailureButton", false)
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
-        goInfo:SetText(reason ..
-            "\n本局金币：" .. totals.gold .. " | 零件：" .. totals.parts ..
-            "\n协议等级：" .. protocol.level .. " / " .. protocol.description)
+        local text = reason ..
+            "\n金币 " .. totals.gold .. "（已安全保留）"
+        if totals.parts > 0 then
+            text = text .. "\n零件 " .. totals.parts .. "（将丢失）"
+        end
+        text = text .. "\n协议等级：" .. protocol.level .. " / " .. protocol.description
+        goInfo:SetText(text)
     end
 
-    local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
-    if salvageInfo then
-        salvageInfo:SetText("可保留：金币 " .. options.keepGold .. " 或零件 " .. options.keepParts)
+    -- 如果有零件可以抢救，显示选择面板；否则直接显示重开按钮
+    if options.canSalvagePart then
+        setVisible("failureChoicePanel", true)
+        local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
+        if salvageInfo then
+            salvageInfo:SetText("可抢救 1 个零件（转为 " .. options.salvageBonus .. " 金币）")
+        end
+    else
+        setVisible("failureChoicePanel", false)
+        setVisible("restartAfterFailureButton", true)
     end
 end
 
@@ -194,18 +209,14 @@ function ApplyFailureSalvage(choice)
     setVisible("failureChoicePanel", false)
     setVisible("restartAfterFailureButton", true)
 
-    local text = "已保留："
-    if salvage.gold > 0 then
-        text = text .. "金币 " .. salvage.gold
-    elseif salvage.parts > 0 then
-        text = text .. "零件 " .. salvage.parts
-    else
-        text = text .. "无"
+    local text = "保留金币：" .. salvage.gold
+    if salvage.bonus > 0 then
+        text = text .. "（含抢救零件 +" .. salvage.bonus .. "）"
     end
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
-        goInfo:SetText(text .. "\n未保留的局内收益已丢失。")
+        goInfo:SetText(text .. "\n零件已全部丢失。")
     end
 
     ShowMessage(text)
@@ -271,12 +282,24 @@ function MovePlayer(dx, dy)
                     end
                 end
             elseif result.status == "at_exit" then
-                ShowMessage("你到达了撤离点！按 E 撤离。")
+                local cell = minefield:GetCellView(p.x, p.y)
+                if cell and cell.exitId and string.find(cell.exitId, "random") then
+                    ShowMessage("发现隐藏撤离点！按 E 撤离。")
+                else
+                    ShowMessage("你到达了撤离点！按 E 撤离。")
+                end
             else
                 -- 根据房型显示不同提示
                 local cell = minefield:GetCellView(p.x, p.y)
                 local searchState = GetSearchState()
-                if searchState.isChest then
+                if cell and cell.roomType == "event" then
+                    local ekey = tostring(p.x) .. "," .. tostring(p.y)
+                    if tradedRooms[ekey] then
+                        ShowMessage("旅商已交易完毕。")
+                    else
+                        ShowMessage("遇到旅商！按 T 用零件换金币。")
+                    end
+                elseif searchState.isChest then
                     ShowMessage("发现宝箱房！按 F 开启宝箱，奖励丰厚！")
                 elseif searchState.canSearch then
                     ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
@@ -369,26 +392,96 @@ function TeleportTo(x, y)
     UpdateHUD()
 end
 
---- 撤离
+--- 撤离确认
 function DoExtract()
+    if not run then return end
+    if not run:CanExtract() then
+        ShowMessage("当前位置无法撤离。")
+        return
+    end
+    -- 弹出确认面板
+    phase = PHASE.CONFIRM_EXTRACT
+    local totals = RunInventory.GetTotals()
+    local protocol = Protocol.GetStatus()
+    local reward = RunInventory.GetExtractionReward()
+
+    -- 更新确认面板信息
+    local info = uiRoot_:FindById("extractConfirmInfo")
+    if info then
+        local riskText = "协议等级: " .. protocol.level .. " (" .. protocol.description .. ")"
+        local partsLine = ""
+        if totals.parts > 0 then
+            partsLine = "\n零件 " .. totals.parts .. " → 金币 +" .. reward.convertedGold
+        end
+        info:SetText(
+            "局内金币：" .. totals.gold ..
+            partsLine ..
+            "\n预计带出金币：" .. reward.totalGold ..
+            "\n搜索房间：" .. totals.searchedRooms ..
+            "\n" .. riskText
+        )
+    end
+
+    local panel = uiRoot_:FindById("extractConfirmPanel")
+    if panel then panel:Show() end
+end
+
+--- 确认撤离（实际执行）
+function ConfirmExtract()
     if not run then return end
     local result = run:Extract()
     if result.ok then
         phase = PHASE.EXTRACTED
-        local totals = RunInventory.GetTotals()
+        local reward = RunInventory.GetExtractionReward()
 
-        ShowMessage("撤离成功！带出金币 " .. totals.gold .. "，零件 " .. totals.parts .. "。")
+        ShowMessage("撤离成功！共获得 " .. reward.totalGold .. " 金币。")
+        local confirmPanel = uiRoot_:FindById("extractConfirmPanel")
+        if confirmPanel then confirmPanel:Hide() end
         local winPanel = uiRoot_:FindById("winPanel")
         if winPanel then winPanel:Show() end
         local winInfo = uiRoot_:FindById("winInfo")
         if winInfo then
-            winInfo:SetText("带出金币：" .. totals.gold ..
-                "\n带出零件：" .. totals.parts ..
-                "\n搜索房间：" .. totals.searchedRooms .. " | 回合：" .. result.turn)
+            local text = "获得金币：" .. reward.totalGold
+            if reward.parts > 0 then
+                text = text .. "\n（局内金币 " .. reward.directGold .. " + 零件×" .. reward.parts .. " 转换 " .. reward.convertedGold .. "）"
+            end
+            text = text .. "\n搜索房间：" .. RunInventory.GetSearchedCount() .. " | 回合：" .. result.turn
+            winInfo:SetText(text)
         end
-    else
-        ShowMessage("当前位置无法撤离。")
     end
+end
+
+--- 取消撤离
+function CancelExtract()
+    phase = PHASE.PLAYING
+    local panel = uiRoot_:FindById("extractConfirmPanel")
+    if panel then panel:Hide() end
+end
+
+--- 事件房交易
+function DoTrade()
+    if not run or not minefield then return end
+    local p = run:GetPlayer()
+    local cell = minefield:GetCellView(p.x, p.y)
+    if not cell or cell.roomType ~= "event" then
+        ShowMessage("这里没有可交易的 NPC。")
+        return
+    end
+    local key = tostring(p.x) .. "," .. tostring(p.y)
+    if tradedRooms[key] then
+        ShowMessage("这个旅商已经交易过了。")
+        return
+    end
+    local totals = RunInventory.GetTotals()
+    if totals.parts < 1 then
+        ShowMessage("没有零件可以交易。")
+        return
+    end
+    RunInventory.parts = RunInventory.parts - 1
+    RunInventory.gold = RunInventory.gold + 15
+    tradedRooms[key] = true
+    ShowMessage("交易成功！用 1 零件换了 15 金币。")
+    UpdateHUD()
 end
 
 --- 刷新地图数据给 MiniMap 和 MapOverlay
@@ -456,15 +549,17 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(nvgScene, screenW, screenH, dpr)
 
-    if phase == PHASE.PLAYING or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
+    if phase == PHASE.PLAYING or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
         -- 绘制房间场景背景
         local p = run:GetPlayer()
+        local tradeKey = tostring(p.x) .. "," .. tostring(p.y)
         DungeonRoom.Draw(nvgScene, w, h, {
             run = run,
             minefield = minefield,
             searchState = GetSearchState(),
             enemy = Combat.GetEnemyAny(p.x, p.y),
             combat = Combat.GetStatus(),
+            eventTraded = tradedRooms[tradeKey] or false,
         })
 
         -- 绘制小地图
@@ -593,6 +688,11 @@ function CreateUI()
                 fontColor = { 255, 220, 120, 220 },
             },
             UI.Label {
+                text = "T:交易",
+                fontSize = 11,
+                fontColor = { 100, 220, 230, 220 },
+            },
+            UI.Label {
                 text = "ESC:关闭地图",
                 fontSize = 11,
                 fontColor = { 160, 170, 190, 220 },
@@ -686,26 +786,25 @@ function CreateUI()
                         children = {
                             UI.Label {
                                 id = "failureSalvageInfo",
-                                text = "选择一项保底带出",
+                                text = "可抢救零件",
                                 fontSize = 13,
                                 fontColor = { 255, 210, 150, 230 },
                             },
                             UI.Button {
-                                id = "keepGoldButton",
-                                text = "保留 50% 金币",
+                                id = "salvagePartButton",
+                                text = "抢救 1 零件换金币",
                                 variant = "primary",
-                                width = 150,
+                                width = 170,
                                 onClick = function()
-                                    ApplyFailureSalvage("gold")
+                                    ApplyFailureSalvage("salvage_part")
                                 end,
                             },
                             UI.Button {
-                                id = "keepPartsButton",
-                                text = "保留 1 个零件",
-                                variant = "primary",
-                                width = 150,
+                                id = "acceptLossButton",
+                                text = "放弃零件",
+                                width = 170,
                                 onClick = function()
-                                    ApplyFailureSalvage("parts")
+                                    ApplyFailureSalvage("accept")
                                 end,
                             },
                         }
@@ -720,6 +819,66 @@ function CreateUI()
                             if panel then panel:Hide() end
                             StartNewGame()
                         end,
+                    },
+                }
+            }
+        }
+    }
+
+    -- 撤离确认面板
+    local extractConfirmPanel = UI.Panel {
+        id = "extractConfirmPanel",
+        position = "absolute",
+        top = 0, left = 0, right = 0, bottom = 0,
+        justifyContent = "center",
+        alignItems = "center",
+        backgroundColor = { 0, 0, 0, 160 },
+        visible = false,
+        children = {
+            UI.Panel {
+                width = "80%",
+                maxWidth = 300,
+                padding = 24,
+                gap = 14,
+                backgroundColor = { 12, 30, 45, 240 },
+                borderRadius = 12,
+                borderWidth = 1,
+                borderColor = { 60, 160, 220, 120 },
+                alignItems = "center",
+                children = {
+                    UI.Label {
+                        text = "确认撤离？",
+                        fontSize = 20,
+                        fontColor = { 100, 220, 255, 255 },
+                    },
+                    UI.Label {
+                        id = "extractConfirmInfo",
+                        text = "",
+                        fontSize = 14,
+                        fontColor = { 200, 210, 220, 220 },
+                        textAlign = "center",
+                        numberOfLines = 5,
+                    },
+                    UI.Label {
+                        text = "撤离后零件将转换为金币带出",
+                        fontSize = 12,
+                        fontColor = { 140, 200, 140, 200 },
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 16,
+                        marginTop = 6,
+                        children = {
+                            UI.Button {
+                                text = "确认撤离",
+                                variant = "primary",
+                                onClick = function() ConfirmExtract() end,
+                            },
+                            UI.Button {
+                                text = "继续探索",
+                                onClick = function() CancelExtract() end,
+                            },
+                        }
                     },
                 }
             }
@@ -784,6 +943,7 @@ function CreateUI()
             bottomBar,
             menuOverlay,
             gameOverPanel,
+            extractConfirmPanel,
             winPanel,
         }
     }
@@ -845,6 +1005,16 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
+    -- 撤离确认面板
+    if phase == PHASE.CONFIRM_EXTRACT then
+        if key == KEY_E or key == KEY_RETURN then
+            ConfirmExtract()
+        elseif key == KEY_ESCAPE then
+            CancelExtract()
+        end
+        return
+    end
+
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
@@ -856,6 +1026,8 @@ function HandleKeyDown(eventType, eventData)
         DoExtract()
     elseif key == KEY_F then
         SearchCurrentRoom()
+    elseif key == KEY_T then
+        DoTrade()
     elseif key == KEY_M then
         -- 打开放大地图
         phase = PHASE.MAP_OPEN

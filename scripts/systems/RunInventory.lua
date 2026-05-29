@@ -128,30 +128,51 @@ function RunInventory.GetTotals()
     }
 end
 
-function RunInventory.GetFailureSalvageOptions()
+--- 撤离成功时的结算：零件按比例转金币
+---@param partsToGoldRate? number 每个零件转换的金币数（默认10）
+---@return table { totalGold: number, convertedGold: number, directGold: number, parts: number }
+function RunInventory.GetExtractionReward(partsToGoldRate)
+    partsToGoldRate = partsToGoldRate or 10
+    local convertedGold = RunInventory.parts * partsToGoldRate
     return {
-        keepGold = math.floor(RunInventory.gold * 0.5),
-        keepParts = math.min(RunInventory.parts, 1),
+        totalGold = RunInventory.gold + convertedGold,
+        convertedGold = convertedGold,
+        directGold = RunInventory.gold,
+        parts = RunInventory.parts,
+    }
+end
+
+--- 失败保底选项
+--- 新机制：金币自动保留（安全资产），零件全部丢失（风险资产）
+--- 保底选择：是否用1个零件换取额外金币（10g）
+function RunInventory.GetFailureSalvageOptions()
+    local PARTS_SALVAGE_RATE = 10  -- 保底抢救1零件=10金币
+    local canSalvagePart = RunInventory.parts >= 1
+    return {
+        safeGold = RunInventory.gold,       -- 自动保留的金币
+        lostParts = RunInventory.parts,     -- 将丢失的零件数
+        canSalvagePart = canSalvagePart,    -- 是否有零件可抢救
+        salvageBonus = canSalvagePart and PARTS_SALVAGE_RATE or 0,  -- 抢救1零件得到的金币
         currentGold = RunInventory.gold,
         currentParts = RunInventory.parts,
         searchedRooms = RunInventory.GetSearchedCount(),
     }
 end
 
+--- 应用保底
+---@param choice string "salvage_part"=抢救1零件换金币, "accept"=直接接受结果
 function RunInventory.ApplyFailureSalvage(choice)
     local options = RunInventory.GetFailureSalvageOptions()
     local salvage = {
         choice = choice,
-        gold = 0,
-        parts = 0,
+        gold = options.safeGold,   -- 金币始终保留
+        parts = 0,                  -- 零件全部丢失
+        bonus = 0,
     }
 
-    if choice == "gold" then
-        salvage.gold = options.keepGold
-    elseif choice == "parts" then
-        salvage.parts = options.keepParts
-    else
-        salvage.choice = "none"
+    if choice == "salvage_part" and options.canSalvagePart then
+        salvage.bonus = options.salvageBonus
+        salvage.gold = salvage.gold + options.salvageBonus
     end
 
     RunInventory.failureSalvage = salvage

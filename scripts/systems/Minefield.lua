@@ -324,8 +324,37 @@ function Minefield:_AssignSpecialRooms()
         idx = idx + 1
     end
 
+    -- 事件房数量：约 5% 的安全非保留格，至少 1 个
+    local eventCount = math.floor(#safeCandidates * 0.05 + 0.5)
+    if eventCount < 1 then eventCount = 1 end
+    if eventCount > (#safeCandidates - idx + 1) then
+        eventCount = math.max(0, #safeCandidates - idx + 1)
+    end
+    for i = 1, eventCount do
+        if idx > #safeCandidates then break end
+        safeCandidates[idx].roomType = "event"
+        idx = idx + 1
+    end
+
+    -- 随机撤离房：1-2个，从剩余候选中选取
+    local remainCount = #safeCandidates - idx + 1
+    local randomExitCount = 2
+    if remainCount < 2 then randomExitCount = math.max(0, remainCount) end
+
+    for i = 1, randomExitCount do
+        if idx > #safeCandidates then break end
+        local cell = safeCandidates[idx]
+        local eid = "random_" .. i
+        cell.roomType = "exit"
+        cell.exitId = eid
+        cell.randomExit = true  -- 标记为随机撤离房（区别于四角固定撤离）
+        self.exitLookup[eid] = { x = cell.x, y = cell.y }
+        idx = idx + 1
+    end
+
     self.monsterCount = monsterCount
     self.chestCount = chestCount
+    self.randomExitCount = randomExitCount
 end
 
 function Minefield:_ComputeAdjacency()
@@ -396,6 +425,12 @@ function Minefield:_PublicCell(cell, revealMines)
         state = cell.adjacent == 0 and "empty" or "number"
     end
 
+    -- 随机撤离房只在揭开后才显示 exitId（四角固定撤离点始终可见）
+    local visibleExitId = cell.exitId
+    if cell.randomExit and not cell.revealed then
+        visibleExitId = nil
+    end
+
     return {
         x = cell.x,
         y = cell.y,
@@ -405,7 +440,7 @@ function Minefield:_PublicCell(cell, revealMines)
         revealed = cell.revealed,
         adjacent = cell.revealed and cell.adjacent or nil,
         spawn = cell.spawn,
-        exitId = cell.exitId,
+        exitId = visibleExitId,
         reserved = cell.reserved,
         path = cell.path,
         roomType = cell.revealed and cell.roomType or nil,

@@ -278,6 +278,11 @@ function DungeonRoom.Draw(vg, w, h, context)
         bgR, bgG, bgB = 28, 15, 30
         roomFillR, roomFillG, roomFillB = 32, 20, 38
         roomStrokeR, roomStrokeG, roomStrokeB = 140, 60, 150
+    elseif roomType == "event" then
+        -- 事件房：暗蓝绿色调
+        bgR, bgG, bgB = 12, 25, 30
+        roomFillR, roomFillG, roomFillB = 18, 32, 40
+        roomStrokeR, roomStrokeG, roomStrokeB = 60, 160, 180
     end
 
     nvgBeginPath(vg)
@@ -527,6 +532,53 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBA(255, 80, 80, 230))
         nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "怪物房")
+    end
+
+    -- 事件房 NPC 绘制
+    if roomType == "event" then
+        local npcX = layout.x + layout.w * 0.5
+        local npcY = layout.y + layout.h * 0.35
+        local traded = context.eventTraded
+
+        -- NPC 身体（蓝绿色圆形）
+        nvgBeginPath(vg)
+        nvgCircle(vg, npcX, npcY, 18)
+        nvgFillColor(vg, traded and nvgRGBA(50, 60, 60, 160) or nvgRGBA(40, 140, 150, 230))
+        nvgFill(vg)
+        nvgStrokeColor(vg, traded and nvgRGBA(80, 100, 100, 150) or nvgRGBA(80, 220, 230, 255))
+        nvgStrokeWidth(vg, 2)
+        nvgStroke(vg)
+
+        -- NPC 帽子
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, npcX - 12, npcY - 14)
+        nvgLineTo(vg, npcX, npcY - 28)
+        nvgLineTo(vg, npcX + 12, npcY - 14)
+        nvgClosePath(vg)
+        nvgFillColor(vg, traded and nvgRGBA(60, 70, 70, 150) or nvgRGBA(60, 180, 190, 240))
+        nvgFill(vg)
+
+        -- NPC 眼睛
+        nvgBeginPath(vg)
+        nvgCircle(vg, npcX - 6, npcY - 3, 3)
+        nvgCircle(vg, npcX + 6, npcY - 3, 3)
+        nvgFillColor(vg, traded and nvgRGBA(100, 120, 120, 150) or nvgRGBA(200, 255, 255, 255))
+        nvgFill(vg)
+
+        -- 文字
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 14)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        if traded then
+            nvgFillColor(vg, nvgRGBA(120, 140, 140, 180))
+            nvgText(vg, npcX, npcY + 24, "交易完成")
+        else
+            nvgFillColor(vg, nvgRGBA(100, 230, 240, 240))
+            nvgText(vg, npcX, npcY + 24, "旅商")
+            nvgFontSize(vg, 12)
+            nvgFillColor(vg, nvgRGBA(180, 220, 220, 200))
+            nvgText(vg, npcX, npcY + 42, "按 T 交易")
+        end
     end
 
     -- 踩雷红闪叠层（渐消）

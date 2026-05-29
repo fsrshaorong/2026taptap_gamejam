@@ -137,6 +137,13 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                     nvgFillColor(vg, nvgRGBA(255, 140, 30, 240))
                     nvgFill(vg)
                     drawnIcon = true
+                elseif cell.roomType == "event" then
+                    -- 事件房：蓝绿色圆点（旅商）
+                    nvgBeginPath(vg)
+                    nvgCircle(vg, cx + cs / 2, cy + cs / 2, cs * 0.3)
+                    nvgFillColor(vg, nvgRGBA(60, 200, 210, 240))
+                    nvgFill(vg)
+                    drawnIcon = true
                 end
             end
 
