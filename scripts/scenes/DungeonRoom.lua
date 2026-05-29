@@ -420,7 +420,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     nvgStrokeWidth(vg, 2)
     nvgStroke(vg)
 
-    if cell and cell.adjacent and cell.adjacent > 0 then
+    if cell and cell.adjacent and cell.adjacent > 0 and roomType ~= "mine" then
         nvgFontFace(vg, "sans")
         nvgFontSize(vg, 28)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
@@ -475,13 +475,40 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgStroke(vg)
     end
 
-    -- 已触发雷房提示文字
+    -- 已触发雷房：中央显示地雷标志 + 提示
     if roomType == "mine" then
+        local cx = layout.x + layout.w / 2
+        local cy = layout.y + layout.h * 0.38
+
+        -- 地雷图标（大圆 + 刺）
+        nvgBeginPath(vg)
+        nvgCircle(vg, cx, cy, 20)
+        nvgFillColor(vg, nvgRGBA(60, 30, 30, 200))
+        nvgFill(vg)
+        nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 220))
+        nvgStrokeWidth(vg, 2.5)
+        nvgStroke(vg)
+
+        -- 十字线
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, cx, cy - 26)
+        nvgLineTo(vg, cx, cy + 26)
+        nvgMoveTo(vg, cx - 26, cy)
+        nvgLineTo(vg, cx + 26, cy)
+        nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 180))
+        nvgStrokeWidth(vg, 2)
+        nvgStroke(vg)
+
+        -- 文字
         nvgFontFace(vg, "sans")
-        nvgFontSize(vg, 16)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
-        nvgFillColor(vg, nvgRGBA(200, 100, 80, 200))
-        nvgText(vg, layout.x + layout.w / 2, layout.y + layout.h - 12, "⚠ 已触发雷房 · 不再触发")
+        nvgFontSize(vg, 20)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(220, 90, 70, 230))
+        nvgText(vg, cx, cy + 30, "💣 已触发地雷")
+
+        nvgFontSize(vg, 14)
+        nvgFillColor(vg, nvgRGBA(180, 140, 130, 180))
+        nvgText(vg, cx, cy + 56, "不再触发 · 安全通过")
     end
 
     -- 宝箱房标题
