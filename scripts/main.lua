@@ -2,6 +2,8 @@
 -- 《第五天：灯塔》— 2026 TapTap GameJam
 -- 主题：「五四三二一」
 -- 2D 像素风五日场景解谜游戏
+--
+-- 架构：NanoVG context 绘制场景 + UI 系统做 HUD/按钮叠层
 -- ============================================================================
 
 require "LuaScripts/Utilities/Sample"
@@ -12,16 +14,17 @@ local ButtonSystem = require("systems.ButtonSystem")
 local DayManager = require("systems.DayManager")
 local Lighthouse = require("scenes.Lighthouse")
 
--- NanoVG 上下文（由 UI.Init 创建后获取）
-local vg = nil
+-- NanoVG 上下文（场景绘制专用）
+---@type userdata
+local nvgScene = nil
 
 -- UI 引用
 local uiRoot_ = nil
-local infoPanel_ = nil
-local buttonBar_ = nil
 
--- 场景绘制区域
-local sceneRect = { x = 0, y = 0, w = 0, h = 0 }
+-- 屏幕尺寸缓存
+local screenW = 0
+local screenH = 0
+local dpr = 1
 
 -- ============================================================================
 -- 生命周期
@@ -31,19 +34,34 @@ function Start()
     SampleStart()
     SampleInitMouseMode(MM_FREE)
 
+    -- 获取屏幕尺寸
+    screenW = graphics:GetWidth()
+    screenH = graphics:GetHeight()
+    dpr = graphics:GetDPR()
+
     -- 初始化游戏状态
     GameState.Init()
 
-    -- 初始化 UI 系统
+    -- 创建场景绘制用 NanoVG context
+    nvgScene = nvgCreate(1)
+    if not nvgScene then
+        print("ERROR: Failed to create NanoVG context for scene")
+        return
+    end
+
+    -- 创建字体（场景内文字标注用）
+    if nvgCreateFont(nvgScene, "sans", "Fonts/MiSans-Regular.ttf") == -1 then
+        print("ERROR: Could not load font")
+        return
+    end
+
+    -- 初始化 UI 系统（叠层在场景之上）
     UI.Init({
         fonts = {
             { family = "sans", weights = { normal = "Fonts/MiSans-Regular.ttf" } }
         },
         scale = UI.Scale.DEFAULT,
     })
-
-    -- 获取 NanoVG 上下文（UI 系统创建的）
-    vg = UI.GetNVGContext()
 
     -- 初始化场景
     Lighthouse.Init()
@@ -52,6 +70,7 @@ function Start()
     CreateUI()
 
     -- 订阅事件
+    SubscribeToEvent(nvgScene, "NanoVGRender", "HandleNanoVGRender")
     SubscribeToEvent("Update", "HandleUpdate")
     SubscribeToEvent("MouseButtonDown", "HandleMouseDown")
     SubscribeToEvent("MouseMove", "HandleMouseMove")
@@ -62,6 +81,39 @@ end
 
 function Stop()
     UI.Shutdown()
+    if nvgScene then
+        nvgDelete(nvgScene)
+        nvgScene = nil
+    end
+end
+
+-- ============================================================================
+-- NanoVG 场景渲染
+-- ============================================================================
+
+function HandleNanoVGRender(eventType, eventData)
+    if not nvgScene then return end
+
+    local w = screenW / dpr
+    local h = screenH / dpr
+
+    nvgBeginFrame(nvgScene, screenW, screenH, dpr)
+
+    -- 场景区域（留出顶部和底部 UI 空间）
+    local topBarH = 48
+    local bottomH = 144  -- 按钮栏 64 + 信息面板 80
+    local sceneX = 0
+    local sceneY = topBarH
+    local sceneW = w
+    local sceneH = h - topBarH - bottomH
+
+    -- 存储场景区域供点击检测使用
+    GameState._sceneRect = { x = sceneX, y = sceneY, w = sceneW, h = sceneH }
+
+    -- 绘制灯塔场景
+    Lighthouse.Draw(nvgScene, sceneX, sceneY, sceneW, sceneH)
+
+    nvgEndFrame(nvgScene)
 end
 
 -- ============================================================================
@@ -109,25 +161,19 @@ function CreateUI()
         }
     }
 
-    -- NanoVG 场景画布（占中间区域）
-    local sceneCanvas = UI.NanoVGCanvas {
-        id = "sceneCanvas",
+    -- 中间占位（给 NanoVG 场景留空间）
+    local sceneSpacer = UI.Panel {
+        id = "sceneSpacer",
         width = "100%",
         flexGrow = 1,
-        onDraw = function(self, ctx, x, y, w, h)
-            sceneRect.x = x
-            sceneRect.y = y
-            sceneRect.w = w
-            sceneRect.h = h
-            Lighthouse.Draw(ctx, x, y, w, h)
-        end,
+        pointerEvents = "none",  -- 不拦截输入，让鼠标事件穿透到场景
     }
 
     -- 底部按钮栏
-    buttonBar_ = CreateButtonBar()
+    local buttonBar = CreateButtonBar()
 
     -- 信息面板
-    infoPanel_ = UI.Panel {
+    local infoPanel = UI.Panel {
         id = "infoPanel",
         width = "100%",
         height = 80,
@@ -147,7 +193,92 @@ function CreateUI()
     }
 
     -- 开始菜单覆盖层
-    local menuOverlay = UI.Panel {
+    local menuOverlay = CreateMenuOverlay()
+
+    -- 结局覆盖层（初始隐藏）
+    local endingOverlay = CreateEndingOverlay()
+
+    -- 删除按钮选择覆盖层（初始隐藏）
+    local deleteOverlay = CreateDeleteOverlay()
+
+    -- 结束当天按钮（初始隐藏）
+    local endDayBtn = UI.Button {
+        id = "endDayBtn",
+        text = "结束当天",
+        variant = "primary",
+        size = "sm",
+        position = "absolute",
+        bottom = 92,
+        right = 16,
+        visible = false,
+        onClick = function()
+            if GameState.day >= GameState.maxDay then
+                ShowEnding()
+            else
+                ShowDeleteOverlay()
+            end
+        end,
+    }
+
+    -- 组合 UI 树
+    uiRoot_ = UI.Panel {
+        width = "100%",
+        height = "100%",
+        children = {
+            topBar,
+            sceneSpacer,
+            buttonBar,
+            infoPanel,
+            -- 覆盖层
+            menuOverlay,
+            endingOverlay,
+            deleteOverlay,
+            endDayBtn,
+        }
+    }
+
+    UI.SetRoot(uiRoot_)
+end
+
+--- 创建底部按钮栏
+function CreateButtonBar()
+    local buttons = {}
+    for _, btn in ipairs(GameState.BUTTONS) do
+        table.insert(buttons, UI.Button {
+            id = "btn_" .. btn.id,
+            text = btn.name,
+            width = 52,
+            height = 52,
+            fontSize = 18,
+            borderRadius = 8,
+            backgroundColor = { btn.color[1], btn.color[2], btn.color[3], 220 },
+            fontColor = { 255, 255, 255, 255 },
+            onClick = function()
+                OnButtonSelect(btn.id)
+            end,
+        })
+    end
+
+    return UI.Panel {
+        id = "buttonBar",
+        width = "100%",
+        height = 64,
+        flexDirection = "row",
+        justifyContent = "center",
+        alignItems = "center",
+        gap = 10,
+        paddingLeft = 8,
+        paddingRight = 8,
+        backgroundColor = { 20, 20, 35, 230 },
+        borderTopWidth = 1,
+        borderColor = { 60, 60, 90, 150 },
+        children = buttons,
+    }
+end
+
+--- 创建开始菜单
+function CreateMenuOverlay()
+    return UI.Panel {
         id = "menuOverlay",
         position = "absolute",
         top = 0, left = 0, right = 0, bottom = 0,
@@ -194,9 +325,11 @@ function CreateUI()
             }
         }
     }
+end
 
-    -- 结局覆盖层（初始隐藏）
-    local endingOverlay = UI.Panel {
+--- 创建结局覆盖层
+function CreateEndingOverlay()
+    return UI.Panel {
         id = "endingOverlay",
         position = "absolute",
         top = 0, left = 0, right = 0, bottom = 0,
@@ -206,7 +339,6 @@ function CreateUI()
         visible = false,
         children = {
             UI.Panel {
-                id = "endingContent",
                 width = "85%",
                 maxWidth = 380,
                 padding = 32,
@@ -247,9 +379,11 @@ function CreateUI()
             }
         }
     }
+end
 
-    -- 删除按钮选择覆盖层（初始隐藏）
-    local deleteOverlay = UI.Panel {
+--- 创建删除按钮覆盖层
+function CreateDeleteOverlay()
+    return UI.Panel {
         id = "deleteOverlay",
         position = "absolute",
         top = 0, left = 0, right = 0, bottom = 0,
@@ -281,7 +415,7 @@ function CreateUI()
                         text = "",
                         fontSize = 12,
                         fontColor = { 180, 180, 200, 200 },
-                        numberOfLines = 5,
+                        numberOfLines = 6,
                     },
                     UI.Panel {
                         id = "deleteButtons",
@@ -305,60 +439,6 @@ function CreateUI()
             }
         }
     }
-
-    -- 组合 UI 树
-    uiRoot_ = UI.Panel {
-        width = "100%",
-        height = "100%",
-        children = {
-            topBar,
-            sceneCanvas,
-            buttonBar_,
-            infoPanel_,
-            -- 覆盖层
-            menuOverlay,
-            endingOverlay,
-            deleteOverlay,
-        }
-    }
-
-    UI.SetRoot(uiRoot_)
-end
-
---- 创建底部按钮栏
-function CreateButtonBar()
-    local buttons = {}
-    for _, btn in ipairs(GameState.BUTTONS) do
-        table.insert(buttons, UI.Button {
-            id = "btn_" .. btn.id,
-            text = btn.name,
-            width = 52,
-            height = 52,
-            fontSize = 18,
-            borderRadius = 8,
-            backgroundColor = { btn.color[1], btn.color[2], btn.color[3], 220 },
-            fontColor = { 255, 255, 255, 255 },
-            onClick = function()
-                OnButtonSelect(btn.id)
-            end,
-        })
-    end
-
-    return UI.Panel {
-        id = "buttonBar",
-        width = "100%",
-        height = 64,
-        flexDirection = "row",
-        justifyContent = "center",
-        alignItems = "center",
-        gap = 10,
-        paddingLeft = 8,
-        paddingRight = 8,
-        backgroundColor = { 20, 20, 35, 230 },
-        borderTopWidth = 1,
-        borderColor = { 60, 60, 90, 150 },
-        children = buttons,
-    }
 end
 
 -- ============================================================================
@@ -379,7 +459,7 @@ function OnButtonSelect(buttonId)
     -- 显示该按钮可操作的组件
     local actions = ButtonSystem.GetAvailableActions(buttonId)
     if #actions == 0 then
-        UpdateInfoPanel("【" .. buttonId .. "】当前没有可操作的组件。")
+        UpdateInfoPanel("【" .. GetButtonName(buttonId) .. "】当前没有可操作的组件。")
         Lighthouse.selectedButton = nil
         return
     end
@@ -404,37 +484,12 @@ function OnComponentClick(componentId)
         Lighthouse.selectedButton = nil
         -- 检查目标
         if GameState.CheckObjective() then
-            UpdateInfoPanel("目标完成！按 [结束当天] 进入下一天。\n（或继续操作调整状态）")
-            ShowEndDayButton()
+            UpdateInfoPanel("目标完成！点击 [结束当天] 进入下一天。")
+            local btn = uiRoot_:FindById("endDayBtn")
+            if btn then btn:Show() end
         end
     end
     UpdateDayUI()
-end
-
---- 显示"结束当天"按钮
-function ShowEndDayButton()
-    -- 在 info panel 旁边添加一个结束当天按钮
-    local existing = uiRoot_:FindById("endDayBtn")
-    if not existing then
-        local btn = UI.Button {
-            id = "endDayBtn",
-            text = "结束当天",
-            variant = "primary",
-            size = "sm",
-            position = "absolute",
-            bottom = 92,
-            right = 16,
-            onClick = function()
-                if GameState.day >= GameState.maxDay then
-                    -- 最后一天直接结局
-                    ShowEnding()
-                else
-                    ShowDeleteOverlay()
-                end
-            end,
-        }
-        uiRoot_:AddChild(btn)
-    end
 end
 
 --- 显示删除按钮面板
@@ -443,67 +498,93 @@ function ShowDeleteOverlay()
     local overlay = uiRoot_:FindById("deleteOverlay")
     if overlay then overlay:Show() end
 
-    -- 动态生成可删除按钮列表
+    -- 清空并重新生成可删除按钮列表
     local container = uiRoot_:FindById("deleteButtons")
     if container then
         container:RemoveAllChildren()
         local available = GameState.GetAvailableButtons()
         for _, btn in ipairs(available) do
             container:AddChild(UI.Button {
-                text = btn.name .. " (" .. btn.id .. ")",
+                text = btn.name,
                 size = "sm",
+                width = 48,
+                height = 48,
+                fontSize = 16,
                 backgroundColor = { btn.color[1], btn.color[2], btn.color[3], 200 },
                 fontColor = { 255, 255, 255, 255 },
                 onClick = function()
-                    -- 显示删除预报
-                    local forecast = ButtonSystem.GetDeleteForecast(btn.id)
-                    local text = "【删除：" .. btn.name .. "】\n"
-                    if #forecast.dependencies > 0 then
-                        text = text .. "当前依赖：\n"
-                        for _, dep in ipairs(forecast.dependencies) do
-                            text = text .. "  [!] " .. dep.component .. ": " .. dep.reason .. "\n"
-                        end
-                    else
-                        text = text .. "当前无组件依赖此按钮。\n"
-                    end
-                    text = text .. "⚠️ " .. forecast.warnings[1]
-
-                    local forecastLabel = uiRoot_:FindById("deleteForecast")
-                    if forecastLabel then forecastLabel:SetText(text) end
-
-                    -- 添加确认按钮
-                    local confirmBtn = uiRoot_:FindById("confirmDeleteBtn")
-                    if not confirmBtn then
-                        container:AddChild(UI.Button {
-                            id = "confirmDeleteBtn",
-                            text = "确认删除「" .. btn.name .. "」",
-                            variant = "primary",
-                            size = "sm",
-                            backgroundColor = { 180, 50, 50, 255 },
-                            onClick = function()
-                                GameState.DeleteButton(btn.id)
-                                GameState.AddMessage("你永久删除了「" .. btn.name .. "」按钮。")
-                                local o = uiRoot_:FindById("deleteOverlay")
-                                if o then o:Hide() end
-                                -- 隐藏结束当天按钮
-                                local edb = uiRoot_:FindById("endDayBtn")
-                                if edb then edb:Hide() end
-                                -- 更新按钮栏可用状态
-                                UpdateButtonBarVisibility()
-                                -- 进入下一天
-                                DayManager.AdvanceDay()
-                                if GameState.phase == GameState.PHASE.ENDING then
-                                    ShowEnding()
-                                else
-                                    UpdateDayUI()
-                                    UpdateInfoPanel("新的一天开始了。")
-                                end
-                            end,
-                        })
-                    end
+                    OnDeleteButtonSelect(btn)
                 end,
             })
         end
+    end
+
+    -- 清空预报文本
+    local forecast = uiRoot_:FindById("deleteForecast")
+    if forecast then forecast:SetText("点击按钮查看删除影响预报。") end
+end
+
+--- 选择要删除的按钮（显示预报 + 确认）
+function OnDeleteButtonSelect(btn)
+    local forecast = ButtonSystem.GetDeleteForecast(btn.id)
+    local text = "【删除：" .. btn.name .. "】\n"
+    if #forecast.dependencies > 0 then
+        text = text .. "当前依赖：\n"
+        for _, dep in ipairs(forecast.dependencies) do
+            text = text .. "  [!] " .. dep.component .. ": " .. dep.reason .. "\n"
+        end
+    else
+        text = text .. "当前无组件依赖此按钮。\n"
+    end
+    text = text .. "⚠ " .. forecast.warnings[1]
+
+    local forecastLabel = uiRoot_:FindById("deleteForecast")
+    if forecastLabel then forecastLabel:SetText(text) end
+
+    -- 更新取消按钮为确认删除按钮
+    local cancelBtn = uiRoot_:FindById("deleteCancel")
+    if cancelBtn then
+        cancelBtn:SetText("确认删除「" .. btn.name .. "」")
+        cancelBtn.onClick = function()
+            ConfirmDelete(btn.id, btn.name)
+        end
+    end
+end
+
+--- 确认删除按钮并推进天数
+function ConfirmDelete(buttonId, buttonName)
+    GameState.DeleteButton(buttonId)
+    GameState.AddMessage("你永久删除了「" .. buttonName .. "」按钮。")
+
+    -- 隐藏覆盖层
+    local overlay = uiRoot_:FindById("deleteOverlay")
+    if overlay then overlay:Hide() end
+
+    -- 隐藏结束当天按钮
+    local endBtn = uiRoot_:FindById("endDayBtn")
+    if endBtn then endBtn:Hide() end
+
+    -- 恢复取消按钮
+    local cancelBtn = uiRoot_:FindById("deleteCancel")
+    if cancelBtn then
+        cancelBtn:SetText("返回检查场景")
+        cancelBtn.onClick = function()
+            GameState.phase = GameState.PHASE.PLAYING
+            local o = uiRoot_:FindById("deleteOverlay")
+            if o then o:Hide() end
+        end
+    end
+
+    -- 更新按钮栏
+    UpdateButtonBarVisibility()
+
+    -- 进入下一天
+    DayManager.AdvanceDay()
+    if GameState.phase == GameState.PHASE.ENDING then
+        ShowEnding()
+    else
+        UpdateDayUI()
+        UpdateInfoPanel("新的一天开始了。" .. GameState.dayObjective)
     end
 end
 
@@ -571,7 +652,10 @@ end
 ---@param eventType string
 ---@param eventData UpdateEventData
 function HandleUpdate(eventType, eventData)
-    -- 游戏逻辑更新（如有动画等）
+    -- 更新屏幕尺寸（应对窗口变化）
+    screenW = graphics:GetWidth()
+    screenH = graphics:GetHeight()
+    dpr = graphics:GetDPR()
 end
 
 ---@param eventType string
@@ -581,17 +665,22 @@ function HandleMouseDown(eventType, eventData)
     if button ~= MOUSEB_LEFT then return end
     if GameState.phase ~= GameState.PHASE.PLAYING then return end
 
-    -- 检测是否点击了场景组件
     local mx = eventData["X"]:GetInt()
     local my = eventData["Y"]:GetInt()
 
-    -- 转换到场景区域坐标
-    local dpr = graphics:GetDPR()
-    local localX = mx / dpr - sceneRect.x
-    local localY = my / dpr - sceneRect.y
+    -- 转换到逻辑坐标
+    local logicalX = mx / dpr
+    local logicalY = my / dpr
 
-    if localX >= 0 and localX <= sceneRect.w and localY >= 0 and localY <= sceneRect.h then
-        local compId = Lighthouse.HitTest(localX, localY, sceneRect.w, sceneRect.h)
+    -- 检查是否在场景区域内
+    local rect = GameState._sceneRect
+    if not rect then return end
+
+    local localX = logicalX - rect.x
+    local localY = logicalY - rect.y
+
+    if localX >= 0 and localX <= rect.w and localY >= 0 and localY <= rect.h then
+        local compId = Lighthouse.HitTest(localX, localY, rect.w, rect.h)
         if compId then
             OnComponentClick(compId)
         end
@@ -606,12 +695,17 @@ function HandleMouseMove(eventType, eventData)
     local mx = eventData["X"]:GetInt()
     local my = eventData["Y"]:GetInt()
 
-    local dpr = graphics:GetDPR()
-    local localX = mx / dpr - sceneRect.x
-    local localY = my / dpr - sceneRect.y
+    local logicalX = mx / dpr
+    local logicalY = my / dpr
 
-    if localX >= 0 and localX <= sceneRect.w and localY >= 0 and localY <= sceneRect.h then
-        local compId = Lighthouse.HitTest(localX, localY, sceneRect.w, sceneRect.h)
+    local rect = GameState._sceneRect
+    if not rect then return end
+
+    local localX = logicalX - rect.x
+    local localY = logicalY - rect.y
+
+    if localX >= 0 and localX <= rect.w and localY >= 0 and localY <= rect.h then
+        local compId = Lighthouse.HitTest(localX, localY, rect.w, rect.h)
         Lighthouse.hoveredComponent = compId
 
         -- 显示操作预报
