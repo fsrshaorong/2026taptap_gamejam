@@ -7,6 +7,7 @@ local UI = require("urhox-libs/UI")
 local ExtractionRun = require("systems.ExtractionRun")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
+local Protocol = require("systems.Protocol")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
 local DungeonRoom = require("scenes.DungeonRoom")
@@ -120,6 +121,7 @@ function StartNewGame()
         mineDensity = 0.16,
         spawnSafeRadius = 1,
         pathWidth = 0,
+        mineHitsAreFatal = false,
         revealOnMove = true,
         moveRequiresRevealed = false,
     })
@@ -131,6 +133,7 @@ function StartNewGame()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
     RunInventory.Reset()
     Combat.Reset()
+    Protocol.Reset()
     DungeonRoom.ResetPlayer()
 
     phase = PHASE.PLAYING
@@ -177,43 +180,7 @@ function MovePlayer(dx, dy)
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
 
-        -- 尝试在该格生成敌人
-        Combat.TrySpawnEnemy(minefield, p.x, p.y)
-
-        -- 检查是否有敌人并自动战斗
-        local enemy = Combat.GetEnemy(p.x, p.y)
-        if enemy then
-            local fightResult = Combat.FightEnemy(p.x, p.y)
-            if fightResult.fought then
-                if fightResult.dead then
-                    phase = PHASE.GAME_OVER
-                    ShowMessage("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击杀！")
-                    local goPanel = uiRoot_:FindById("gameOverPanel")
-                    if goPanel then goPanel:Show() end
-                    local goInfo = uiRoot_:FindById("gameOverInfo")
-                    if goInfo then goInfo:SetText("被 " .. enemy.name .. " 击败\n敌方战力: " .. enemy.power .. " | 你的战力: " .. Combat.power) end
-                elseif fightResult.playerWin then
-                    ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
-                else
-                    ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
-                end
-            end
-        elseif result.status == "at_exit" then
-            ShowMessage("你到达了撤离点！按 E 撤离。")
-        elseif CanSearchCurrentRoom() then
-            ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
-        else
-            -- 显示当前格信息
-            local cell = minefield:GetCellView(p.x, p.y)
-            if cell and cell.adjacent and cell.adjacent > 0 then
-                ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间。")
-            else
-                ShowMessage("安全区域。继续前进或查看地图。")
-            end
-        end
-    else
         if result.status == "hit_mine" then
-            -- 踩雷 = 扣血，不是直接死亡
             local mineResult = Combat.TakeMineHit()
             if mineResult.dead then
                 phase = PHASE.GAME_OVER
@@ -223,16 +190,49 @@ function MovePlayer(dx, dy)
                 local goInfo = uiRoot_:FindById("gameOverInfo")
                 if goInfo then goInfo:SetText("踩中地雷，HP 归零") end
             else
-                -- 踩雷但未死，强制移动到该格
-                run.phase = "running"
-                run.player.x = run.player.x + dx
-                run.player.y = run.player.y + dy
-                run.turn = run.turn + 1
-                DungeonRoom.PlacePlayerFromEntry(dx, dy, screenW, screenH, dpr)
-                local p = run.player
-                visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
-                ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，小心前进！")
+                ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，该雷房已触发。")
             end
+        elseif result.status == "entered_triggered_mine" then
+            ShowMessage("穿过已触发的雷房，没有再次受伤。")
+        else
+            -- 尝试在该格生成敌人
+            Combat.TrySpawnEnemy(minefield, p.x, p.y)
+
+            -- 检查是否有敌人并自动战斗
+            local enemy = Combat.GetEnemy(p.x, p.y)
+            if enemy then
+                local fightResult = Combat.FightEnemy(p.x, p.y)
+                if fightResult.fought then
+                    if fightResult.dead then
+                        phase = PHASE.GAME_OVER
+                        ShowMessage("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击杀！")
+                        local goPanel = uiRoot_:FindById("gameOverPanel")
+                        if goPanel then goPanel:Show() end
+                        local goInfo = uiRoot_:FindById("gameOverInfo")
+                        if goInfo then goInfo:SetText("被 " .. enemy.name .. " 击败\n敌方战力: " .. enemy.power .. " | 你的战力: " .. Combat.power) end
+                    elseif fightResult.playerWin then
+                        ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
+                    else
+                        ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
+                    end
+                end
+            elseif result.status == "at_exit" then
+                ShowMessage("你到达了撤离点！按 E 撤离。")
+            elseif CanSearchCurrentRoom() then
+                ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
+            else
+                -- 显示当前格信息
+                local cell = minefield:GetCellView(p.x, p.y)
+                if cell and cell.adjacent and cell.adjacent > 0 then
+                    ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间。")
+                else
+                    ShowMessage("安全区域。继续前进或查看地图。")
+                end
+            end
+        end
+    else
+        if result.status == "hit_mine" then
+            ShowMessage("踩雷，撤离失败。")
         elseif result.status == "out_of_bounds" then
             ShowMessage("无法移动，已到达地图边界。")
         elseif result.status == "blocked_flagged" then
@@ -350,10 +350,19 @@ function ShowMessage(text)
     if label then label:SetText(text) end
 end
 
+function CountVisitedCells()
+    local count = 0
+    for _ in pairs(visitedCells) do
+        count = count + 1
+    end
+    return count
+end
+
 function UpdateHUD()
     if not run then return end
     local totals = RunInventory.GetTotals()
     local combat = Combat.GetStatus()
+    Protocol.UpdateByExploredRooms(CountVisitedCells())
 
     local hpLabel = uiRoot_:FindById("hpLabel")
     if hpLabel then hpLabel:SetText("HP: " .. combat.hp .. "/" .. combat.maxHp) end
@@ -373,6 +382,9 @@ function UpdateHUD()
         if run:CanExtract() then text = text .. " [撤离点]" end
         turnLabel:SetText(text)
     end
+
+    local protocolLabel = uiRoot_:FindById("protocolLabel")
+    if protocolLabel then protocolLabel:SetText(Protocol.GetHUDText()) end
 end
 
 -- ============================================================================
@@ -460,6 +472,12 @@ function CreateUI()
                 text = "回合: 0",
                 fontSize = 12,
                 fontColor = { 180, 190, 210, 220 },
+            },
+            UI.Label {
+                id = "protocolLabel",
+                text = "协议: 5 / 稳定",
+                fontSize = 12,
+                fontColor = { 255, 210, 90, 240 },
             },
         }
     }

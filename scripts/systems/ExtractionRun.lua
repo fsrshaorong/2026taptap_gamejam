@@ -32,6 +32,7 @@ function ExtractionRun:Init(config)
     self.phase = "running"
     self.exitId = nil
     self.turn = 0
+    self.mineHitsAreFatal = config.mineHitsAreFatal == true
     self.moveRequiresRevealed = config.moveRequiresRevealed ~= false
     self.revealOnMove = config.revealOnMove == true
 
@@ -54,7 +55,7 @@ function ExtractionRun:Reveal(x, y)
     end
 
     local result = self.minefield:Reveal(x, y)
-    if result.hitMine then
+    if result.hitMine and self.mineHitsAreFatal then
         self.phase = "failed"
         self.minefield:RevealAllMines()
     end
@@ -91,14 +92,39 @@ function ExtractionRun:Move(dx, dy)
     end
 
     if target.mine then
-        local reveal = self.minefield:Reveal(targetX, targetY)
-        self.phase = "failed"
-        self.minefield:RevealAllMines()
+        local wasTriggered = target.revealed == true
+        local reveal = wasTriggered and {
+            ok = true,
+            status = "already_triggered_mine",
+            hitMine = false,
+            cells = { self.minefield:GetCellView(targetX, targetY, true) },
+        } or self.minefield:Reveal(targetX, targetY)
+
+        if self.mineHitsAreFatal then
+            self.phase = "failed"
+            self.minefield:RevealAllMines()
+            return {
+                ok = false,
+                status = "hit_mine",
+                reveal = reveal,
+                hitMine = true,
+                mineTriggered = not wasTriggered,
+                player = self:GetPlayer(),
+            }
+        end
+
+        self.player.x = targetX
+        self.player.y = targetY
+        self.turn = self.turn + 1
+
         return {
-            ok = false,
-            status = "hit_mine",
+            ok = true,
+            status = wasTriggered and "entered_triggered_mine" or "hit_mine",
             reveal = reveal,
+            hitMine = not wasTriggered,
+            mineTriggered = not wasTriggered,
             player = self:GetPlayer(),
+            turn = self.turn,
         }
     end
 

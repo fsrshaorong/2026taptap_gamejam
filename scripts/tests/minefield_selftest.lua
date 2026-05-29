@@ -7,6 +7,7 @@ package.path = table.concat({
 
 local Minefield = require("systems.Minefield")
 local ExtractionRun = require("systems.ExtractionRun")
+local Protocol = require("systems.Protocol")
 
 local function assertEq(actual, expected, message)
     if actual ~= expected then
@@ -164,11 +165,59 @@ local function testExtractionRun()
     assertEq(extracted.exitId, "nw", "wrong exit id")
 end
 
+local function testNonFatalMineRoom()
+    local field = Minefield.New({
+        width = 5,
+        height = 5,
+        mineCount = 0,
+        seed = 2026,
+        spawnSafeRadius = 0,
+        pathWidth = 0,
+    })
+    field:GetCell(4, 3).mine = true
+    field.mineCount = 1
+    field.safeCellCount = field.width * field.height - field.mineCount
+    field:_ComputeAdjacency()
+
+    local run = ExtractionRun.New({
+        minefield = field,
+        mineHitsAreFatal = false,
+        moveRequiresRevealed = false,
+        revealOnMove = true,
+    })
+
+    local firstHit = run:Move(1, 0)
+    assertTrue(firstHit.ok, "non-fatal mine should still move player")
+    assertEq(firstHit.status, "hit_mine", "first mine entry should trigger")
+    assertTrue(firstHit.mineTriggered, "first mine entry should report triggered")
+    assertEq(run.phase, "running", "non-fatal mine should keep run running")
+    assertEq(run:GetPlayer().x, 4, "player should enter mine room")
+
+    local back = run:Move(-1, 0)
+    assertTrue(back.ok, "leaving triggered mine should work")
+
+    local secondEntry = run:Move(1, 0)
+    assertTrue(secondEntry.ok, "re-entering triggered mine should work")
+    assertEq(secondEntry.status, "entered_triggered_mine", "triggered mine should not retrigger")
+    assertTrue(not secondEntry.mineTriggered, "triggered mine should not report fresh trigger")
+end
+
+local function testProtocolProgression()
+    Protocol.Reset()
+    assertEq(Protocol.GetStatus().level, 5, "protocol should start at level 5")
+    assertEq(Protocol.UpdateByExploredRooms(4).level, 4, "protocol level 4 threshold")
+    assertEq(Protocol.UpdateByExploredRooms(8).level, 3, "protocol level 3 threshold")
+    assertEq(Protocol.UpdateByExploredRooms(12).level, 2, "protocol level 2 threshold")
+    assertEq(Protocol.UpdateByExploredRooms(16).level, 1, "protocol level 1 threshold")
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "zero reveal expansion", fn = testZeroRevealExpansion },
     { name = "flag and mine reveal", fn = testFlagAndMineReveal },
     { name = "extraction run", fn = testExtractionRun },
+    { name = "non-fatal mine room", fn = testNonFatalMineRoom },
+    { name = "protocol progression", fn = testProtocolProgression },
 }
 
 for _, test in ipairs(tests) do
