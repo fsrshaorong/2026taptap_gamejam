@@ -687,6 +687,11 @@ end
 -- 事件处理
 -- ============================================================================
 
+-- 连续移动控制
+local moveInterval = 0.07    -- 按住时每次移动间隔（秒）
+local moveTimer = 0
+local firstMoveDelay = 0.15  -- 首次按下后到连续移动的延迟
+
 ---@param eventType string
 ---@param eventData UpdateEventData
 function HandleUpdate(eventType, eventData)
@@ -701,6 +706,26 @@ function HandleUpdate(eventType, eventData)
             message = ""
             local label = uiRoot_:FindById("messageLabel")
             if label then label:SetText("") end
+        end
+    end
+
+    -- 连续移动：按住方向键时持续移动角色
+    if phase == PHASE.PLAYING and run then
+        local dx, dy = 0, 0
+        if input:GetKeyDown(KEY_W) or input:GetKeyDown(KEY_UP) then dy = -1
+        elseif input:GetKeyDown(KEY_S) or input:GetKeyDown(KEY_DOWN) then dy = 1
+        elseif input:GetKeyDown(KEY_A) or input:GetKeyDown(KEY_LEFT) then dx = -1
+        elseif input:GetKeyDown(KEY_D) or input:GetKeyDown(KEY_RIGHT) then dx = 1
+        end
+
+        if dx ~= 0 or dy ~= 0 then
+            moveTimer = moveTimer + dt
+            if moveTimer >= moveInterval then
+                moveTimer = moveTimer - moveInterval
+                MoveScenePlayer(dx, dy)
+            end
+        else
+            moveTimer = 0
         end
     end
 end
@@ -722,15 +747,11 @@ function HandleKeyDown(eventType, eventData)
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
-    -- 移动房间里的角色；走进门后才切换扫雷格
-    if key == KEY_W or key == KEY_UP then
-        MoveScenePlayer(0, -1)
-    elseif key == KEY_S or key == KEY_DOWN then
-        MoveScenePlayer(0, 1)
-    elseif key == KEY_A or key == KEY_LEFT then
-        MoveScenePlayer(-1, 0)
-    elseif key == KEY_D or key == KEY_RIGHT then
-        MoveScenePlayer(1, 0)
+    -- 功能键（移动已改为 Update 中连续检测）
+    if key == KEY_W or key == KEY_UP or key == KEY_S or key == KEY_DOWN
+       or key == KEY_A or key == KEY_LEFT or key == KEY_D or key == KEY_RIGHT then
+        -- 首次按下立即移动一步（让操作有即时响应感）
+        moveTimer = moveInterval
     elseif key == KEY_E then
         DoExtract()
     elseif key == KEY_F then

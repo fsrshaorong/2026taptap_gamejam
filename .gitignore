@@ -1,8 +1,2 @@
 .build/
 dist/
-.tmp/
-logs/
-.cli/
-tools/
-.claude/
-.project/*.meta
