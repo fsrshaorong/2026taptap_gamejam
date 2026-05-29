@@ -101,8 +101,47 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 nvgStroke(vg)
             end
 
-            -- 数字（如果格子够大）
-            if cell.state == "number" and cell.adjacent and cs >= 8 then
+            -- 特殊房型图标（揭示后才显示）
+            local drawnIcon = false
+            if cell.revealed and cell.roomType and cs >= 6 then
+                if cell.roomType == "chest" then
+                    -- 宝箱图标：金色方块
+                    nvgBeginPath(vg)
+                    nvgRect(vg, cx + cs * 0.2, cy + cs * 0.25, cs * 0.6, cs * 0.5)
+                    nvgFillColor(vg, nvgRGBA(255, 200, 50, 240))
+                    nvgFill(vg)
+                    drawnIcon = true
+                elseif cell.roomType == "monster" then
+                    -- 怪物图标：红色菱形
+                    local mcx = cx + cs / 2
+                    local mcy = cy + cs / 2
+                    local mr = cs * 0.3
+                    nvgBeginPath(vg)
+                    nvgMoveTo(vg, mcx, mcy - mr)
+                    nvgLineTo(vg, mcx + mr, mcy)
+                    nvgLineTo(vg, mcx, mcy + mr)
+                    nvgLineTo(vg, mcx - mr, mcy)
+                    nvgClosePath(vg)
+                    nvgFillColor(vg, nvgRGBA(255, 60, 60, 240))
+                    nvgFill(vg)
+                    drawnIcon = true
+                elseif cell.roomType == "mine" and cell.state == "mine" then
+                    -- 已触发雷：橙色三角警示
+                    local tcx = cx + cs / 2
+                    local tcy = cy + cs * 0.3
+                    nvgBeginPath(vg)
+                    nvgMoveTo(vg, tcx, tcy)
+                    nvgLineTo(vg, tcx + cs * 0.3, cy + cs * 0.8)
+                    nvgLineTo(vg, tcx - cs * 0.3, cy + cs * 0.8)
+                    nvgClosePath(vg)
+                    nvgFillColor(vg, nvgRGBA(255, 140, 30, 240))
+                    nvgFill(vg)
+                    drawnIcon = true
+                end
+            end
+
+            -- 数字（如果格子够大且没有图标覆盖）
+            if not drawnIcon and cell.state == "number" and cell.adjacent and cs >= 8 then
                 local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
                 nvgFontFace(vg, "sans")
                 nvgFontSize(vg, cs * 0.7)

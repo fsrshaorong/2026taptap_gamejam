@@ -121,6 +121,7 @@ function Minefield:Generate()
         self:_BuildEmptyGrid()
         self:_ReserveCriticalCells()
         self:_PlaceMines()
+        self:_AssignSpecialRooms()
         self:_ComputeAdjacency()
 
         local ok = self:HasPathToAllExits()
@@ -159,6 +160,7 @@ function Minefield:_BuildEmptyGrid()
                 path = false,
                 spawn = false,
                 exitId = nil,
+                roomType = "normal",
             }
         end
     end
@@ -167,6 +169,7 @@ function Minefield:_BuildEmptyGrid()
         if self:IsInside(exit.x, exit.y) then
             local cell = self:GetCell(exit.x, exit.y)
             cell.exitId = exit.id
+            cell.roomType = "exit"
             self.exitLookup[exit.id] = copyCoord(cell)
         end
     end
@@ -273,10 +276,56 @@ function Minefield:_PlaceMines()
 
     for i = 1, desired do
         candidates[i].mine = true
+        candidates[i].roomType = "mine"
         self.mineCount = self.mineCount + 1
     end
 
     self.safeCellCount = self.width * self.height - self.mineCount
+end
+
+--- 在安全格中分配特殊房型（怪物房、宝箱房）
+--- 怪物房不计入雷数邻接，所以要在 _ComputeAdjacency 之前调用
+function Minefield:_AssignSpecialRooms()
+    local safeCandidates = {}
+    for y = 1, self.height do
+        for x = 1, self.width do
+            local cell = self.grid[y][x]
+            -- 只选择普通安全格（非雷、非出生、非撤离、非保留路径）
+            if not cell.mine and not cell.spawn and not cell.exitId
+               and cell.roomType == "normal" and not cell.reserved then
+                table.insert(safeCandidates, cell)
+            end
+        end
+    end
+
+    self.rng:Shuffle(safeCandidates)
+
+    -- 怪物房数量：约 10% 的安全非保留格
+    local monsterCount = math.floor(#safeCandidates * 0.10 + 0.5)
+    if monsterCount < 2 then monsterCount = 2 end
+    if monsterCount > #safeCandidates then monsterCount = #safeCandidates end
+
+    -- 宝箱房数量：约 8% 的安全非保留格
+    local chestCount = math.floor(#safeCandidates * 0.08 + 0.5)
+    if chestCount < 2 then chestCount = 2 end
+    if chestCount > (#safeCandidates - monsterCount) then
+        chestCount = math.max(0, #safeCandidates - monsterCount)
+    end
+
+    local idx = 1
+    for i = 1, monsterCount do
+        if idx > #safeCandidates then break end
+        safeCandidates[idx].roomType = "monster"
+        idx = idx + 1
+    end
+    for i = 1, chestCount do
+        if idx > #safeCandidates then break end
+        safeCandidates[idx].roomType = "chest"
+        idx = idx + 1
+    end
+
+    self.monsterCount = monsterCount
+    self.chestCount = chestCount
 end
 
 function Minefield:_ComputeAdjacency()
@@ -287,6 +336,7 @@ function Minefield:_ComputeAdjacency()
 
             for _, dir in ipairs(DIR8) do
                 local neighbor = self:GetCell(x + dir.x, y + dir.y)
+                -- 只统计真正的地雷（怪物房不计入雷数）
                 if neighbor and neighbor.mine then
                     count = count + 1
                 end
@@ -358,6 +408,7 @@ function Minefield:_PublicCell(cell, revealMines)
         exitId = cell.exitId,
         reserved = cell.reserved,
         path = cell.path,
+        roomType = cell.revealed and cell.roomType or nil,
     }
 end
 

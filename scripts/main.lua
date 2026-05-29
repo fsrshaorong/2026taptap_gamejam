@@ -245,13 +245,14 @@ function MovePlayer(dx, dy)
 
         if result.status == "hit_mine" then
             local mineResult = Combat.TakeMineHit()
+            DungeonRoom.TriggerMineFlash()
             if mineResult.dead then
                 ShowFailurePanel("踩雷！受到 " .. mineResult.damage .. " 伤害，血量归零！")
             else
                 ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，该雷房已触发。")
             end
         elseif result.status == "entered_triggered_mine" then
-            ShowMessage("穿过已触发的雷房，没有再次受伤。")
+            ShowMessage("穿过已触发的雷房，不再触发。")
         else
             -- 尝试在该格生成敌人
             Combat.TrySpawnEnemy(minefield, p.x, p.y)
@@ -271,12 +272,15 @@ function MovePlayer(dx, dy)
                 end
             elseif result.status == "at_exit" then
                 ShowMessage("你到达了撤离点！按 E 撤离。")
-            elseif CanSearchCurrentRoom() then
-                ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
             else
-                -- 显示当前格信息
+                -- 根据房型显示不同提示
                 local cell = minefield:GetCellView(p.x, p.y)
-                if cell and cell.adjacent and cell.adjacent > 0 then
+                local searchState = GetSearchState()
+                if searchState.isChest then
+                    ShowMessage("发现宝箱房！按 F 开启宝箱，奖励丰厚！")
+                elseif searchState.canSearch then
+                    ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
+                elseif cell and cell.adjacent and cell.adjacent > 0 then
                     ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间。")
                 else
                     ShowMessage("安全区域。继续前进或查看地图。")
@@ -802,6 +806,7 @@ function HandleUpdate(eventType, eventData)
     if blockedWallHintTimer > 0 then
         blockedWallHintTimer = blockedWallHintTimer - dt
     end
+    DungeonRoom.Update(dt)
     if messageTimer > 0 then
         messageTimer = messageTimer - dt
         if messageTimer <= 0 then

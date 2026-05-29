@@ -13,7 +13,7 @@ local CONFIG = {
     doorSize = 40,
     playerRadius = 16,
     moveStep = 12,
-    moveSpeed = 170,
+    moveSpeed = 300,
     searchW = 58,
     searchH = 36,
     enemyRadius = 22,
@@ -21,9 +21,26 @@ local CONFIG = {
 
 local playerPos = { x = 0.5, y = 0.5 }
 
+-- 踩雷红闪效果
+local mineFlashTimer = 0
+local MINE_FLASH_DURATION = 0.6
+
 function DungeonRoom.ResetPlayer()
     playerPos.x = 0.5
     playerPos.y = 0.5
+end
+
+--- 触发踩雷红闪效果
+function DungeonRoom.TriggerMineFlash()
+    mineFlashTimer = MINE_FLASH_DURATION
+end
+
+--- 更新红闪计时器（在 HandleUpdate 中调用）
+function DungeonRoom.Update(dt)
+    if mineFlashTimer > 0 then
+        mineFlashTimer = mineFlashTimer - dt
+        if mineFlashTimer < 0 then mineFlashTimer = 0 end
+    end
 end
 
 function DungeonRoom.GetLayout(w, h)
@@ -239,9 +256,29 @@ function DungeonRoom.Draw(vg, w, h, context)
     local p = run:GetPlayer()
     local cell = minefield:GetCellView(p.x, p.y)
     local adj = (cell and cell.adjacent) or 0
-    local bgR = 18 + adj * 8
-    local bgG = 24 + math.max(0, 3 - adj)
-    local bgB = 38 + adj * 5
+    local roomType = cell and cell.roomType or "normal"
+
+    -- 房间背景色根据房型变化
+    local bgR, bgG, bgB = 18 + adj * 8, 24 + math.max(0, 3 - adj), 38 + adj * 5
+    local roomStrokeR, roomStrokeG, roomStrokeB = 90, 100, 130
+    local roomFillR, roomFillG, roomFillB = 25, 30, 45
+
+    if roomType == "mine" then
+        -- 已触发雷房：暗红色调
+        bgR, bgG, bgB = 40, 15, 15
+        roomFillR, roomFillG, roomFillB = 45, 20, 20
+        roomStrokeR, roomStrokeG, roomStrokeB = 160, 60, 50
+    elseif roomType == "chest" then
+        -- 宝箱房：暖金色调
+        bgR, bgG, bgB = 30, 25, 12
+        roomFillR, roomFillG, roomFillB = 35, 30, 18
+        roomStrokeR, roomStrokeG, roomStrokeB = 180, 150, 60
+    elseif roomType == "monster" then
+        -- 怪物房：暗紫色调
+        bgR, bgG, bgB = 28, 15, 30
+        roomFillR, roomFillG, roomFillB = 32, 20, 38
+        roomStrokeR, roomStrokeG, roomStrokeB = 140, 60, 150
+    end
 
     nvgBeginPath(vg)
     nvgRect(vg, 0, 0, w, h)
@@ -252,9 +289,9 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, layout.x, layout.y, layout.w, layout.h, 8)
-    nvgFillColor(vg, nvgRGBA(25, 30, 45, 210))
+    nvgFillColor(vg, nvgRGBA(roomFillR, roomFillG, roomFillB, 210))
     nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(90, 100, 130, 220))
+    nvgStrokeColor(vg, nvgRGBA(roomStrokeR, roomStrokeG, roomStrokeB, 220))
     nvgStrokeWidth(vg, 2)
     nvgStroke(vg)
 
@@ -436,6 +473,42 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgStrokeColor(vg, nvgRGBA(180, 180, 180, 150))
         nvgStrokeWidth(vg, 1)
         nvgStroke(vg)
+    end
+
+    -- 已触发雷房提示文字
+    if roomType == "mine" then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 16)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
+        nvgFillColor(vg, nvgRGBA(200, 100, 80, 200))
+        nvgText(vg, layout.x + layout.w / 2, layout.y + layout.h - 12, "⚠ 已触发雷房 · 不再触发")
+    end
+
+    -- 宝箱房标题
+    if roomType == "chest" then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 16)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(255, 210, 80, 230))
+        nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "宝箱房")
+    end
+
+    -- 怪物房标题
+    if roomType == "monster" and not context.enemy then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 16)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(255, 80, 80, 230))
+        nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "怪物房")
+    end
+
+    -- 踩雷红闪叠层（渐消）
+    if mineFlashTimer > 0 then
+        local alpha = math.floor(180 * (mineFlashTimer / MINE_FLASH_DURATION))
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, w, h)
+        nvgFillColor(vg, nvgRGBA(220, 30, 20, alpha))
+        nvgFill(vg)
     end
 end
 

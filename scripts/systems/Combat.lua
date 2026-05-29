@@ -51,8 +51,8 @@ function Combat.TakeMineHit()
     }
 end
 
---- 为指定格子生成敌人（如果随机到了的话）
---- 出生点、撤离点、已有敌人的格子不生成
+--- 为指定格子生成敌人
+--- 怪物房（roomType="monster"）必定生成，普通房不再随机生成
 ---@param minefield table
 ---@param x number
 ---@param y number
@@ -67,25 +67,26 @@ function Combat.TrySpawnEnemy(minefield, x, y)
     -- 出生点和撤离点不生成敌人
     if cell.spawn or cell.exitId then return end
 
-    -- 根据 seed + 坐标做伪随机
+    -- 只有怪物房才生成敌人
+    if cell.roomType ~= "monster" then return end
+
+    -- 根据 seed + 坐标做伪随机确定战斗力
     local seed = minefield.seed or 1
     local hash = (x * 131 + y * 97 + seed * 41) % 1000
 
-    if hash / 1000 < CONFIG.enemySpawnChance then
-        -- 生成敌人，战斗力与位置相关
-        local adjPower = (cell.adjacent or 0) * 2
-        local basePower = CONFIG.enemyPowerMin + (hash % (CONFIG.enemyPowerMax - CONFIG.enemyPowerMin + 1))
-        local enemyPower = basePower + adjPower
+    -- 生成敌人，战斗力与位置/邻接相关
+    local adjPower = (cell.adjacent or 0) * 2
+    local basePower = CONFIG.enemyPowerMin + (hash % (CONFIG.enemyPowerMax - CONFIG.enemyPowerMin + 1))
+    local enemyPower = basePower + adjPower
 
-        local names = { "哥布林", "骷髅兵", "蝙蝠怪", "食尸鬼", "暗影刺客" }
-        local nameIdx = (hash % #names) + 1
+    local names = { "哥布林", "骷髅兵", "蝙蝠怪", "食尸鬼", "暗影刺客" }
+    local nameIdx = (hash % #names) + 1
 
-        Combat.enemies[key] = {
-            name = names[nameIdx],
-            power = enemyPower,
-            alive = true,
-        }
-    end
+    Combat.enemies[key] = {
+        name = names[nameIdx],
+        power = enemyPower,
+        alive = true,
+    }
 end
 
 --- 获取指定格子的敌人（如果有且活着）

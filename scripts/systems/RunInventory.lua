@@ -36,7 +36,13 @@ function RunInventory.GetReward(minefield, x, y)
     if roll % 5 == 0 then parts = parts + 1 end
     if adjacent >= 3 then parts = parts + 1 end
 
-    return { gold = gold, parts = parts }
+    -- 宝箱房奖励加成：金币翻倍，必给零件
+    if cell and cell.roomType == "chest" then
+        gold = gold * 2 + 10
+        parts = parts + 1
+    end
+
+    return { gold = gold, parts = parts, isChest = (cell and cell.roomType == "chest") }
 end
 
 function RunInventory.GetSearchState(minefield, run)
@@ -58,6 +64,10 @@ function RunInventory.GetSearchState(minefield, run)
     if cell.exitId then
         return { canSearch = false, searched = searched, reason = "exit" }
     end
+    -- 怪物房不可搜索（只能战斗）
+    if cell.roomType == "monster" then
+        return { canSearch = false, searched = searched, reason = "monster" }
+    end
     if searched then
         return { canSearch = false, searched = true, reason = "searched" }
     end
@@ -65,6 +75,7 @@ function RunInventory.GetSearchState(minefield, run)
     return {
         canSearch = true,
         searched = false,
+        isChest = (cell.roomType == "chest"),
         reward = RunInventory.GetReward(minefield, p.x, p.y),
     }
 end
