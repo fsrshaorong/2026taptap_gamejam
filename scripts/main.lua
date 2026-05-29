@@ -1,61 +1,69 @@
 -- ============================================================================
--- 《第五天：灯塔》— 2026 TapTap GameJam
--- 主题：「五四三二一」
--- 2D 像素风五日场景解谜游戏
---
--- 架构：NanoVG context 绘制场景 + UI 系统做 HUD/按钮叠层
+-- 扫雷搜打撤 — 2026 TapTap GameJam
+-- 架构：NanoVG context 绘制场景/地图 + UI 系统做 HUD 叠层
 -- ============================================================================
 
-require "LuaScripts/Utilities/Sample"
-
 local UI = require("urhox-libs/UI")
-local GameState = require("systems.GameState")
-local ButtonSystem = require("systems.ButtonSystem")
-local DayManager = require("systems.DayManager")
-local Lighthouse = require("scenes.Lighthouse")
+local Minefield = require("systems.Minefield")
+local ExtractionRun = require("systems.ExtractionRun")
+local MiniMap = require("ui.MiniMap")
+local MapOverlay = require("ui.MapOverlay")
 
--- NanoVG 上下文（场景绘制专用）
+-- ============================================================================
+-- 全局状态
+-- ============================================================================
+
 ---@type userdata
 local nvgScene = nil
-
--- UI 引用
 local uiRoot_ = nil
 
--- 屏幕尺寸缓存
 local screenW = 0
 local screenH = 0
 local dpr = 1
+
+-- 游戏核心
+---@type table
+local run = nil          -- ExtractionRun 实例
+---@type table
+local minefield = nil    -- Minefield 引用（run.minefield）
+
+-- 玩家已访问的格子 { ["x,y"] = true }
+local visitedCells = {}
+
+-- 游戏阶段
+local PHASE = {
+    MENU = "menu",
+    PLAYING = "playing",
+    MAP_OPEN = "map_open",
+    GAME_OVER = "game_over",
+    EXTRACTED = "extracted",
+}
+local phase = PHASE.MENU
+
+-- 消息
+local message = ""
+local messageTimer = 0
 
 -- ============================================================================
 -- 生命周期
 -- ============================================================================
 
 function Start()
-    SampleStart()
-    SampleInitMouseMode(MM_FREE)
+    graphics.windowTitle = "扫雷搜打撤"
 
-    -- 获取屏幕尺寸
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
     dpr = graphics:GetDPR()
 
-    -- 初始化游戏状态
-    GameState.Init()
-
-    -- 创建场景绘制用 NanoVG context
+    -- 创建 NanoVG context
     nvgScene = nvgCreate(1)
     if not nvgScene then
-        print("ERROR: Failed to create NanoVG context for scene")
+        print("ERROR: Failed to create NanoVG context")
         return
     end
+    nvgCreateFont(nvgScene, "sans", "Fonts/MiSans-Regular.ttf")
 
-    -- 创建字体（场景内文字标注用）
-    if nvgCreateFont(nvgScene, "sans", "Fonts/MiSans-Regular.ttf") == -1 then
-        print("ERROR: Could not load font")
-        return
-    end
-
-    -- 初始化 UI 系统（叠层在场景之上）
+    -- 初始化 UI
     UI.Init({
         fonts = {
             { family = "sans", weights = { normal = "Fonts/MiSans-Regular.ttf" } }
@@ -63,20 +71,32 @@ function Start()
         scale = UI.Scale.DEFAULT,
     })
 
-    -- 初始化场景
-    Lighthouse.Init()
-
     -- 创建 UI
     CreateUI()
+
+    -- 配置放大地图回调
+    MapOverlay.onClose = function()
+        phase = PHASE.PLAYING
+    end
+    MapOverlay.onFlag = function(x, y)
+        if run then
+            run:ToggleFlag(x, y)
+            RefreshMapData()
+        end
+    end
+    MapOverlay.onTeleport = function(x, y)
+        if run then
+            TeleportTo(x, y)
+        end
+    end
 
     -- 订阅事件
     SubscribeToEvent(nvgScene, "NanoVGRender", "HandleNanoVGRender")
     SubscribeToEvent("Update", "HandleUpdate")
     SubscribeToEvent("MouseButtonDown", "HandleMouseDown")
-    SubscribeToEvent("MouseMove", "HandleMouseMove")
     SubscribeToEvent("KeyDown", "HandleKeyDown")
 
-    print("=== 《第五天：灯塔》已启动 ===")
+    print("=== 扫雷搜打撤 已启动 ===")
 end
 
 function Stop()
@@ -88,7 +108,147 @@ function Stop()
 end
 
 -- ============================================================================
--- NanoVG 场景渲染
+-- 游戏逻辑
+-- ============================================================================
+
+function StartNewGame()
+    run = ExtractionRun.New({
+        width = 15,
+        height = 15,
+        mineDensity = 0.16,
+        spawnSafeRadius = 1,
+        pathWidth = 0,
+        revealOnMove = true,
+        moveRequiresRevealed = false,
+    })
+    minefield = run.minefield
+
+    -- 标记出生格为已访问
+    visitedCells = {}
+    local spawn = minefield:GetSpawn()
+    visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
+
+    phase = PHASE.PLAYING
+
+    -- 计算小地图布局
+    MiniMap.ComputeLayout(minefield.width, minefield.height)
+
+    ShowMessage("从中心出发，通过门探索房间，前往四角撤离！")
+    UpdateHUD()
+
+    -- 隐藏菜单
+    local menu = uiRoot_:FindById("menuOverlay")
+    if menu then menu:Hide() end
+end
+
+--- 玩家向指定方向移动
+---@param dx number
+---@param dy number
+function MovePlayer(dx, dy)
+    if phase ~= PHASE.PLAYING then return end
+    if not run then return end
+
+    local result = run:Move(dx, dy)
+
+    if result.ok then
+        -- 标记为已访问
+        local p = result.player
+        visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
+
+        if result.status == "at_exit" then
+            ShowMessage("你到达了撤离点！按 E 撤离。")
+        else
+            -- 显示当前格信息
+            local cell = minefield:GetCellView(p.x, p.y)
+            if cell and cell.adjacent and cell.adjacent > 0 then
+                ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间。")
+            else
+                ShowMessage("安全区域。继续前进或查看地图。")
+            end
+        end
+    else
+        if result.status == "hit_mine" then
+            phase = PHASE.GAME_OVER
+            ShowMessage("你踩中了地雷！游戏结束。")
+            local goPanel = uiRoot_:FindById("gameOverPanel")
+            if goPanel then goPanel:Show() end
+        elseif result.status == "out_of_bounds" then
+            ShowMessage("无法移动，已到达地图边界。")
+        elseif result.status == "blocked_flagged" then
+            ShowMessage("该格已插旗，先取消旗标才能进入。")
+        end
+    end
+
+    RefreshMapData()
+    UpdateHUD()
+end
+
+--- 传送到已访问的安全格
+function TeleportTo(x, y)
+    if not run then return end
+    local key = tostring(x) .. "," .. tostring(y)
+    if not visitedCells[key] then
+        ShowMessage("只能传送到已访问的安全房间。")
+        return
+    end
+
+    -- 直接设置玩家位置
+    run.player.x = x
+    run.player.y = y
+
+    ShowMessage("传送成功！")
+    MapOverlay.Hide()
+    phase = PHASE.PLAYING
+    RefreshMapData()
+    UpdateHUD()
+end
+
+--- 撤离
+function DoExtract()
+    if not run then return end
+    local result = run:Extract()
+    if result.ok then
+        phase = PHASE.EXTRACTED
+        ShowMessage("撤离成功！回合数：" .. result.turn)
+        local winPanel = uiRoot_:FindById("winPanel")
+        if winPanel then winPanel:Show() end
+    else
+        ShowMessage("当前位置无法撤离。")
+    end
+end
+
+--- 刷新地图数据给 MiniMap 和 MapOverlay
+function RefreshMapData()
+    if not run then return end
+    MapOverlay.visibleMap = minefield:GetVisibleMap()
+    MapOverlay.playerX = run.player.x
+    MapOverlay.playerY = run.player.y
+    MapOverlay.visitedCells = visitedCells
+end
+
+function ShowMessage(text)
+    message = text
+    messageTimer = 4.0
+    local label = uiRoot_:FindById("messageLabel")
+    if label then label:SetText(text) end
+end
+
+function UpdateHUD()
+    if not run then return end
+    local p = run:GetPlayer()
+    local statusLabel = uiRoot_:FindById("statusLabel")
+    if statusLabel then
+        local canEx = run:CanExtract()
+        local statusText = "位置: (" .. p.x .. "," .. p.y .. ") | 回合: " .. run.turn
+        if canEx then
+            statusText = statusText .. " | [撤离点]"
+        end
+        statusLabel:SetText(statusText)
+    end
+end
+
+-- ============================================================================
+-- NanoVG 渲染
 -- ============================================================================
 
 function HandleNanoVGRender(eventType, eventData)
@@ -99,21 +259,134 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(nvgScene, screenW, screenH, dpr)
 
-    -- 场景区域（留出顶部和底部 UI 空间）
-    local topBarH = 48
-    local bottomH = 144  -- 按钮栏 64 + 信息面板 80
-    local sceneX = 0
-    local sceneY = topBarH
-    local sceneW = w
-    local sceneH = h - topBarH - bottomH
+    if phase == PHASE.PLAYING or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
+        -- 绘制房间场景背景
+        DrawRoomScene(nvgScene, w, h)
 
-    -- 存储场景区域供点击检测使用
-    GameState._sceneRect = { x = sceneX, y = sceneY, w = sceneW, h = sceneH }
-
-    -- 绘制灯塔场景
-    Lighthouse.Draw(nvgScene, sceneX, sceneY, sceneW, sceneH)
+        -- 绘制小地图
+        if minefield then
+            local visMap = minefield:GetVisibleMap()
+            local p = run:GetPlayer()
+            MiniMap.Draw(nvgScene, visMap, p.x, p.y, minefield.width, minefield.height)
+        end
+    elseif phase == PHASE.MAP_OPEN then
+        -- 绘制放大地图
+        RefreshMapData()
+        MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
+        MapOverlay.Draw(nvgScene, w, h)
+    end
 
     nvgEndFrame(nvgScene)
+end
+
+--- 绘制当前房间场景
+function DrawRoomScene(vg, w, h)
+    if not run then return end
+
+    local p = run:GetPlayer()
+    local cell = minefield:GetCellView(p.x, p.y)
+
+    -- 房间背景色（根据数字变化氛围）
+    local adj = (cell and cell.adjacent) or 0
+    local bgR = 20 + adj * 8
+    local bgG = 25 - adj * 2
+    local bgB = 40 + adj * 5
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
+    nvgFill(vg)
+
+    -- 房间框
+    local roomMargin = 60
+    local roomX = roomMargin
+    local roomY = roomMargin + 40
+    local roomW = w - roomMargin * 2
+    local roomH = h - roomMargin * 2 - 80
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, roomX, roomY, roomW, roomH, 8)
+    nvgFillColor(vg, nvgRGBA(25, 30, 45, 200))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(80, 90, 120, 200))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    -- 四个方向门
+    local doorSize = 36
+    local doors = {
+        { dir = "上", dx = 0, dy = -1, x = roomX + roomW / 2 - doorSize / 2, y = roomY - 4 },
+        { dir = "下", dx = 0, dy = 1, x = roomX + roomW / 2 - doorSize / 2, y = roomY + roomH - doorSize + 4 },
+        { dir = "左", dx = -1, dy = 0, x = roomX - 4, y = roomY + roomH / 2 - doorSize / 2 },
+        { dir = "右", dx = 1, dy = 0, x = roomX + roomW - doorSize + 4, y = roomY + roomH / 2 - doorSize / 2 },
+    }
+
+    for _, door in ipairs(doors) do
+        local nx = p.x + door.dx
+        local ny = p.y + door.dy
+
+        if minefield:IsInside(nx, ny) then
+            local neighborCell = minefield:GetCellView(nx, ny)
+            local doorColor
+
+            if neighborCell and neighborCell.flagged then
+                doorColor = nvgRGBA(200, 50, 50, 220) -- 插旗：红色危险门
+            elseif neighborCell and neighborCell.revealed then
+                doorColor = nvgRGBA(60, 160, 80, 220) -- 已探索：绿色
+            else
+                doorColor = nvgRGBA(100, 100, 130, 220) -- 未知
+            end
+
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, door.x, door.y, doorSize, doorSize, 4)
+            nvgFillColor(vg, doorColor)
+            nvgFill(vg)
+
+            -- 方向文字
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, 14)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 220))
+            nvgText(vg, door.x + doorSize / 2, door.y + doorSize / 2, door.dir)
+        end
+    end
+
+    -- 房间中心：玩家
+    local playerCX = roomX + roomW / 2
+    local playerCY = roomY + roomH / 2
+    nvgBeginPath(vg)
+    nvgCircle(vg, playerCX, playerCY, 16)
+    nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 200))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    -- 数字显示（当前格的邻近地雷数）
+    if cell and cell.adjacent and cell.adjacent > 0 then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 28)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(255, 200, 80, 200))
+        nvgText(vg, playerCX, playerCY + 40, "附近危险: " .. cell.adjacent)
+    end
+
+    -- 撤离点标记
+    if cell and cell.exitId then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 20)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(80, 255, 80, 255))
+        nvgText(vg, playerCX, roomY + 20, "[ 撤离点 - 按 E 撤离 ]")
+    end
+
+    -- 出生点标记
+    if cell and cell.spawn then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 14)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
+        nvgFillColor(vg, nvgRGBA(200, 200, 200, 150))
+        nvgText(vg, playerCX, roomY + roomH - 10, "出生点")
+    end
 end
 
 -- ============================================================================
@@ -121,528 +394,223 @@ end
 -- ============================================================================
 
 function CreateUI()
-    -- 顶部状态栏
-    local topBar = UI.Panel {
-        id = "topBar",
-        width = "100%",
-        height = 48,
+    -- 顶部 HUD
+    local hud = UI.Panel {
+        id = "hud",
+        position = "absolute",
+        top = 0, left = 0, right = 0,
+        height = 36,
         flexDirection = "row",
         justifyContent = "space-between",
         alignItems = "center",
-        paddingLeft = 16,
-        paddingRight = 16,
-        backgroundColor = { 15, 15, 25, 220 },
+        paddingLeft = 180,  -- 留出小地图空间
+        paddingRight = 12,
+        backgroundColor = { 10, 12, 20, 180 },
+        pointerEvents = "none",
         children = {
             UI.Label {
-                id = "dayLabel",
-                text = "第 1 天 / 5",
-                fontSize = 16,
-                fontColor = { 255, 255, 255, 255 },
+                id = "statusLabel",
+                text = "",
+                fontSize = 12,
+                fontColor = { 200, 210, 230, 255 },
             },
             UI.Label {
-                id = "objectiveLabel",
-                text = "目标：点亮灯塔",
-                fontSize = 14,
-                fontColor = { 200, 200, 100, 255 },
-            },
-            UI.Button {
-                id = "resetBtn",
-                text = "重置当天",
-                variant = "outline",
-                size = "sm",
-                onClick = function()
-                    if GameState.phase == GameState.PHASE.PLAYING then
-                        GameState.ResetCurrentDay()
-                        Lighthouse.selectedButton = nil
-                        UpdateInfoPanel("当天状态已重置。")
-                    end
-                end,
+                id = "messageLabel",
+                text = "",
+                fontSize = 12,
+                fontColor = { 255, 220, 100, 255 },
+                flexShrink = 1,
             },
         }
     }
 
-    -- 中间占位（给 NanoVG 场景留空间）
-    local sceneSpacer = UI.Panel {
-        id = "sceneSpacer",
-        width = "100%",
-        flexGrow = 1,
-        pointerEvents = "none",  -- 不拦截输入，让鼠标事件穿透到场景
-    }
-
-    -- 底部按钮栏
-    local buttonBar = CreateButtonBar()
-
-    -- 信息面板
-    local infoPanel = UI.Panel {
-        id = "infoPanel",
-        width = "100%",
-        height = 80,
-        padding = 10,
-        backgroundColor = { 10, 15, 25, 230 },
-        borderTopWidth = 1,
-        borderColor = { 60, 80, 120, 150 },
-        children = {
-            UI.Label {
-                id = "infoText",
-                text = "选择一个按钮，然后点击场景中的组件来操作。",
-                fontSize = 13,
-                fontColor = { 180, 200, 220, 255 },
-                numberOfLines = 3,
-            },
-        }
-    }
-
-    -- 开始菜单覆盖层
-    local menuOverlay = CreateMenuOverlay()
-
-    -- 结局覆盖层（初始隐藏）
-    local endingOverlay = CreateEndingOverlay()
-
-    -- 删除按钮选择覆盖层（初始隐藏）
-    local deleteOverlay = CreateDeleteOverlay()
-
-    -- 结束当天按钮（初始隐藏）
-    local endDayBtn = UI.Button {
-        id = "endDayBtn",
-        text = "结束当天",
-        variant = "primary",
-        size = "sm",
+    -- 底部操作提示
+    local bottomBar = UI.Panel {
+        id = "bottomBar",
         position = "absolute",
-        bottom = 92,
-        right = 16,
-        visible = false,
-        onClick = function()
-            if GameState.day >= GameState.maxDay then
-                ShowEnding()
-            else
-                ShowDeleteOverlay()
-            end
-        end,
-    }
-
-    -- 组合 UI 树
-    uiRoot_ = UI.Panel {
-        width = "100%",
-        height = "100%",
-        children = {
-            topBar,
-            sceneSpacer,
-            buttonBar,
-            infoPanel,
-            -- 覆盖层
-            menuOverlay,
-            endingOverlay,
-            deleteOverlay,
-            endDayBtn,
-        }
-    }
-
-    UI.SetRoot(uiRoot_)
-end
-
---- 创建底部按钮栏
-function CreateButtonBar()
-    local buttons = {}
-    for _, btn in ipairs(GameState.BUTTONS) do
-        table.insert(buttons, UI.Button {
-            id = "btn_" .. btn.id,
-            text = btn.name,
-            width = 52,
-            height = 52,
-            fontSize = 18,
-            borderRadius = 8,
-            backgroundColor = { btn.color[1], btn.color[2], btn.color[3], 220 },
-            fontColor = { 255, 255, 255, 255 },
-            onClick = function()
-                OnButtonSelect(btn.id)
-            end,
-        })
-    end
-
-    return UI.Panel {
-        id = "buttonBar",
-        width = "100%",
-        height = 64,
+        bottom = 0, left = 0, right = 0,
+        height = 44,
         flexDirection = "row",
         justifyContent = "center",
         alignItems = "center",
-        gap = 10,
-        paddingLeft = 8,
-        paddingRight = 8,
-        backgroundColor = { 20, 20, 35, 230 },
-        borderTopWidth = 1,
-        borderColor = { 60, 60, 90, 150 },
-        children = buttons,
+        gap = 12,
+        backgroundColor = { 10, 12, 20, 200 },
+        children = {
+            UI.Label {
+                text = "WASD/方向键:移动",
+                fontSize = 11,
+                fontColor = { 160, 170, 190, 220 },
+            },
+            UI.Label {
+                text = "M:地图",
+                fontSize = 11,
+                fontColor = { 160, 170, 190, 220 },
+            },
+            UI.Label {
+                text = "E:撤离",
+                fontSize = 11,
+                fontColor = { 100, 255, 100, 220 },
+            },
+            UI.Label {
+                text = "ESC:关闭地图",
+                fontSize = 11,
+                fontColor = { 160, 170, 190, 220 },
+            },
+        }
     }
-end
 
---- 创建开始菜单
-function CreateMenuOverlay()
-    return UI.Panel {
+    -- 开始菜单
+    local menuOverlay = UI.Panel {
         id = "menuOverlay",
         position = "absolute",
         top = 0, left = 0, right = 0, bottom = 0,
         justifyContent = "center",
         alignItems = "center",
-        backgroundColor = { 0, 0, 0, 180 },
+        backgroundColor = { 5, 8, 15, 220 },
         children = {
             UI.Panel {
                 width = "85%",
-                maxWidth = 360,
-                padding = 32,
-                gap = 16,
+                maxWidth = 380,
+                padding = 36,
+                gap = 20,
                 backgroundColor = { 20, 25, 40, 240 },
-                borderRadius = 12,
+                borderRadius = 14,
                 borderWidth = 1,
-                borderColor = { 80, 100, 140, 100 },
+                borderColor = { 60, 80, 120, 120 },
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        text = "第五天：灯塔",
-                        fontSize = 22,
+                        text = "扫雷搜打撤",
+                        fontSize = 24,
                         fontColor = { 255, 240, 180, 255 },
                     },
                     UI.Label {
-                        text = "你有五个按钮维护一座灯塔。\n每天失去一个按钮。\n第五天，你只剩一个按钮，\n面对自己留下的世界。",
+                        text = "你在一座由扫雷格子组成的地牢中醒来。\n数字告诉你附近有多少危险房间。\n到达四角撤离点即可逃出。",
                         fontSize = 13,
-                        fontColor = { 180, 180, 200, 220 },
+                        fontColor = { 180, 190, 210, 220 },
                         textAlign = "center",
-                        numberOfLines = 5,
+                        numberOfLines = 4,
                     },
                     UI.Button {
-                        text = "开始",
+                        text = "开始探索",
                         variant = "primary",
-                        width = 120,
+                        width = 140,
                         onClick = function()
-                            GameState.phase = GameState.PHASE.PLAYING
-                            DayManager.StartDay()
-                            local overlay = uiRoot_:FindById("menuOverlay")
-                            if overlay then overlay:Hide() end
-                            UpdateDayUI()
+                            StartNewGame()
                         end,
                     },
                 }
             }
         }
     }
-end
 
---- 创建结局覆盖层
-function CreateEndingOverlay()
-    return UI.Panel {
-        id = "endingOverlay",
+    -- 游戏结束面板
+    local gameOverPanel = UI.Panel {
+        id = "gameOverPanel",
         position = "absolute",
         top = 0, left = 0, right = 0, bottom = 0,
         justifyContent = "center",
         alignItems = "center",
-        backgroundColor = { 0, 0, 0, 200 },
+        backgroundColor = { 0, 0, 0, 180 },
         visible = false,
         children = {
             UI.Panel {
-                width = "85%",
-                maxWidth = 380,
-                padding = 32,
+                width = "80%",
+                maxWidth = 320,
+                padding = 28,
                 gap = 16,
-                backgroundColor = { 15, 15, 25, 240 },
+                backgroundColor = { 40, 15, 15, 240 },
                 borderRadius = 12,
                 borderWidth = 1,
-                borderColor = { 100, 80, 60, 100 },
+                borderColor = { 200, 50, 50, 100 },
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        id = "endingTitle",
-                        text = "",
-                        fontSize = 20,
-                        fontColor = { 255, 220, 140, 255 },
+                        text = "游戏结束",
+                        fontSize = 22,
+                        fontColor = { 255, 80, 80, 255 },
                     },
                     UI.Label {
-                        id = "endingDesc",
+                        text = "你踩中了地雷...",
+                        fontSize = 14,
+                        fontColor = { 200, 180, 180, 220 },
+                    },
+                    UI.Button {
+                        text = "再来一次",
+                        variant = "primary",
+                        onClick = function()
+                            local panel = uiRoot_:FindById("gameOverPanel")
+                            if panel then panel:Hide() end
+                            StartNewGame()
+                        end,
+                    },
+                }
+            }
+        }
+    }
+
+    -- 撤离成功面板
+    local winPanel = UI.Panel {
+        id = "winPanel",
+        position = "absolute",
+        top = 0, left = 0, right = 0, bottom = 0,
+        justifyContent = "center",
+        alignItems = "center",
+        backgroundColor = { 0, 0, 0, 180 },
+        visible = false,
+        children = {
+            UI.Panel {
+                width = "80%",
+                maxWidth = 320,
+                padding = 28,
+                gap = 16,
+                backgroundColor = { 10, 35, 20, 240 },
+                borderRadius = 12,
+                borderWidth = 1,
+                borderColor = { 50, 200, 80, 100 },
+                alignItems = "center",
+                children = {
+                    UI.Label {
+                        text = "撤离成功！",
+                        fontSize = 22,
+                        fontColor = { 80, 255, 120, 255 },
+                    },
+                    UI.Label {
+                        id = "winInfo",
                         text = "",
                         fontSize = 14,
-                        fontColor = { 200, 200, 210, 230 },
+                        fontColor = { 200, 220, 200, 220 },
                         textAlign = "center",
-                        numberOfLines = 6,
+                        numberOfLines = 3,
                     },
                     UI.Button {
-                        text = "重新开始",
-                        variant = "outline",
+                        text = "再来一次",
+                        variant = "primary",
                         onClick = function()
-                            GameState.Init()
-                            GameState.phase = GameState.PHASE.MENU
-                            local overlay = uiRoot_:FindById("endingOverlay")
-                            if overlay then overlay:Hide() end
-                            local menu = uiRoot_:FindById("menuOverlay")
-                            if menu then menu:Show() end
+                            local panel = uiRoot_:FindById("winPanel")
+                            if panel then panel:Hide() end
+                            StartNewGame()
                         end,
                     },
                 }
             }
         }
     }
-end
 
---- 创建删除按钮覆盖层
-function CreateDeleteOverlay()
-    return UI.Panel {
-        id = "deleteOverlay",
-        position = "absolute",
-        top = 0, left = 0, right = 0, bottom = 0,
-        justifyContent = "center",
-        alignItems = "center",
-        backgroundColor = { 0, 0, 0, 160 },
-        visible = false,
+    uiRoot_ = UI.Panel {
+        width = "100%",
+        height = "100%",
+        pointerEvents = "box-none",
         children = {
-            UI.Panel {
-                id = "deleteContent",
-                width = "85%",
-                maxWidth = 380,
-                padding = 24,
-                gap = 12,
-                backgroundColor = { 25, 20, 30, 240 },
-                borderRadius = 12,
-                borderWidth = 1,
-                borderColor = { 140, 80, 80, 100 },
-                alignItems = "center",
-                children = {
-                    UI.Label {
-                        id = "deleteTitle",
-                        text = "选择要永久删除的按钮",
-                        fontSize = 16,
-                        fontColor = { 255, 180, 180, 255 },
-                    },
-                    UI.Label {
-                        id = "deleteForecast",
-                        text = "",
-                        fontSize = 12,
-                        fontColor = { 180, 180, 200, 200 },
-                        numberOfLines = 6,
-                    },
-                    UI.Panel {
-                        id = "deleteButtons",
-                        flexDirection = "row",
-                        gap = 8,
-                        flexWrap = "wrap",
-                        justifyContent = "center",
-                    },
-                    UI.Button {
-                        id = "deleteCancel",
-                        text = "返回检查场景",
-                        variant = "outline",
-                        size = "sm",
-                        onClick = function()
-                            GameState.phase = GameState.PHASE.PLAYING
-                            local overlay = uiRoot_:FindById("deleteOverlay")
-                            if overlay then overlay:Hide() end
-                        end,
-                    },
-                }
-            }
+            hud,
+            bottomBar,
+            menuOverlay,
+            gameOverPanel,
+            winPanel,
         }
     }
-end
 
--- ============================================================================
--- 交互逻辑
--- ============================================================================
-
---- 选择按钮
-function OnButtonSelect(buttonId)
-    if GameState.phase ~= GameState.PHASE.PLAYING then return end
-
-    if not GameState.availableButtons[buttonId] then
-        UpdateInfoPanel("该按钮已被删除。")
-        return
-    end
-
-    Lighthouse.selectedButton = buttonId
-
-    -- 显示该按钮可操作的组件
-    local actions = ButtonSystem.GetAvailableActions(buttonId)
-    if #actions == 0 then
-        UpdateInfoPanel("【" .. GetButtonName(buttonId) .. "】当前没有可操作的组件。")
-        Lighthouse.selectedButton = nil
-        return
-    end
-
-    local text = "【" .. GetButtonName(buttonId) .. "】请点击目标组件：\n"
-    for _, a in ipairs(actions) do
-        text = text .. "  · " .. a.componentName .. " → " .. a.result .. "\n"
-    end
-    UpdateInfoPanel(text)
-end
-
---- 点击场景组件
-function OnComponentClick(componentId)
-    if GameState.phase ~= GameState.PHASE.PLAYING then return end
-    if not Lighthouse.selectedButton then
-        UpdateInfoPanel("请先选择一个按钮。")
-        return
-    end
-
-    local success = ButtonSystem.Execute(Lighthouse.selectedButton, componentId)
-    if success then
-        Lighthouse.selectedButton = nil
-        -- 检查目标
-        if GameState.CheckObjective() then
-            UpdateInfoPanel("目标完成！点击 [结束当天] 进入下一天。")
-            local btn = uiRoot_:FindById("endDayBtn")
-            if btn then btn:Show() end
-        end
-    end
-    UpdateDayUI()
-end
-
---- 显示删除按钮面板
-function ShowDeleteOverlay()
-    GameState.phase = GameState.PHASE.DELETE_CHOOSE
-    local overlay = uiRoot_:FindById("deleteOverlay")
-    if overlay then overlay:Show() end
-
-    -- 清空并重新生成可删除按钮列表
-    local container = uiRoot_:FindById("deleteButtons")
-    if container then
-        container:RemoveAllChildren()
-        local available = GameState.GetAvailableButtons()
-        for _, btn in ipairs(available) do
-            container:AddChild(UI.Button {
-                text = btn.name,
-                size = "sm",
-                width = 48,
-                height = 48,
-                fontSize = 16,
-                backgroundColor = { btn.color[1], btn.color[2], btn.color[3], 200 },
-                fontColor = { 255, 255, 255, 255 },
-                onClick = function()
-                    OnDeleteButtonSelect(btn)
-                end,
-            })
-        end
-    end
-
-    -- 清空预报文本
-    local forecast = uiRoot_:FindById("deleteForecast")
-    if forecast then forecast:SetText("点击按钮查看删除影响预报。") end
-end
-
---- 选择要删除的按钮（显示预报 + 确认）
-function OnDeleteButtonSelect(btn)
-    local forecast = ButtonSystem.GetDeleteForecast(btn.id)
-    local text = "【删除：" .. btn.name .. "】\n"
-    if #forecast.dependencies > 0 then
-        text = text .. "当前依赖：\n"
-        for _, dep in ipairs(forecast.dependencies) do
-            text = text .. "  [!] " .. dep.component .. ": " .. dep.reason .. "\n"
-        end
-    else
-        text = text .. "当前无组件依赖此按钮。\n"
-    end
-    text = text .. "⚠ " .. forecast.warnings[1]
-
-    local forecastLabel = uiRoot_:FindById("deleteForecast")
-    if forecastLabel then forecastLabel:SetText(text) end
-
-    -- 更新取消按钮为确认删除按钮
-    local cancelBtn = uiRoot_:FindById("deleteCancel")
-    if cancelBtn then
-        cancelBtn:SetText("确认删除「" .. btn.name .. "」")
-        cancelBtn.onClick = function()
-            ConfirmDelete(btn.id, btn.name)
-        end
-    end
-end
-
---- 确认删除按钮并推进天数
-function ConfirmDelete(buttonId, buttonName)
-    GameState.DeleteButton(buttonId)
-    GameState.AddMessage("你永久删除了「" .. buttonName .. "」按钮。")
-
-    -- 隐藏覆盖层
-    local overlay = uiRoot_:FindById("deleteOverlay")
-    if overlay then overlay:Hide() end
-
-    -- 隐藏结束当天按钮
-    local endBtn = uiRoot_:FindById("endDayBtn")
-    if endBtn then endBtn:Hide() end
-
-    -- 恢复取消按钮
-    local cancelBtn = uiRoot_:FindById("deleteCancel")
-    if cancelBtn then
-        cancelBtn:SetText("返回检查场景")
-        cancelBtn.onClick = function()
-            GameState.phase = GameState.PHASE.PLAYING
-            local o = uiRoot_:FindById("deleteOverlay")
-            if o then o:Hide() end
-        end
-    end
-
-    -- 更新按钮栏
-    UpdateButtonBarVisibility()
-
-    -- 进入下一天
-    DayManager.AdvanceDay()
-    if GameState.phase == GameState.PHASE.ENDING then
-        ShowEnding()
-    else
-        UpdateDayUI()
-        UpdateInfoPanel("新的一天开始了。" .. GameState.dayObjective)
-    end
-end
-
---- 显示结局
-function ShowEnding()
-    GameState.phase = GameState.PHASE.ENDING
-    local ending = DayManager.GetEnding()
-
-    local overlay = uiRoot_:FindById("endingOverlay")
-    if overlay then overlay:Show() end
-
-    local title = uiRoot_:FindById("endingTitle")
-    if title then title:SetText("结局：" .. ending.title) end
-
-    local desc = uiRoot_:FindById("endingDesc")
-    if desc then desc:SetText(ending.description) end
-end
-
--- ============================================================================
--- UI 更新
--- ============================================================================
-
-function UpdateInfoPanel(text)
-    local label = uiRoot_:FindById("infoText")
-    if label then label:SetText(text) end
-end
-
-function UpdateDayUI()
-    local dayLabel = uiRoot_:FindById("dayLabel")
-    if dayLabel then
-        dayLabel:SetText("第 " .. GameState.day .. " 天 / 5")
-    end
-
-    local objLabel = uiRoot_:FindById("objectiveLabel")
-    if objLabel then
-        local prefix = GameState.dayObjectiveComplete and "✓ " or "目标："
-        objLabel:SetText(prefix .. GameState.dayObjective)
-    end
-end
-
-function UpdateButtonBarVisibility()
-    for _, btn in ipairs(GameState.BUTTONS) do
-        local uiBtn = uiRoot_:FindById("btn_" .. btn.id)
-        if uiBtn then
-            if GameState.availableButtons[btn.id] then
-                uiBtn:Show()
-            else
-                uiBtn:Hide()
-            end
-        end
-    end
-end
-
-function GetButtonName(buttonId)
-    for _, btn in ipairs(GameState.BUTTONS) do
-        if btn.id == buttonId then return btn.name end
-    end
-    return buttonId
+    UI.SetRoot(uiRoot_)
 end
 
 -- ============================================================================
@@ -652,74 +620,18 @@ end
 ---@param eventType string
 ---@param eventData UpdateEventData
 function HandleUpdate(eventType, eventData)
-    -- 更新屏幕尺寸（应对窗口变化）
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
     dpr = graphics:GetDPR()
-end
 
----@param eventType string
----@param eventData MouseButtonDownEventData
-function HandleMouseDown(eventType, eventData)
-    local button = eventData["Button"]:GetInt()
-    if button ~= MOUSEB_LEFT then return end
-    if GameState.phase ~= GameState.PHASE.PLAYING then return end
-
-    local mx = eventData["X"]:GetInt()
-    local my = eventData["Y"]:GetInt()
-
-    -- 转换到逻辑坐标
-    local logicalX = mx / dpr
-    local logicalY = my / dpr
-
-    -- 检查是否在场景区域内
-    local rect = GameState._sceneRect
-    if not rect then return end
-
-    local localX = logicalX - rect.x
-    local localY = logicalY - rect.y
-
-    if localX >= 0 and localX <= rect.w and localY >= 0 and localY <= rect.h then
-        local compId = Lighthouse.HitTest(localX, localY, rect.w, rect.h)
-        if compId then
-            OnComponentClick(compId)
+    local dt = eventData["TimeStep"]:GetFloat()
+    if messageTimer > 0 then
+        messageTimer = messageTimer - dt
+        if messageTimer <= 0 then
+            message = ""
+            local label = uiRoot_:FindById("messageLabel")
+            if label then label:SetText("") end
         end
-    end
-end
-
----@param eventType string
----@param eventData MouseMoveEventData
-function HandleMouseMove(eventType, eventData)
-    if GameState.phase ~= GameState.PHASE.PLAYING then return end
-
-    local mx = eventData["X"]:GetInt()
-    local my = eventData["Y"]:GetInt()
-
-    local logicalX = mx / dpr
-    local logicalY = my / dpr
-
-    local rect = GameState._sceneRect
-    if not rect then return end
-
-    local localX = logicalX - rect.x
-    local localY = logicalY - rect.y
-
-    if localX >= 0 and localX <= rect.w and localY >= 0 and localY <= rect.h then
-        local compId = Lighthouse.HitTest(localX, localY, rect.w, rect.h)
-        Lighthouse.hoveredComponent = compId
-
-        -- 显示操作预报
-        if compId and Lighthouse.selectedButton then
-            local action = ButtonSystem.GetAction(Lighthouse.selectedButton, compId)
-            if action then
-                UpdateInfoPanel("【" .. GetButtonName(Lighthouse.selectedButton) .. " → " ..
-                    compId .. "】\n结果：" .. action.result .. "\n风险：" .. action.risk)
-            else
-                UpdateInfoPanel("「" .. GetButtonName(Lighthouse.selectedButton) .. "」无法对此组件操作。")
-            end
-        end
-    else
-        Lighthouse.hoveredComponent = nil
     end
 end
 
@@ -727,15 +639,109 @@ end
 ---@param eventData KeyDownEventData
 function HandleKeyDown(eventType, eventData)
     local key = eventData["Key"]:GetInt()
-    if key == KEY_ESCAPE then
-        Lighthouse.selectedButton = nil
-        UpdateInfoPanel("已取消选择。")
-    elseif key == KEY_R then
-        if GameState.phase == GameState.PHASE.PLAYING then
-            GameState.ResetCurrentDay()
-            Lighthouse.selectedButton = nil
-            UpdateInfoPanel("当天状态已重置。")
-            UpdateDayUI()
+
+    -- 放大地图模式下
+    if phase == PHASE.MAP_OPEN then
+        if key == KEY_ESCAPE or key == KEY_M then
+            MapOverlay.Hide()
+            phase = PHASE.PLAYING
+        end
+        return
+    end
+
+    -- 菜单或结束阶段忽略
+    if phase ~= PHASE.PLAYING then return end
+
+    -- 移动
+    if key == KEY_W or key == KEY_UP then
+        MovePlayer(0, -1)
+    elseif key == KEY_S or key == KEY_DOWN then
+        MovePlayer(0, 1)
+    elseif key == KEY_A or key == KEY_LEFT then
+        MovePlayer(-1, 0)
+    elseif key == KEY_D or key == KEY_RIGHT then
+        MovePlayer(1, 0)
+    elseif key == KEY_E then
+        DoExtract()
+    elseif key == KEY_M then
+        -- 打开放大地图
+        phase = PHASE.MAP_OPEN
+        MapOverlay.visible = true
+        RefreshMapData()
+        local w = screenW / dpr
+        local h = screenH / dpr
+        MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
+    end
+end
+
+---@param eventType string
+---@param eventData MouseButtonDownEventData
+function HandleMouseDown(eventType, eventData)
+    local button = eventData["Button"]:GetInt()
+    local mx = eventData["X"]:GetInt() / dpr
+    local my = eventData["Y"]:GetInt() / dpr
+
+    -- 放大地图交互
+    if phase == PHASE.MAP_OPEN then
+        MapOverlay.HandleClick(mx, my, button)
+        return
+    end
+
+    if phase ~= PHASE.PLAYING then return end
+
+    -- 点击小地图打开放大视图
+    if MiniMap.HitTest(mx, my) then
+        phase = PHASE.MAP_OPEN
+        MapOverlay.visible = true
+        RefreshMapData()
+        local w = screenW / dpr
+        local h = screenH / dpr
+        MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
+        return
+    end
+
+    -- 点击房间门移动
+    if button == MOUSEB_LEFT and run then
+        local doorHit = HitTestDoor(mx, my)
+        if doorHit then
+            MovePlayer(doorHit.dx, doorHit.dy)
         end
     end
+end
+
+--- 检测点击是否命中门
+---@param mx number
+---@param my number
+---@return table|nil {dx, dy}
+function HitTestDoor(mx, my)
+    local w = screenW / dpr
+    local h = screenH / dpr
+
+    local roomMargin = 60
+    local roomX = roomMargin
+    local roomY = roomMargin + 40
+    local roomW = w - roomMargin * 2
+    local roomH = h - roomMargin * 2 - 80
+    local doorSize = 36
+
+    local p = run:GetPlayer()
+
+    local doors = {
+        { dx = 0, dy = -1, x = roomX + roomW / 2 - doorSize / 2, y = roomY - 4 },
+        { dx = 0, dy = 1, x = roomX + roomW / 2 - doorSize / 2, y = roomY + roomH - doorSize + 4 },
+        { dx = -1, dy = 0, x = roomX - 4, y = roomY + roomH / 2 - doorSize / 2 },
+        { dx = 1, dy = 0, x = roomX + roomW - doorSize + 4, y = roomY + roomH / 2 - doorSize / 2 },
+    }
+
+    for _, door in ipairs(doors) do
+        local nx = p.x + door.dx
+        local ny = p.y + door.dy
+        if minefield:IsInside(nx, ny) then
+            if mx >= door.x and mx <= door.x + doorSize and my >= door.y and my <= door.y + doorSize then
+                return { dx = door.dx, dy = door.dy }
+            end
+        end
+    end
+
+    return nil
 end
