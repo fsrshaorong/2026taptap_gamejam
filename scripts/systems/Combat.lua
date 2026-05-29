@@ -29,9 +29,12 @@ end
 
 --- 重置战斗状态（新游戏时调用）
 function Combat.Reset()
+    Combat.maxHp = 100
     Combat.hp = Combat.maxHp
     Combat.power = 10
     Combat.enemies = {}
+    Combat.mineImmunity = false    -- 首次踩雷免疫（装备效果）
+    Combat.mineDmgReduce = 0       -- 雷伤减免（天赋效果）
 end
 
 --- 获取玩家是否存活
@@ -40,14 +43,26 @@ function Combat.IsAlive()
 end
 
 --- 踩雷伤害：扣血，返回是否死亡
----@return table { damage: number, hp: number, dead: boolean }
+---@return table { damage: number, hp: number, dead: boolean, immuneUsed: boolean }
 function Combat.TakeMineHit()
-    local damage = CONFIG.mineDamage
+    -- 急救包免疫：首次踩雷不受伤害
+    if Combat.mineImmunity then
+        Combat.mineImmunity = false
+        return {
+            damage = 0,
+            hp = Combat.hp,
+            dead = false,
+            immuneUsed = true,
+        }
+    end
+    local damage = CONFIG.mineDamage - Combat.mineDmgReduce
+    if damage < 5 then damage = 5 end  -- 最低伤害 5
     Combat.hp = math.max(0, Combat.hp - damage)
     return {
         damage = damage,
         hp = Combat.hp,
         dead = Combat.hp <= 0,
+        immuneUsed = false,
     }
 end
 

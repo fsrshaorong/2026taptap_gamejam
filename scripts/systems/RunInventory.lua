@@ -9,6 +9,7 @@ RunInventory.gold = 0
 RunInventory.parts = 0
 RunInventory.searchedRooms = {}
 RunInventory.failureSalvage = nil
+RunInventory.searchBonus = 0  -- 搜索奖励加成百分比（装备效果）
 
 local function cellKey(x, y)
     return tostring(x) .. "," .. tostring(y)
@@ -19,6 +20,7 @@ function RunInventory.Reset()
     RunInventory.parts = 0
     RunInventory.searchedRooms = {}
     RunInventory.failureSalvage = nil
+    RunInventory.searchBonus = 0
 end
 
 function RunInventory.CellKey(x, y)
@@ -40,6 +42,11 @@ function RunInventory.GetReward(minefield, x, y)
     if cell and cell.roomType == "chest" then
         gold = gold * 2 + 10
         parts = parts + 1
+    end
+
+    -- 搜索奖励加成（大背包装备效果）
+    if RunInventory.searchBonus > 0 then
+        gold = math.floor(gold * (1 + RunInventory.searchBonus / 100))
     end
 
     return { gold = gold, parts = parts, isChest = (cell and cell.roomType == "chest") }

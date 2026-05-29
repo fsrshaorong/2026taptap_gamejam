@@ -8,6 +8,7 @@ local ExtractionRun = require("systems.ExtractionRun")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Protocol = require("systems.Protocol")
+local MetaProgress = require("systems.MetaProgress")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
 local DungeonRoom = require("scenes.DungeonRoom")
@@ -52,6 +53,9 @@ local blockedWallHintTimer = 0
 -- 事件房交易记录（key = "x,y"）
 local tradedRooms = {}
 
+-- 菜单子页面状态
+local menuPage = "main"  -- "main" | "equip" | "talent"
+
 local function setVisible(id, visible)
     if not uiRoot_ then return end
     local element = uiRoot_:FindById(id)
@@ -90,8 +94,14 @@ function Start()
         scale = UI.Scale.DEFAULT,
     })
 
+    -- 初始化局外进度
+    MetaProgress.Init()
+
     -- 创建 UI
     CreateUI()
+
+    -- 初始化菜单显示
+    RefreshMainMenu()
 
     -- 配置放大地图回调
     MapOverlay.onClose = function()
@@ -127,6 +137,251 @@ function Stop()
 end
 
 -- ============================================================================
+-- 菜单页面管理
+-- ============================================================================
+
+--- 返回主菜单（从游戏结束/撤离成功面板）
+function ReturnToMenu()
+    phase = PHASE.MENU
+    setVisible("gameOverPanel", false)
+    setVisible("winPanel", false)
+    local menu = uiRoot_:FindById("menuOverlay")
+    if menu then menu:Show() end
+    ShowMenuPage("main")
+end
+
+--- 切换菜单子页面
+function ShowMenuPage(page)
+    menuPage = page
+    setVisible("menuPage_main", page == "main")
+    setVisible("menuPage_equip", page == "equip")
+    setVisible("menuPage_talent", page == "talent")
+
+    if page == "main" then
+        RefreshMainMenu()
+    elseif page == "equip" then
+        RefreshEquipPage()
+    elseif page == "talent" then
+        RefreshTalentPage()
+    end
+end
+
+--- 刷新主菜单数据
+function RefreshMainMenu()
+    local goldLabel = uiRoot_ and uiRoot_:FindById("menuGoldLabel")
+    if goldLabel then
+        goldLabel:SetText("金币: " .. MetaProgress.GetGold())
+    end
+
+    -- 装备信息
+    local equipLabel = uiRoot_ and uiRoot_:FindById("menuEquippedLabel")
+    if equipLabel then
+        local equipped = MetaProgress.GetEquippedItems()
+        if #equipped == 0 then
+            equipLabel:SetText("装备: 无")
+        else
+            local names = {}
+            for _, id in ipairs(equipped) do
+                local def = MetaProgress.GetItemDef(id)
+                if def then table.insert(names, def.icon .. def.name) end
+            end
+            equipLabel:SetText("装备: " .. table.concat(names, " "))
+        end
+    end
+
+    -- 统计
+    local statsLabel = uiRoot_ and uiRoot_:FindById("menuStatsLabel")
+    if statsLabel then
+        local stats = MetaProgress.GetStats()
+        if stats.totalRuns > 0 then
+            statsLabel:SetText("出击 " .. stats.totalRuns .. " 次 | 撤离 " .. stats.totalExtractions .. " 次")
+        else
+            statsLabel:SetText("首次探索，祝你好运！")
+        end
+    end
+end
+
+--- 刷新装备商店页
+function RefreshEquipPage()
+    local goldLabel = uiRoot_ and uiRoot_:FindById("equipGoldLabel")
+    if goldLabel then
+        goldLabel:SetText("💰 " .. MetaProgress.GetGold())
+    end
+
+    local listPanel = uiRoot_ and uiRoot_:FindById("equipItemList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    for _, item in ipairs(MetaProgress.ITEMS) do
+        local owned = MetaProgress.OwnsItem(item.id)
+        local equipped = MetaProgress.IsEquipped(item.id)
+
+        local statusText = ""
+        local btnText = ""
+        local btnVariant = "default"
+
+        if equipped then
+            statusText = "✅ 已装备"
+            btnText = "卸下"
+        elseif owned then
+            statusText = "已拥有"
+            btnText = "装备"
+            btnVariant = "primary"
+        else
+            statusText = item.price .. "g"
+            btnText = "购买"
+            btnVariant = "primary"
+        end
+
+        local itemId = item.id  -- 闭包捕获
+        local row = UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = equipped and { 30, 60, 80, 120 } or { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = item.icon .. " " .. item.name,
+                            fontSize = 13,
+                            fontColor = { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = item.desc,
+                            fontSize = 11,
+                            fontColor = { 150, 160, 180, 200 },
+                        },
+                    }
+                },
+                UI.Panel {
+                    alignItems = "flex-end",
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = equipped and { 100, 220, 140, 255 } or { 200, 200, 210, 200 },
+                        },
+                        UI.Button {
+                            text = btnText,
+                            variant = btnVariant,
+                            width = 60,
+                            height = 28,
+                            onClick = function()
+                                OnEquipItemClick(itemId)
+                            end,
+                        },
+                    }
+                },
+            }
+        }
+        listPanel:AddChild(row)
+    end
+end
+
+--- 刷新天赋页
+function RefreshTalentPage()
+    local goldLabel = uiRoot_ and uiRoot_:FindById("talentGoldLabel")
+    if goldLabel then
+        goldLabel:SetText("💰 " .. MetaProgress.GetGold())
+    end
+
+    local listPanel = uiRoot_ and uiRoot_:FindById("talentList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    for _, talent in ipairs(MetaProgress.TALENTS) do
+        local unlocked = MetaProgress.HasTalent(talent.id)
+
+        local statusText = unlocked and "✅ 已解锁" or (talent.price .. "g")
+        local talentId = talent.id  -- 闭包捕获
+
+        local row = UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = unlocked and { 40, 50, 30, 120 } or { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = talent.name .. "（" .. talent.direction .. "）",
+                            fontSize = 13,
+                            fontColor = unlocked and { 200, 240, 150, 255 } or { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = talent.desc,
+                            fontSize = 11,
+                            fontColor = { 150, 160, 180, 200 },
+                        },
+                    }
+                },
+                UI.Panel {
+                    alignItems = "flex-end",
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = unlocked and { 100, 220, 140, 255 } or { 200, 200, 210, 200 },
+                        },
+                        unlocked and UI.Label { text = "", fontSize = 1 } or UI.Button {
+                            text = "解锁",
+                            variant = "primary",
+                            width = 60,
+                            height = 28,
+                            onClick = function()
+                                OnTalentClick(talentId)
+                            end,
+                        },
+                    }
+                },
+            }
+        }
+        listPanel:AddChild(row)
+    end
+end
+
+--- 装备物品点击处理
+function OnEquipItemClick(itemId)
+    local owned = MetaProgress.OwnsItem(itemId)
+    if owned then
+        -- 已拥有 → 切换装备
+        local ok, err = MetaProgress.ToggleEquip(itemId)
+        if not ok and err then
+            print("[Menu] ToggleEquip failed: " .. err)
+        end
+    else
+        -- 未拥有 → 购买
+        local ok, err = MetaProgress.BuyItem(itemId)
+        if not ok and err then
+            print("[Menu] BuyItem failed: " .. err)
+        end
+    end
+    RefreshEquipPage()
+end
+
+--- 天赋点击处理
+function OnTalentClick(talentId)
+    local ok, err = MetaProgress.UnlockTalent(talentId)
+    if not ok and err then
+        print("[Menu] UnlockTalent failed: " .. err)
+    end
+    RefreshTalentPage()
+end
+
+-- ============================================================================
 -- 游戏逻辑
 -- ============================================================================
 
@@ -153,12 +408,55 @@ function StartNewGame()
     DungeonRoom.ResetPlayer()
     tradedRooms = {}
 
+    -- 应用装备加成
+    local equipBonus = MetaProgress.GetEquipBonus()
+    if equipBonus.bonusHP > 0 then
+        Combat.maxHp = Combat.maxHp + equipBonus.bonusHP
+        Combat.hp = Combat.maxHp
+    end
+    if equipBonus.bonusPower > 0 then
+        Combat.power = Combat.power + equipBonus.bonusPower
+    end
+    if equipBonus.mineImmunity then
+        Combat.mineImmunity = true
+    end
+    if equipBonus.searchBonus > 0 then
+        RunInventory.searchBonus = equipBonus.searchBonus
+    end
+
+    -- 应用天赋效果
+    local talentEffects = MetaProgress.GetTalentEffects()
+    if talentEffects.mineDmgReduce > 0 then
+        Combat.mineDmgReduce = talentEffects.mineDmgReduce
+    end
+
+    -- 记录出击
+    MetaProgress.RecordRun()
+
     phase = PHASE.PLAYING
+
+    -- 罗盘效果：显示撤离点象限提示
+    local compassHint = ""
+    if equipBonus.showExitHint then
+        local exits = minefield:GetExits()
+        if exits and #exits > 0 then
+            local hints = {}
+            local centerX = math.floor(minefield.width / 2)
+            local centerY = math.floor(minefield.height / 2)
+            for _, exit in ipairs(exits) do
+                local dir = ""
+                if exit.y < centerY then dir = "北" else dir = "南" end
+                if exit.x < centerX then dir = dir .. "西" else dir = dir .. "东" end
+                table.insert(hints, dir)
+            end
+            compassHint = " 🧭罗盘提示：撤离点在" .. table.concat(hints, "、") .. "方向"
+        end
+    end
 
     -- 计算小地图布局
     MiniMap.ComputeLayout(minefield.width, minefield.height)
 
-    ShowMessage("从中心出发，移动角色走进门，前往四角撤离！")
+    ShowMessage("从中心出发，移动角色走进门，前往四角撤离！" .. compassHint)
     UpdateHUD()
 
     -- 隐藏菜单
@@ -190,7 +488,7 @@ function ShowFailurePanel(reason)
         goInfo:SetText(text)
     end
 
-    -- 如果有零件可以抢救，显示选择面板；否则直接显示重开按钮
+    -- 如果有零件可以抢救，显示选择面板；否则直接结算并显示重开按钮
     if options.canSalvagePart then
         setVisible("failureChoicePanel", true)
         local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
@@ -200,6 +498,20 @@ function ShowFailurePanel(reason)
     else
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
+        -- 无零件可抢救，直接结算金币
+        local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
+        local finalGold = totals.gold + talentBonus
+        if finalGold > 0 then
+            MetaProgress.AddGold(finalGold)
+        end
+        local goInfo2 = uiRoot_:FindById("gameOverInfo")
+        if goInfo2 then
+            local settleText = reason .. "\n保留金币：+" .. finalGold .. "（总计 " .. MetaProgress.GetGold() .. "）"
+            if talentBonus > 0 then
+                settleText = settleText .. "\n天赋保险金 +" .. talentBonus
+            end
+            goInfo2:SetText(settleText)
+        end
     end
 end
 
@@ -209,9 +521,21 @@ function ApplyFailureSalvage(choice)
     setVisible("failureChoicePanel", false)
     setVisible("restartAfterFailureButton", true)
 
-    local text = "保留金币：" .. salvage.gold
+    -- 天赋额外失败保底金币
+    local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
+    local finalGold = salvage.gold + talentBonus
+
+    -- 写入局外金币
+    if finalGold > 0 then
+        MetaProgress.AddGold(finalGold)
+    end
+
+    local text = "保留金币：+" .. finalGold .. "（总计 " .. MetaProgress.GetGold() .. "）"
     if salvage.bonus > 0 then
-        text = text .. "（含抢救零件 +" .. salvage.bonus .. "）"
+        text = text .. "\n含抢救零件 +" .. salvage.bonus
+    end
+    if talentBonus > 0 then
+        text = text .. "\n天赋保险金 +" .. talentBonus
     end
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
@@ -259,6 +583,8 @@ function MovePlayer(dx, dy)
             DungeonRoom.TriggerMineFlash()
             if mineResult.dead then
                 ShowFailurePanel("踩雷！受到 " .. mineResult.damage .. " 伤害，血量归零！")
+            elseif mineResult.immuneUsed then
+                ShowMessage("💊 急救包发动！踩雷免疫一次伤害！")
             else
                 ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，该雷房已触发。")
             end
@@ -434,6 +760,10 @@ function ConfirmExtract()
         phase = PHASE.EXTRACTED
         local reward = RunInventory.GetExtractionReward()
 
+        -- 写入局外金币
+        MetaProgress.AddGold(reward.totalGold)
+        MetaProgress.RecordExtraction()
+
         ShowMessage("撤离成功！共获得 " .. reward.totalGold .. " 金币。")
         local confirmPanel = uiRoot_:FindById("extractConfirmPanel")
         if confirmPanel then confirmPanel:Hide() end
@@ -441,7 +771,7 @@ function ConfirmExtract()
         if winPanel then winPanel:Show() end
         local winInfo = uiRoot_:FindById("winInfo")
         if winInfo then
-            local text = "获得金币：" .. reward.totalGold
+            local text = "获得金币：+" .. reward.totalGold .. "（总计 " .. MetaProgress.GetGold() .. "）"
             if reward.parts > 0 then
                 text = text .. "\n（局内金币 " .. reward.directGold .. " + 零件×" .. reward.parts .. " 转换 " .. reward.convertedGold .. "）"
             end
@@ -477,10 +807,11 @@ function DoTrade()
         ShowMessage("没有零件可以交易。")
         return
     end
+    local tradePrice = MetaProgress.GetTalentEffects().tradePrice
     RunInventory.parts = RunInventory.parts - 1
-    RunInventory.gold = RunInventory.gold + 15
+    RunInventory.gold = RunInventory.gold + tradePrice
     tradedRooms[key] = true
-    ShowMessage("交易成功！用 1 零件换了 15 金币。")
+    ShowMessage("交易成功！用 1 零件换了 " .. tradePrice .. " 金币。")
     UpdateHUD()
 end
 
@@ -700,20 +1031,22 @@ function CreateUI()
         }
     }
 
-    -- 开始菜单
+    -- 开始菜单（三屏结构：主菜单 / 装备商店 / 天赋面板）
     local menuOverlay = UI.Panel {
         id = "menuOverlay",
         position = "absolute",
         top = 0, left = 0, right = 0, bottom = 0,
         justifyContent = "center",
         alignItems = "center",
-        backgroundColor = { 5, 8, 15, 220 },
+        backgroundColor = { 5, 8, 15, 230 },
         children = {
+            -- === 主菜单页 ===
             UI.Panel {
+                id = "menuPage_main",
                 width = "85%",
                 maxWidth = 380,
-                padding = 36,
-                gap = 20,
+                padding = 32,
+                gap = 16,
                 backgroundColor = { 20, 25, 40, 240 },
                 borderRadius = 14,
                 borderWidth = 1,
@@ -722,26 +1055,192 @@ function CreateUI()
                 children = {
                     UI.Label {
                         text = "扫雷搜打撤",
-                        fontSize = 24,
+                        fontSize = 26,
                         fontColor = { 255, 240, 180, 255 },
                     },
                     UI.Label {
-                        text = "你在一座由扫雷格子组成的地牢中醒来。\n数字告诉你附近有多少危险房间。\n到达四角撤离点即可逃出。",
-                        fontSize = 13,
-                        fontColor = { 180, 190, 210, 220 },
-                        textAlign = "center",
-                        numberOfLines = 4,
+                        text = "扫雷情报驱动的撤离地牢",
+                        fontSize = 12,
+                        fontColor = { 140, 150, 170, 200 },
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 8,
+                        marginTop = 4,
+                        alignItems = "center",
+                        children = {
+                            UI.Label {
+                                text = "💰",
+                                fontSize = 16,
+                            },
+                            UI.Label {
+                                id = "menuGoldLabel",
+                                text = "金币: 0",
+                                fontSize = 14,
+                                fontColor = { 255, 220, 80, 255 },
+                            },
+                        }
+                    },
+                    UI.Panel {
+                        id = "menuEquippedInfo",
+                        marginTop = 2,
+                        alignItems = "center",
+                        children = {
+                            UI.Label {
+                                id = "menuEquippedLabel",
+                                text = "装备: 无",
+                                fontSize = 12,
+                                fontColor = { 160, 200, 255, 200 },
+                            },
+                        }
                     },
                     UI.Button {
-                        text = "开始探索",
+                        text = "⚔️ 出发探索",
                         variant = "primary",
-                        width = 140,
+                        width = 180,
+                        marginTop = 8,
                         onClick = function()
                             StartNewGame()
                         end,
                     },
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 12,
+                        marginTop = 4,
+                        children = {
+                            UI.Button {
+                                text = "🎒 装备",
+                                width = 90,
+                                onClick = function()
+                                    ShowMenuPage("equip")
+                                end,
+                            },
+                            UI.Button {
+                                text = "🌟 天赋",
+                                width = 90,
+                                onClick = function()
+                                    ShowMenuPage("talent")
+                                end,
+                            },
+                        }
+                    },
+                    UI.Label {
+                        id = "menuStatsLabel",
+                        text = "",
+                        fontSize = 11,
+                        fontColor = { 120, 130, 150, 180 },
+                        marginTop = 6,
+                    },
                 }
-            }
+            },
+            -- === 装备商店页 ===
+            UI.Panel {
+                id = "menuPage_equip",
+                visible = false,
+                width = "90%",
+                maxWidth = 400,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 20, 25, 40, 240 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 60, 120, 180, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label {
+                                text = "🎒 装备商店",
+                                fontSize = 18,
+                                fontColor = { 160, 210, 255, 255 },
+                            },
+                            UI.Label {
+                                id = "equipGoldLabel",
+                                text = "💰 0",
+                                fontSize = 13,
+                                fontColor = { 255, 220, 80, 255 },
+                            },
+                        }
+                    },
+                    UI.Label {
+                        text = "选择携带进入地牢的装备（最多 2 件）",
+                        fontSize = 11,
+                        fontColor = { 140, 150, 170, 180 },
+                    },
+                    UI.Panel {
+                        id = "equipItemList",
+                        gap = 6,
+                        width = "100%",
+                        marginTop = 4,
+                        children = {}
+                    },
+                    UI.Button {
+                        text = "← 返回",
+                        width = 100,
+                        marginTop = 8,
+                        onClick = function()
+                            ShowMenuPage("main")
+                        end,
+                    },
+                }
+            },
+            -- === 天赋面板页 ===
+            UI.Panel {
+                id = "menuPage_talent",
+                visible = false,
+                width = "90%",
+                maxWidth = 400,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 20, 25, 40, 240 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 120, 100, 60, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label {
+                                text = "🌟 天赋",
+                                fontSize = 18,
+                                fontColor = { 255, 220, 100, 255 },
+                            },
+                            UI.Label {
+                                id = "talentGoldLabel",
+                                text = "💰 0",
+                                fontSize = 13,
+                                fontColor = { 255, 220, 80, 255 },
+                            },
+                        }
+                    },
+                    UI.Label {
+                        text = "永久解锁，机制型增强",
+                        fontSize = 11,
+                        fontColor = { 140, 150, 170, 180 },
+                    },
+                    UI.Panel {
+                        id = "talentList",
+                        gap = 6,
+                        width = "100%",
+                        marginTop = 4,
+                        children = {}
+                    },
+                    UI.Button {
+                        text = "← 返回",
+                        width = 100,
+                        marginTop = 8,
+                        onClick = function()
+                            ShowMenuPage("main")
+                        end,
+                    },
+                }
+            },
         }
     }
 
@@ -811,13 +1310,11 @@ function CreateUI()
                     },
                     UI.Button {
                         id = "restartAfterFailureButton",
-                        text = "再来一次",
+                        text = "返回主菜单",
                         variant = "primary",
                         visible = false,
                         onClick = function()
-                            local panel = uiRoot_:FindById("gameOverPanel")
-                            if panel then panel:Hide() end
-                            StartNewGame()
+                            ReturnToMenu()
                         end,
                     },
                 }
@@ -920,12 +1417,10 @@ function CreateUI()
                         numberOfLines = 3,
                     },
                     UI.Button {
-                        text = "再来一次",
+                        text = "返回主菜单",
                         variant = "primary",
                         onClick = function()
-                            local panel = uiRoot_:FindById("winPanel")
-                            if panel then panel:Hide() end
-                            StartNewGame()
+                            ReturnToMenu()
                         end,
                     },
                 }
