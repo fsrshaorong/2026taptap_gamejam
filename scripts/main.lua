@@ -30,6 +30,18 @@ local minefield = nil    -- Minefield 引用（run.minefield）
 -- 玩家已访问的格子 { ["x,y"] = true }
 local visitedCells = {}
 
+-- 房间内角色位置。扫雷坐标由 run.player 记录，这里只控制当前房间里的表现位置。
+local playerRoomPos = { x = 0.5, y = 0.5 }
+
+local ROOM = {
+    margin = 60,
+    topOffset = 40,
+    bottomSpace = 80,
+    doorSize = 36,
+    playerRadius = 16,
+    moveStep = 34,
+}
+
 -- 游戏阶段
 local PHASE = {
     MENU = "menu",
@@ -127,13 +139,14 @@ function StartNewGame()
     visitedCells = {}
     local spawn = minefield:GetSpawn()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
+    ResetRoomPlayer()
 
     phase = PHASE.PLAYING
 
     -- 计算小地图布局
     MiniMap.ComputeLayout(minefield.width, minefield.height)
 
-    ShowMessage("从中心出发，通过门探索房间，前往四角撤离！")
+    ShowMessage("从中心出发，移动角色走进门，前往四角撤离！")
     UpdateHUD()
 
     -- 隐藏菜单
@@ -141,7 +154,110 @@ function StartNewGame()
     if menu then menu:Hide() end
 end
 
---- 玩家向指定方向移动
+--- 取得当前房间绘制布局
+---@param w number|nil
+---@param h number|nil
+---@return table
+function GetRoomLayout(w, h)
+    w = w or (screenW / dpr)
+    h = h or (screenH / dpr)
+
+    return {
+        x = ROOM.margin,
+        y = ROOM.margin + ROOM.topOffset,
+        w = w - ROOM.margin * 2,
+        h = h - ROOM.margin * 2 - ROOM.bottomSpace,
+        doorSize = ROOM.doorSize,
+    }
+end
+
+function ResetRoomPlayer()
+    playerRoomPos.x = 0.5
+    playerRoomPos.y = 0.5
+end
+
+--- 进入相邻房间后，把角色放在新房间的入口处。
+---@param dx number
+---@param dy number
+function PlaceRoomPlayerFromEntry(dx, dy)
+    local layout = GetRoomLayout()
+    local minX = ROOM.playerRadius / layout.w + 0.03
+    local maxX = 1 - minX
+    local minY = ROOM.playerRadius / layout.h + 0.03
+    local maxY = 1 - minY
+
+    if dx > 0 then
+        playerRoomPos.x = minX
+        playerRoomPos.y = 0.5
+    elseif dx < 0 then
+        playerRoomPos.x = maxX
+        playerRoomPos.y = 0.5
+    elseif dy > 0 then
+        playerRoomPos.x = 0.5
+        playerRoomPos.y = minY
+    elseif dy < 0 then
+        playerRoomPos.x = 0.5
+        playerRoomPos.y = maxY
+    else
+        ResetRoomPlayer()
+    end
+end
+
+function IsAlignedWithDoor(dx, dy, layout)
+    local doorHalfX = (layout.doorSize / 2 + ROOM.playerRadius) / layout.w
+    local doorHalfY = (layout.doorSize / 2 + ROOM.playerRadius) / layout.h
+
+    if dx ~= 0 then
+        return math.abs(playerRoomPos.y - 0.5) <= doorHalfY
+    end
+    if dy ~= 0 then
+        return math.abs(playerRoomPos.x - 0.5) <= doorHalfX
+    end
+    return false
+end
+
+--- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
+---@param dx number
+---@param dy number
+function MoveScenePlayer(dx, dy)
+    if phase ~= PHASE.PLAYING then return end
+    if not run then return end
+
+    local layout = GetRoomLayout()
+    local minX = ROOM.playerRadius / layout.w
+    local maxX = 1 - minX
+    local minY = ROOM.playerRadius / layout.h
+    local maxY = 1 - minY
+
+    local stepX = ROOM.moveStep / layout.w
+    local stepY = ROOM.moveStep / layout.h
+    local nextX = playerRoomPos.x + dx * stepX
+    local nextY = playerRoomPos.y + dy * stepY
+
+    local crossingDoor =
+        (dx < 0 and nextX <= minX) or
+        (dx > 0 and nextX >= maxX) or
+        (dy < 0 and nextY <= minY) or
+        (dy > 0 and nextY >= maxY)
+
+    if crossingDoor then
+        if IsAlignedWithDoor(dx, dy, layout) then
+            MovePlayer(dx, dy)
+            return
+        end
+        ShowMessage("走到门口才能离开房间。")
+    end
+
+    if nextX < minX then nextX = minX end
+    if nextX > maxX then nextX = maxX end
+    if nextY < minY then nextY = minY end
+    if nextY > maxY then nextY = maxY end
+
+    playerRoomPos.x = nextX
+    playerRoomPos.y = nextY
+end
+
+--- 通过门进入相邻扫雷格
 ---@param dx number
 ---@param dy number
 function MovePlayer(dx, dy)
@@ -151,6 +267,8 @@ function MovePlayer(dx, dy)
     local result = run:Move(dx, dy)
 
     if result.ok then
+        PlaceRoomPlayerFromEntry(dx, dy)
+
         -- 标记为已访问
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
@@ -195,6 +313,7 @@ function TeleportTo(x, y)
     -- 直接设置玩家位置
     run.player.x = x
     run.player.y = y
+    ResetRoomPlayer()
 
     ShowMessage("传送成功！")
     MapOverlay.Hide()
@@ -297,11 +416,11 @@ function DrawRoomScene(vg, w, h)
     nvgFill(vg)
 
     -- 房间框
-    local roomMargin = 60
-    local roomX = roomMargin
-    local roomY = roomMargin + 40
-    local roomW = w - roomMargin * 2
-    local roomH = h - roomMargin * 2 - 80
+    local layout = GetRoomLayout(w, h)
+    local roomX = layout.x
+    local roomY = layout.y
+    local roomW = layout.w
+    local roomH = layout.h
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, roomX, roomY, roomW, roomH, 8)
@@ -312,7 +431,7 @@ function DrawRoomScene(vg, w, h)
     nvgStroke(vg)
 
     -- 四个方向门
-    local doorSize = 36
+    local doorSize = layout.doorSize
     local doors = {
         { dir = "上", dx = 0, dy = -1, x = roomX + roomW / 2 - doorSize / 2, y = roomY - 4 },
         { dir = "下", dx = 0, dy = 1, x = roomX + roomW / 2 - doorSize / 2, y = roomY + roomH - doorSize + 4 },
@@ -350,9 +469,9 @@ function DrawRoomScene(vg, w, h)
         end
     end
 
-    -- 房间中心：玩家
-    local playerCX = roomX + roomW / 2
-    local playerCY = roomY + roomH / 2
+    -- 房间内玩家
+    local playerCX = roomX + playerRoomPos.x * roomW
+    local playerCY = roomY + playerRoomPos.y * roomH
     nvgBeginPath(vg)
     nvgCircle(vg, playerCX, playerCY, 16)
     nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
@@ -437,7 +556,7 @@ function CreateUI()
         backgroundColor = { 10, 12, 20, 200 },
         children = {
             UI.Label {
-                text = "WASD/方向键:移动",
+                text = "WASD/方向键:移动角色",
                 fontSize = 11,
                 fontColor = { 160, 170, 190, 220 },
             },
@@ -652,15 +771,15 @@ function HandleKeyDown(eventType, eventData)
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
-    -- 移动
+    -- 移动房间里的角色；走进门后才切换扫雷格
     if key == KEY_W or key == KEY_UP then
-        MovePlayer(0, -1)
+        MoveScenePlayer(0, -1)
     elseif key == KEY_S or key == KEY_DOWN then
-        MovePlayer(0, 1)
+        MoveScenePlayer(0, 1)
     elseif key == KEY_A or key == KEY_LEFT then
-        MovePlayer(-1, 0)
+        MoveScenePlayer(-1, 0)
     elseif key == KEY_D or key == KEY_RIGHT then
-        MovePlayer(1, 0)
+        MoveScenePlayer(1, 0)
     elseif key == KEY_E then
         DoExtract()
     elseif key == KEY_M then
@@ -717,12 +836,12 @@ function HitTestDoor(mx, my)
     local w = screenW / dpr
     local h = screenH / dpr
 
-    local roomMargin = 60
-    local roomX = roomMargin
-    local roomY = roomMargin + 40
-    local roomW = w - roomMargin * 2
-    local roomH = h - roomMargin * 2 - 80
-    local doorSize = 36
+    local layout = GetRoomLayout(w, h)
+    local roomX = layout.x
+    local roomY = layout.y
+    local roomW = layout.w
+    local roomH = layout.h
+    local doorSize = layout.doorSize
 
     local p = run:GetPlayer()
 
