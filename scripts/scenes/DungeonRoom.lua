@@ -277,35 +277,92 @@ function DungeonRoom.Draw(vg, w, h, context)
     drawSearchPoint(vg, layout, context.searchState)
     drawExitDevice(vg, layout, cell)
 
-    -- 绘制敌人（如果有且活着）
+    -- 绘制敌人（活着=红色威胁，死了=灰色倒地）
     local enemy = context.enemy
     if enemy then
         local enemyX = layout.x + layout.w * 0.35
         local enemyY = layout.y + layout.h * 0.45
         local er = CONFIG.enemyRadius
 
-        -- 敌人身体（红色系）
-        nvgBeginPath(vg)
-        nvgCircle(vg, enemyX, enemyY, er)
-        nvgFillColor(vg, nvgRGBA(200, 50, 50, 240))
-        nvgFill(vg)
-        nvgStrokeColor(vg, nvgRGBA(255, 100, 80, 220))
-        nvgStrokeWidth(vg, 2)
-        nvgStroke(vg)
+        if enemy.alive then
+            -- 活着的敌人：红色大圆 + 角 + 眼睛
+            nvgBeginPath(vg)
+            nvgCircle(vg, enemyX, enemyY, er)
+            nvgFillColor(vg, nvgRGBA(180, 35, 35, 240))
+            nvgFill(vg)
+            nvgStrokeColor(vg, nvgRGBA(255, 80, 60, 255))
+            nvgStrokeWidth(vg, 3)
+            nvgStroke(vg)
 
-        -- 敌人眼睛
-        nvgBeginPath(vg)
-        nvgCircle(vg, enemyX - 6, enemyY - 4, 4)
-        nvgCircle(vg, enemyX + 6, enemyY - 4, 4)
-        nvgFillColor(vg, nvgRGBA(255, 255, 200, 255))
-        nvgFill(vg)
+            -- 两只角
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, enemyX - 10, enemyY - er + 2)
+            nvgLineTo(vg, enemyX - 6, enemyY - er - 10)
+            nvgLineTo(vg, enemyX - 2, enemyY - er + 2)
+            nvgFillColor(vg, nvgRGBA(255, 100, 50, 255))
+            nvgFill(vg)
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, enemyX + 2, enemyY - er + 2)
+            nvgLineTo(vg, enemyX + 6, enemyY - er - 10)
+            nvgLineTo(vg, enemyX + 10, enemyY - er + 2)
+            nvgFillColor(vg, nvgRGBA(255, 100, 50, 255))
+            nvgFill(vg)
 
-        -- 敌人名字和战力
-        nvgFontFace(vg, "sans")
-        nvgFontSize(vg, 13)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
-        nvgFillColor(vg, nvgRGBA(255, 120, 100, 255))
-        nvgText(vg, enemyX, enemyY + er + 6, enemy.name .. " (战力:" .. enemy.power .. ")")
+            -- 眼睛（红色发光）
+            nvgBeginPath(vg)
+            nvgCircle(vg, enemyX - 7, enemyY - 3, 4)
+            nvgCircle(vg, enemyX + 7, enemyY - 3, 4)
+            nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
+            nvgFill(vg)
+
+            -- 嘴巴
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, enemyX - 8, enemyY + 7)
+            nvgLineTo(vg, enemyX - 4, enemyY + 11)
+            nvgLineTo(vg, enemyX, enemyY + 8)
+            nvgLineTo(vg, enemyX + 4, enemyY + 11)
+            nvgLineTo(vg, enemyX + 8, enemyY + 7)
+            nvgStrokeColor(vg, nvgRGBA(255, 200, 50, 255))
+            nvgStrokeWidth(vg, 2)
+            nvgStroke(vg)
+
+            -- 名字和战力
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, 14)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+            nvgFillColor(vg, nvgRGBA(255, 90, 70, 255))
+            nvgText(vg, enemyX, enemyY + er + 8, enemy.name)
+            nvgFontSize(vg, 12)
+            nvgFillColor(vg, nvgRGBA(255, 180, 100, 230))
+            nvgText(vg, enemyX, enemyY + er + 24, "战力: " .. enemy.power)
+        else
+            -- 已击败的敌人：灰色 + X 标记
+            nvgBeginPath(vg)
+            nvgCircle(vg, enemyX, enemyY, er * 0.8)
+            nvgFillColor(vg, nvgRGBA(60, 55, 55, 160))
+            nvgFill(vg)
+            nvgStrokeColor(vg, nvgRGBA(100, 90, 90, 180))
+            nvgStrokeWidth(vg, 2)
+            nvgStroke(vg)
+
+            -- X 标记
+            local xr = er * 0.4
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, enemyX - xr, enemyY - xr)
+            nvgLineTo(vg, enemyX + xr, enemyY + xr)
+            nvgMoveTo(vg, enemyX + xr, enemyY - xr)
+            nvgLineTo(vg, enemyX - xr, enemyY + xr)
+            nvgStrokeColor(vg, nvgRGBA(180, 60, 60, 200))
+            nvgStrokeWidth(vg, 3)
+            nvgStroke(vg)
+
+            -- 已击败文字
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, 12)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+            nvgFillColor(vg, nvgRGBA(140, 130, 130, 180))
+            nvgText(vg, enemyX, enemyY + er * 0.8 + 6, "已击败")
+        end
     end
 
     local playerCX = layout.x + playerPos.x * layout.w

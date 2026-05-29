@@ -394,7 +394,7 @@ function HandleNanoVGRender(eventType, eventData)
             run = run,
             minefield = minefield,
             searchState = GetSearchState(),
-            enemy = Combat.GetEnemy(p.x, p.y),
+            enemy = Combat.GetEnemyAny(p.x, p.y),
             combat = Combat.GetStatus(),
         })
 

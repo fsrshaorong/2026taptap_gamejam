@@ -101,6 +101,15 @@ function Combat.GetEnemy(x, y)
     return nil
 end
 
+--- 获取指定格子的敌人（无论死活，用于渲染）
+---@param x number
+---@param y number
+---@return table|nil  { name, power, alive }
+function Combat.GetEnemyAny(x, y)
+    local key = cellKey(x, y)
+    return Combat.enemies[key]
+end
+
 --- 战斗判定：玩家 vs 敌人
 --- 如果玩家战斗力 >= 敌人，敌人死亡，玩家不受伤
 --- 如果玩家战斗力 < 敌人，扣除差值血量，敌人仍死亡（战斗完成后通过）
