@@ -8,6 +8,7 @@ package.path = table.concat({
 local Minefield = require("systems.Minefield")
 local ExtractionRun = require("systems.ExtractionRun")
 local Protocol = require("systems.Protocol")
+local RunInventory = require("systems.RunInventory")
 
 local function assertEq(actual, expected, message)
     if actual ~= expected then
@@ -211,6 +212,24 @@ local function testProtocolProgression()
     assertEq(Protocol.UpdateByExploredRooms(16).level, 1, "protocol level 1 threshold")
 end
 
+local function testFailureSalvage()
+    RunInventory.Reset()
+    RunInventory.gold = 23
+    RunInventory.parts = 3
+
+    local options = RunInventory.GetFailureSalvageOptions()
+    assertEq(options.keepGold, 11, "failure salvage should keep half gold rounded down")
+    assertEq(options.keepParts, 1, "failure salvage should keep one part")
+
+    local gold = RunInventory.ApplyFailureSalvage("gold")
+    assertEq(gold.gold, 11, "gold salvage mismatch")
+    assertEq(gold.parts, 0, "gold salvage should not keep parts")
+
+    local parts = RunInventory.ApplyFailureSalvage("parts")
+    assertEq(parts.gold, 0, "parts salvage should not keep gold")
+    assertEq(parts.parts, 1, "parts salvage mismatch")
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "zero reveal expansion", fn = testZeroRevealExpansion },
@@ -218,6 +237,7 @@ local tests = {
     { name = "extraction run", fn = testExtractionRun },
     { name = "non-fatal mine room", fn = testNonFatalMineRoom },
     { name = "protocol progression", fn = testProtocolProgression },
+    { name = "failure salvage", fn = testFailureSalvage },
 }
 
 for _, test in ipairs(tests) do

@@ -48,6 +48,17 @@ local message = ""
 local messageTimer = 0
 local blockedWallHintTimer = 0
 
+local function setVisible(id, visible)
+    if not uiRoot_ then return end
+    local element = uiRoot_:FindById(id)
+    if not element then return end
+    if visible then
+        element:Show()
+    else
+        element:Hide()
+    end
+end
+
 -- ============================================================================
 -- 生命周期
 -- ============================================================================
@@ -148,6 +159,56 @@ function StartNewGame()
     -- 隐藏菜单
     local menu = uiRoot_:FindById("menuOverlay")
     if menu then menu:Hide() end
+    setVisible("gameOverPanel", false)
+    setVisible("winPanel", false)
+end
+
+function ShowFailurePanel(reason)
+    phase = PHASE.GAME_OVER
+
+    local totals = RunInventory.GetTotals()
+    local options = RunInventory.GetFailureSalvageOptions()
+    local protocol = Protocol.GetStatus()
+
+    ShowMessage(reason)
+    setVisible("gameOverPanel", true)
+    setVisible("failureChoicePanel", true)
+    setVisible("restartAfterFailureButton", false)
+
+    local goInfo = uiRoot_:FindById("gameOverInfo")
+    if goInfo then
+        goInfo:SetText(reason ..
+            "\n本局金币：" .. totals.gold .. " | 零件：" .. totals.parts ..
+            "\n协议等级：" .. protocol.level .. " / " .. protocol.description)
+    end
+
+    local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
+    if salvageInfo then
+        salvageInfo:SetText("可保留：金币 " .. options.keepGold .. " 或零件 " .. options.keepParts)
+    end
+end
+
+function ApplyFailureSalvage(choice)
+    local salvage = RunInventory.ApplyFailureSalvage(choice)
+
+    setVisible("failureChoicePanel", false)
+    setVisible("restartAfterFailureButton", true)
+
+    local text = "已保留："
+    if salvage.gold > 0 then
+        text = text .. "金币 " .. salvage.gold
+    elseif salvage.parts > 0 then
+        text = text .. "零件 " .. salvage.parts
+    else
+        text = text .. "无"
+    end
+
+    local goInfo = uiRoot_:FindById("gameOverInfo")
+    if goInfo then
+        goInfo:SetText(text .. "\n未保留的局内收益已丢失。")
+    end
+
+    ShowMessage(text)
 end
 
 --- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
@@ -185,12 +246,7 @@ function MovePlayer(dx, dy)
         if result.status == "hit_mine" then
             local mineResult = Combat.TakeMineHit()
             if mineResult.dead then
-                phase = PHASE.GAME_OVER
-                ShowMessage("踩雷！受到 " .. mineResult.damage .. " 伤害，血量归零！")
-                local goPanel = uiRoot_:FindById("gameOverPanel")
-                if goPanel then goPanel:Show() end
-                local goInfo = uiRoot_:FindById("gameOverInfo")
-                if goInfo then goInfo:SetText("踩中地雷，HP 归零") end
+                ShowFailurePanel("踩雷！受到 " .. mineResult.damage .. " 伤害，血量归零！")
             else
                 ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，该雷房已触发。")
             end
@@ -206,12 +262,7 @@ function MovePlayer(dx, dy)
                 local fightResult = Combat.FightEnemy(p.x, p.y)
                 if fightResult.fought then
                     if fightResult.dead then
-                        phase = PHASE.GAME_OVER
-                        ShowMessage("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击杀！")
-                        local goPanel = uiRoot_:FindById("gameOverPanel")
-                        if goPanel then goPanel:Show() end
-                        local goInfo = uiRoot_:FindById("gameOverInfo")
-                        if goInfo then goInfo:SetText("被 " .. enemy.name .. " 击败\n敌方战力: " .. enemy.power .. " | 你的战力: " .. Combat.power) end
+                        ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
                     elseif fightResult.playerWin then
                         ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
                     else
@@ -618,15 +669,48 @@ function CreateUI()
                     },
                     UI.Label {
                         id = "gameOverInfo",
-                        text = "你踩中了地雷...",
+                        text = "撤离失败",
                         fontSize = 14,
                         fontColor = { 200, 180, 180, 220 },
                         textAlign = "center",
-                        numberOfLines = 2,
+                        numberOfLines = 4,
+                    },
+                    UI.Panel {
+                        id = "failureChoicePanel",
+                        gap = 10,
+                        alignItems = "center",
+                        children = {
+                            UI.Label {
+                                id = "failureSalvageInfo",
+                                text = "选择一项保底带出",
+                                fontSize = 13,
+                                fontColor = { 255, 210, 150, 230 },
+                            },
+                            UI.Button {
+                                id = "keepGoldButton",
+                                text = "保留 50% 金币",
+                                variant = "primary",
+                                width = 150,
+                                onClick = function()
+                                    ApplyFailureSalvage("gold")
+                                end,
+                            },
+                            UI.Button {
+                                id = "keepPartsButton",
+                                text = "保留 1 个零件",
+                                variant = "primary",
+                                width = 150,
+                                onClick = function()
+                                    ApplyFailureSalvage("parts")
+                                end,
+                            },
+                        }
                     },
                     UI.Button {
+                        id = "restartAfterFailureButton",
                         text = "再来一次",
                         variant = "primary",
+                        visible = false,
                         onClick = function()
                             local panel = uiRoot_:FindById("gameOverPanel")
                             if panel then panel:Hide() end

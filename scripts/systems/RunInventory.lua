@@ -8,6 +8,7 @@ local RunInventory = {}
 RunInventory.gold = 0
 RunInventory.parts = 0
 RunInventory.searchedRooms = {}
+RunInventory.failureSalvage = nil
 
 local function cellKey(x, y)
     return tostring(x) .. "," .. tostring(y)
@@ -17,6 +18,7 @@ function RunInventory.Reset()
     RunInventory.gold = 0
     RunInventory.parts = 0
     RunInventory.searchedRooms = {}
+    RunInventory.failureSalvage = nil
 end
 
 function RunInventory.CellKey(x, y)
@@ -111,7 +113,38 @@ function RunInventory.GetTotals()
         gold = RunInventory.gold,
         parts = RunInventory.parts,
         searchedRooms = RunInventory.GetSearchedCount(),
+        failureSalvage = RunInventory.failureSalvage,
     }
+end
+
+function RunInventory.GetFailureSalvageOptions()
+    return {
+        keepGold = math.floor(RunInventory.gold * 0.5),
+        keepParts = math.min(RunInventory.parts, 1),
+        currentGold = RunInventory.gold,
+        currentParts = RunInventory.parts,
+        searchedRooms = RunInventory.GetSearchedCount(),
+    }
+end
+
+function RunInventory.ApplyFailureSalvage(choice)
+    local options = RunInventory.GetFailureSalvageOptions()
+    local salvage = {
+        choice = choice,
+        gold = 0,
+        parts = 0,
+    }
+
+    if choice == "gold" then
+        salvage.gold = options.keepGold
+    elseif choice == "parts" then
+        salvage.parts = options.keepParts
+    else
+        salvage.choice = "none"
+    end
+
+    RunInventory.failureSalvage = salvage
+    return salvage
 end
 
 return RunInventory
