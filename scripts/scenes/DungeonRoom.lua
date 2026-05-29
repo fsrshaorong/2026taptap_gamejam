@@ -15,6 +15,7 @@ local CONFIG = {
     moveStep = 34,
     searchW = 58,
     searchH = 36,
+    enemyRadius = 22,
 }
 
 local playerPos = { x = 0.5, y = 0.5 }
@@ -276,6 +277,37 @@ function DungeonRoom.Draw(vg, w, h, context)
     drawSearchPoint(vg, layout, context.searchState)
     drawExitDevice(vg, layout, cell)
 
+    -- 绘制敌人（如果有且活着）
+    local enemy = context.enemy
+    if enemy then
+        local enemyX = layout.x + layout.w * 0.35
+        local enemyY = layout.y + layout.h * 0.45
+        local er = CONFIG.enemyRadius
+
+        -- 敌人身体（红色系）
+        nvgBeginPath(vg)
+        nvgCircle(vg, enemyX, enemyY, er)
+        nvgFillColor(vg, nvgRGBA(200, 50, 50, 240))
+        nvgFill(vg)
+        nvgStrokeColor(vg, nvgRGBA(255, 100, 80, 220))
+        nvgStrokeWidth(vg, 2)
+        nvgStroke(vg)
+
+        -- 敌人眼睛
+        nvgBeginPath(vg)
+        nvgCircle(vg, enemyX - 6, enemyY - 4, 4)
+        nvgCircle(vg, enemyX + 6, enemyY - 4, 4)
+        nvgFillColor(vg, nvgRGBA(255, 255, 200, 255))
+        nvgFill(vg)
+
+        -- 敌人名字和战力
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 13)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(255, 120, 100, 255))
+        nvgText(vg, enemyX, enemyY + er + 6, enemy.name .. " (战力:" .. enemy.power .. ")")
+    end
+
     local playerCX = layout.x + playerPos.x * layout.w
     local playerCY = layout.y + playerPos.y * layout.h
     nvgBeginPath(vg)
@@ -308,6 +340,37 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
         nvgFillColor(vg, nvgRGBA(200, 200, 200, 150))
         nvgText(vg, playerCX, layout.y + layout.h - 10, "出生点")
+    end
+
+    -- 绘制血量条（玩家头顶）
+    local combat = context.combat
+    if combat then
+        local barW = 50
+        local barH = 6
+        local barX = playerCX - barW / 2
+        local barY = playerCY - CONFIG.playerRadius - 14
+        local hpRatio = combat.hp / combat.maxHp
+
+        -- 血条背景
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, barY, barW, barH, 3)
+        nvgFillColor(vg, nvgRGBA(40, 10, 10, 200))
+        nvgFill(vg)
+
+        -- 血条前景
+        local r = math.floor(255 * (1 - hpRatio))
+        local g = math.floor(200 * hpRatio)
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, barY, barW * hpRatio, barH, 3)
+        nvgFillColor(vg, nvgRGBA(r, g, 30, 240))
+        nvgFill(vg)
+
+        -- 血条边框
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, barX, barY, barW, barH, 3)
+        nvgStrokeColor(vg, nvgRGBA(180, 180, 180, 150))
+        nvgStrokeWidth(vg, 1)
+        nvgStroke(vg)
     end
 end
 

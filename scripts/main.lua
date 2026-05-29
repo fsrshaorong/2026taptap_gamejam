@@ -6,6 +6,7 @@
 local UI = require("urhox-libs/UI")
 local ExtractionRun = require("systems.ExtractionRun")
 local RunInventory = require("systems.RunInventory")
+local Combat = require("systems.Combat")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
 local DungeonRoom = require("scenes.DungeonRoom")
@@ -129,6 +130,7 @@ function StartNewGame()
     local spawn = minefield:GetSpawn()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
     RunInventory.Reset()
+    Combat.Reset()
     DungeonRoom.ResetPlayer()
 
     phase = PHASE.PLAYING
@@ -175,7 +177,28 @@ function MovePlayer(dx, dy)
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
 
-        if result.status == "at_exit" then
+        -- 尝试在该格生成敌人
+        Combat.TrySpawnEnemy(minefield, p.x, p.y)
+
+        -- 检查是否有敌人并自动战斗
+        local enemy = Combat.GetEnemy(p.x, p.y)
+        if enemy then
+            local fightResult = Combat.FightEnemy(p.x, p.y)
+            if fightResult.fought then
+                if fightResult.dead then
+                    phase = PHASE.GAME_OVER
+                    ShowMessage("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击杀！")
+                    local goPanel = uiRoot_:FindById("gameOverPanel")
+                    if goPanel then goPanel:Show() end
+                    local goInfo = uiRoot_:FindById("gameOverInfo")
+                    if goInfo then goInfo:SetText("被 " .. enemy.name .. " 击败\n敌方战力: " .. enemy.power .. " | 你的战力: " .. Combat.power) end
+                elseif fightResult.playerWin then
+                    ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
+                else
+                    ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. fightResult.damage .. " HP (剩余 " .. Combat.hp .. ")")
+                end
+            end
+        elseif result.status == "at_exit" then
             ShowMessage("你到达了撤离点！按 E 撤离。")
         elseif CanSearchCurrentRoom() then
             ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
@@ -190,10 +213,26 @@ function MovePlayer(dx, dy)
         end
     else
         if result.status == "hit_mine" then
-            phase = PHASE.GAME_OVER
-            ShowMessage("你踩中了地雷！游戏结束。")
-            local goPanel = uiRoot_:FindById("gameOverPanel")
-            if goPanel then goPanel:Show() end
+            -- 踩雷 = 扣血，不是直接死亡
+            local mineResult = Combat.TakeMineHit()
+            if mineResult.dead then
+                phase = PHASE.GAME_OVER
+                ShowMessage("踩雷！受到 " .. mineResult.damage .. " 伤害，血量归零！")
+                local goPanel = uiRoot_:FindById("gameOverPanel")
+                if goPanel then goPanel:Show() end
+                local goInfo = uiRoot_:FindById("gameOverInfo")
+                if goInfo then goInfo:SetText("踩中地雷，HP 归零") end
+            else
+                -- 踩雷但未死，强制移动到该格
+                run.phase = "running"
+                run.player.x = run.player.x + dx
+                run.player.y = run.player.y + dy
+                run.turn = run.turn + 1
+                DungeonRoom.PlacePlayerFromEntry(dx, dy, screenW, screenH, dpr)
+                local p = run.player
+                visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
+                ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，小心前进！")
+            end
         elseif result.status == "out_of_bounds" then
             ShowMessage("无法移动，已到达地图边界。")
         elseif result.status == "blocked_flagged" then
@@ -232,11 +271,18 @@ function SearchCurrentRoom()
     end
 
     local reward = result.reward
+    -- 搜索后可能获得战斗力加成
+    local p = run:GetPlayer()
+    local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
+
+    local msg = "搜索完成：金币 +" .. reward.gold
     if reward.parts > 0 then
-        ShowMessage("搜索完成：金币 +" .. reward.gold .. "，零件 +" .. reward.parts .. "。")
-    else
-        ShowMessage("搜索完成：金币 +" .. reward.gold .. "。")
+        msg = msg .. "，零件 +" .. reward.parts
     end
+    if powerUp > 0 then
+        msg = msg .. "，战斗力 +" .. powerUp
+    end
+    ShowMessage(msg .. "。")
 
     UpdateHUD()
 end
@@ -311,8 +357,11 @@ function UpdateHUD()
     if statusLabel then
         local canEx = run:CanExtract()
         local totals = RunInventory.GetTotals()
-        local statusText = "位置: (" .. p.x .. "," .. p.y .. ") | 回合: " .. run.turn ..
-            " | 金币: " .. totals.gold .. " | 零件: " .. totals.parts
+        local combat = Combat.GetStatus()
+        local statusText = "HP: " .. combat.hp .. "/" .. combat.maxHp ..
+            " | 战力: " .. combat.power ..
+            " | 金币: " .. totals.gold .. " | 零件: " .. totals.parts ..
+            " | 回合: " .. run.turn
         if canEx then
             statusText = statusText .. " | [撤离点]"
         end
@@ -334,16 +383,18 @@ function HandleNanoVGRender(eventType, eventData)
 
     if phase == PHASE.PLAYING or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
         -- 绘制房间场景背景
+        local p = run:GetPlayer()
         DungeonRoom.Draw(nvgScene, w, h, {
             run = run,
             minefield = minefield,
             searchState = GetSearchState(),
+            enemy = Combat.GetEnemy(p.x, p.y),
+            combat = Combat.GetStatus(),
         })
 
         -- 绘制小地图
         if minefield then
             local visMap = minefield:GetVisibleMap()
-            local p = run:GetPlayer()
             MiniMap.Draw(nvgScene, visMap, p.x, p.y, minefield.width, minefield.height)
         end
     elseif phase == PHASE.MAP_OPEN then
@@ -503,9 +554,12 @@ function CreateUI()
                         fontColor = { 255, 80, 80, 255 },
                     },
                     UI.Label {
+                        id = "gameOverInfo",
                         text = "你踩中了地雷...",
                         fontSize = 14,
                         fontColor = { 200, 180, 180, 220 },
+                        textAlign = "center",
+                        numberOfLines = 2,
                     },
                     UI.Button {
                         text = "再来一次",
