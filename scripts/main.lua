@@ -352,20 +352,26 @@ end
 
 function UpdateHUD()
     if not run then return end
-    local p = run:GetPlayer()
-    local statusLabel = uiRoot_:FindById("statusLabel")
-    if statusLabel then
-        local canEx = run:CanExtract()
-        local totals = RunInventory.GetTotals()
-        local combat = Combat.GetStatus()
-        local statusText = "HP: " .. combat.hp .. "/" .. combat.maxHp ..
-            " | 战力: " .. combat.power ..
-            " | 金币: " .. totals.gold .. " | 零件: " .. totals.parts ..
-            " | 回合: " .. run.turn
-        if canEx then
-            statusText = statusText .. " | [撤离点]"
-        end
-        statusLabel:SetText(statusText)
+    local totals = RunInventory.GetTotals()
+    local combat = Combat.GetStatus()
+
+    local hpLabel = uiRoot_:FindById("hpLabel")
+    if hpLabel then hpLabel:SetText("HP: " .. combat.hp .. "/" .. combat.maxHp) end
+
+    local powerLabel = uiRoot_:FindById("powerLabel")
+    if powerLabel then powerLabel:SetText("战力: " .. combat.power) end
+
+    local goldLabel = uiRoot_:FindById("goldLabel")
+    if goldLabel then goldLabel:SetText("金币: " .. totals.gold) end
+
+    local partsLabel = uiRoot_:FindById("partsLabel")
+    if partsLabel then partsLabel:SetText("零件: " .. totals.parts) end
+
+    local turnLabel = uiRoot_:FindById("turnLabel")
+    if turnLabel then
+        local text = "回合: " .. run.turn
+        if run:CanExtract() then text = text .. " [撤离点]" end
+        turnLabel:SetText(text)
     end
 end
 
@@ -412,26 +418,63 @@ end
 -- ============================================================================
 
 function CreateUI()
-    -- 顶部 HUD
-    local hud = UI.Panel {
-        id = "hud",
+    -- 右上角状态面板（竖排）
+    local statusPanel = UI.Panel {
+        id = "statusPanel",
         position = "absolute",
-        top = 0, left = 0, right = 0,
-        height = 36,
-        flexDirection = "row",
-        justifyContent = "space-between",
-        alignItems = "center",
-        paddingLeft = 180,  -- 留出小地图空间
-        paddingRight = 12,
-        backgroundColor = { 10, 12, 20, 180 },
+        top = 10, right = 10,
+        padding = 10,
+        gap = 4,
+        backgroundColor = { 10, 12, 20, 190 },
+        borderRadius = 8,
+        borderWidth = 1,
+        borderColor = { 60, 80, 120, 100 },
         pointerEvents = "none",
         children = {
             UI.Label {
-                id = "statusLabel",
-                text = "",
+                id = "hpLabel",
+                text = "HP: 100/100",
                 fontSize = 12,
-                fontColor = { 200, 210, 230, 255 },
+                fontColor = { 255, 100, 100, 255 },
             },
+            UI.Label {
+                id = "powerLabel",
+                text = "战力: 10",
+                fontSize = 12,
+                fontColor = { 255, 180, 60, 255 },
+            },
+            UI.Label {
+                id = "goldLabel",
+                text = "金币: 0",
+                fontSize = 12,
+                fontColor = { 255, 230, 80, 255 },
+            },
+            UI.Label {
+                id = "partsLabel",
+                text = "零件: 0",
+                fontSize = 12,
+                fontColor = { 160, 210, 255, 255 },
+            },
+            UI.Label {
+                id = "turnLabel",
+                text = "回合: 0",
+                fontSize = 12,
+                fontColor = { 180, 190, 210, 220 },
+            },
+        }
+    }
+
+    -- 顶部消息栏
+    local messageBar = UI.Panel {
+        id = "messageBar",
+        position = "absolute",
+        top = 0, left = 180, right = 120,
+        height = 32,
+        justifyContent = "center",
+        alignItems = "center",
+        backgroundColor = { 10, 12, 20, 160 },
+        pointerEvents = "none",
+        children = {
             UI.Label {
                 id = "messageLabel",
                 text = "",
@@ -628,7 +671,8 @@ function CreateUI()
         height = "100%",
         pointerEvents = "box-none",
         children = {
-            hud,
+            statusPanel,
+            messageBar,
             bottomBar,
             menuOverlay,
             gameOverPanel,
