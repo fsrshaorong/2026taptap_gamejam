@@ -12,7 +12,8 @@ local CONFIG = {
     bottomSpace = 80,
     doorSize = 40,
     playerRadius = 16,
-    moveStep = 34,
+    moveStep = 12,
+    moveSpeed = 170,
     searchW = 58,
     searchH = 36,
     enemyRadius = 22,
@@ -76,15 +77,22 @@ local function isAlignedWithDoor(dx, dy, layout)
     return false
 end
 
-function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr)
+function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
     local layout = getCurrentLayout(screenW, screenH, dpr)
     local minX = CONFIG.playerRadius / layout.w
     local maxX = 1 - minX
     local minY = CONFIG.playerRadius / layout.h
     local maxY = 1 - minY
 
-    local stepX = CONFIG.moveStep / layout.w
-    local stepY = CONFIG.moveStep / layout.h
+    local elapsed = tonumber(dt)
+    local stepPixels = CONFIG.moveStep
+    if elapsed and elapsed > 0 then
+        if elapsed > 0.05 then elapsed = 0.05 end
+        stepPixels = CONFIG.moveSpeed * elapsed
+    end
+
+    local stepX = stepPixels / layout.w
+    local stepY = stepPixels / layout.h
     local nextX = playerPos.x + dx * stepX
     local nextY = playerPos.y + dy * stepY
 

@@ -46,6 +46,7 @@ local phase = PHASE.MENU
 -- 消息
 local message = ""
 local messageTimer = 0
+local blockedWallHintTimer = 0
 
 -- ============================================================================
 -- 生命周期
@@ -152,15 +153,16 @@ end
 --- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
 ---@param dx number
 ---@param dy number
-function MoveScenePlayer(dx, dy)
+function MoveScenePlayer(dx, dy, dt)
     if phase ~= PHASE.PLAYING then return end
     if not run then return end
 
-    local result = DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr)
+    local result = DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
     if result.action == "enter" then
         MovePlayer(result.dx, result.dy)
-    elseif result.action == "blocked_wall" then
+    elseif result.action == "blocked_wall" and blockedWallHintTimer <= 0 then
         ShowMessage("走到门口才能离开房间。")
+        blockedWallHintTimer = 0.8
     end
 end
 
@@ -705,11 +707,6 @@ end
 -- 事件处理
 -- ============================================================================
 
--- 连续移动控制
-local moveInterval = 0.07    -- 按住时每次移动间隔（秒）
-local moveTimer = 0
-local firstMoveDelay = 0.15  -- 首次按下后到连续移动的延迟
-
 ---@param eventType string
 ---@param eventData UpdateEventData
 function HandleUpdate(eventType, eventData)
@@ -718,6 +715,9 @@ function HandleUpdate(eventType, eventData)
     dpr = graphics:GetDPR()
 
     local dt = eventData["TimeStep"]:GetFloat()
+    if blockedWallHintTimer > 0 then
+        blockedWallHintTimer = blockedWallHintTimer - dt
+    end
     if messageTimer > 0 then
         messageTimer = messageTimer - dt
         if messageTimer <= 0 then
@@ -727,7 +727,7 @@ function HandleUpdate(eventType, eventData)
         end
     end
 
-    -- 连续移动：按住方向键时持续移动角色
+    -- 连续移动：按住方向键时按帧平滑移动角色
     if phase == PHASE.PLAYING and run then
         local dx, dy = 0, 0
         if input:GetKeyDown(KEY_W) or input:GetKeyDown(KEY_UP) then dy = -1
@@ -737,13 +737,7 @@ function HandleUpdate(eventType, eventData)
         end
 
         if dx ~= 0 or dy ~= 0 then
-            moveTimer = moveTimer + dt
-            if moveTimer >= moveInterval then
-                moveTimer = moveTimer - moveInterval
-                MoveScenePlayer(dx, dy)
-            end
-        else
-            moveTimer = 0
+            MoveScenePlayer(dx, dy, dt)
         end
     end
 end
@@ -768,8 +762,7 @@ function HandleKeyDown(eventType, eventData)
     -- 功能键（移动已改为 Update 中连续检测）
     if key == KEY_W or key == KEY_UP or key == KEY_S or key == KEY_DOWN
        or key == KEY_A or key == KEY_LEFT or key == KEY_D or key == KEY_RIGHT then
-        -- 首次按下立即移动一步（让操作有即时响应感）
-        moveTimer = moveInterval
+        return
     elseif key == KEY_E then
         DoExtract()
     elseif key == KEY_F then
