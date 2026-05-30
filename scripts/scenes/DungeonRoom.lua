@@ -11,7 +11,7 @@ local CONFIG = {
     topOffset = 40,
     bottomSpace = 80,
     doorSize = 40,
-    playerRadius = 16,
+    playerRadius = 24,
     moveStep = 12,
     moveSpeed = 300,
     searchW = 58,
@@ -661,36 +661,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgText(vg, playerCX, layout.y + layout.h - 10, "出生点")
     end
 
-    -- 绘制血量条(玩家头顶)
-    local combat = context.combat
-    if combat then
-        local barW = 50
-        local barH = 6
-        local barX = playerCX - barW / 2
-        local barY = playerCY - CONFIG.playerRadius - 14
-        local hpRatio = combat.hp / combat.maxHp
 
-        -- 血条背景
-        nvgBeginPath(vg)
-        nvgRoundedRect(vg, barX, barY, barW, barH, 3)
-        nvgFillColor(vg, nvgRGBA(40, 10, 10, 200))
-        nvgFill(vg)
-
-        -- 血条前景
-        local r = math.floor(255 * (1 - hpRatio))
-        local g = math.floor(200 * hpRatio)
-        nvgBeginPath(vg)
-        nvgRoundedRect(vg, barX, barY, barW * hpRatio, barH, 3)
-        nvgFillColor(vg, nvgRGBA(r, g, 30, 240))
-        nvgFill(vg)
-
-        -- 血条边框
-        nvgBeginPath(vg)
-        nvgRoundedRect(vg, barX, barY, barW, barH, 3)
-        nvgStrokeColor(vg, nvgRGBA(180, 180, 180, 150))
-        nvgStrokeWidth(vg, 1)
-        nvgStroke(vg)
-    end
 
     -- 已触发雷房:中央显示地雷标志 + 提示
     if roomType == "mine" then

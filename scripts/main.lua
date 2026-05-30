@@ -150,6 +150,16 @@ function Start()
     -- 创建 UI
     CreateUI()
 
+    -- 背景音乐(循环播放)
+    local bgmScene = Scene()
+    local bgmNode = bgmScene:CreateChild("BGM")
+    local bgmSource = bgmNode:CreateComponent("SoundSource")
+    bgmSource.soundType = SOUND_MUSIC
+    local bgmSound = cache:GetResource("Sound", "audio/Hero Immortal.ogg")
+    bgmSound.looped = true
+    bgmSource:Play(bgmSound)
+    bgmSource.gain = 0.5
+
     -- 初始化菜单显示
     RefreshMainMenu()
 
@@ -1350,6 +1360,12 @@ function HandleNanoVGRender(eventType, eventData)
         local tradeKey = tostring(p.x) .. "," .. tostring(p.y)
         local cell = minefield and minefield:GetCellView(p.x, p.y) or nil
 
+        -- 预计算共用数据
+        local visMap = minefield and minefield:GetVisibleMap() or nil
+        local combatStatus = Combat.GetStatus()
+        local invTotals = RunInventory.GetTotals()
+        local invStatus = { gold = invTotals.gold, parts = invTotals.parts }
+
         -- 中央游戏区(带偏移和裁剪)
         local c = hudLayout.center
         nvgSave(nvgScene)
@@ -1360,7 +1376,7 @@ function HandleNanoVGRender(eventType, eventData)
             minefield = minefield,
             searchState = GetSearchState(),
             enemy = Combat.GetEnemyAny(p.x, p.y),
-            combat = Combat.GetStatus(),
+            combat = combatStatus,
             eventTraded = tradedRooms[tradeKey] or false,
             inventory = invStatus,
             tradePrice = MetaProgress.GetTalentEffects().tradePrice,
@@ -1370,10 +1386,6 @@ function HandleNanoVGRender(eventType, eventData)
         nvgRestore(nvgScene)
 
         -- HUD: 左侧信息栏
-        local visMap = minefield and minefield:GetVisibleMap() or nil
-        local combatStatus = Combat.GetStatus()
-        local invTotals = RunInventory.GetTotals()
-        local invStatus = { gold = invTotals.gold, parts = invTotals.parts }
         local exploredCount = Protocol.exploredRooms or 0
 
         HUD.DrawLeftSidebar(nvgScene, hudLayout, {
