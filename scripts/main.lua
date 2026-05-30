@@ -14,6 +14,7 @@ local MapOverlay = require("ui.MapOverlay")
 local HUD = require("ui.HUD")
 local DungeonRoom = require("scenes.DungeonRoom")
 local EventSystem = require("systems.EventSystem")
+local Tutorial = require("systems.Tutorial")
 
 -- ============================================================================
 -- 全局状态
@@ -51,6 +52,7 @@ local phase = PHASE.MENU
 -- 消息
 local message = ""
 local messageTimer = 0
+local messageDuration = 0
 local blockedWallHintTimer = 0
 
 -- 事件房交易记录(key = "x,y")
@@ -125,6 +127,57 @@ local function setVisible(id, visible)
     end
 end
 
+local MENU_BG_W = 1672
+local MENU_BG_H = 941
+local MENU_HOTSPOTS = {
+    {
+        x = 1100, y = 260, w = 430, h = 135,
+        action = function()
+            StartNewGame()
+        end,
+    },
+    {
+        x = 1095, y = 395, w = 430, h = 130,
+        action = function()
+            StartTutorial()
+        end,
+    },
+    {
+        x = 1085, y = 530, w = 430, h = 135,
+        action = function()
+            ShowMenuPage("equip")
+        end,
+    },
+    {
+        x = 1075, y = 670, w = 430, h = 130,
+        action = function()
+            ShowMenuPage("gm")
+        end,
+    },
+}
+
+local function HandleMenuHotspotClick(mx, my)
+    if phase ~= PHASE.MENU or menuPage ~= "main" then return false end
+
+    local viewW = screenW / dpr
+    local viewH = screenH / dpr
+    local sx = viewW / MENU_BG_W
+    local sy = viewH / MENU_BG_H
+
+    for _, spot in ipairs(MENU_HOTSPOTS) do
+        local x = spot.x * sx
+        local y = spot.y * sy
+        local w = spot.w * sx
+        local h = spot.h * sy
+        if mx >= x and mx <= x + w and my >= y and my <= y + h then
+            spot.action()
+            return true
+        end
+    end
+
+    return false
+end
+
 -- ============================================================================
 -- 生命周期
 -- ============================================================================
@@ -176,11 +229,13 @@ function Start()
     -- 配置放大地图回调
     MapOverlay.onClose = function()
         phase = PHASE.PLAYING
+        Tutorial.NotifyAction("close_map")
     end
     MapOverlay.onFlag = function(x, y)
         if run then
             run:ToggleFlag(x, y)
             RefreshMapData()
+            Tutorial.NotifyAction("flag")
         end
     end
     MapOverlay.onTeleport = function(x, y)
@@ -529,8 +584,8 @@ end
 function StartNewGame(override)
     local config = mergeConfig({
         mode = "normal",
-        width = 15,
-        height = 15,
+        width = 10,
+        height = 10,
         mineDensity = 0.14,
         spawnSafeRadius = 0,
         pathWidth = 0,
@@ -629,6 +684,14 @@ function StartJudgeDemo()
         spawnSafeRadius = 0,
         manualMap = JUDGE_DEMO_MAP,
     })
+end
+
+--- 启动新手教程
+function StartTutorial()
+    Tutorial.Reset()
+    StartNewGame(Tutorial.GetMapConfig())
+    Tutorial.Start()
+    ShowMessage("")  -- 清除默认提示,教程对话框接管
 end
 
 function ShowFailurePanel(reason)
@@ -962,6 +1025,9 @@ function MovePlayer(dx, dy)
         local cpW, cpH = GetCenterAreaPhysSize()
         DungeonRoom.PlacePlayerFromEntry(dx, dy, cpW, cpH, dpr)
 
+        -- 教程:通知移动完成
+        Tutorial.NotifyAction("move")
+
         if monsterFleeActive then
             monsterFleeActive = false
             monsterFleeTimer = 0
@@ -1107,6 +1173,8 @@ function SearchCurrentRoom()
             ShowMessage("这个房间已经搜过了.")
         elseif result.status == "spawn" then
             ShowMessage("出生点没有可带走的物资.")
+        elseif result.status == "event" then
+            ShowMessage("事件房没有宝箱，按 T 处理事件。")
         elseif result.status == "exit" then
             ShowMessage("这里是撤离点, 准备好就按 E 撤离.")
         else
@@ -1117,6 +1185,10 @@ function SearchCurrentRoom()
 
     local reward = result.reward
     DungeonRoom.TriggerChestOpen(reward)
+
+    -- 教程:通知搜索完成
+    Tutorial.NotifyAction("search")
+
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
@@ -1392,8 +1464,8 @@ end
 
 function ShowMessage(text)
     message = text
-    messageTimer = 4.0
-    -- 消息现在由 NanoVG HUD 左侧栏显示
+    messageTimer = 3.0
+    messageDuration = 3.0
 end
 
 function CountVisitedCells()
@@ -1805,6 +1877,15 @@ function HandleNanoVGRender(eventType, eventData)
         MapOverlay.Draw(nvgScene, w, h)
     end
 
+    -- 教程对话框(绘制在游戏内容上层)
+    if Tutorial.IsActive() then
+        local step = Tutorial.GetCurrentStep()
+        HUD.DrawTutorialDialog(nvgScene, w, h, step)
+    end
+
+    -- 居中播报(始终绘制在最上层)
+    HUD.DrawCenterToast(nvgScene, { screenW = w, screenH = h }, message, messageTimer, messageDuration)
+
     nvgEndFrame(nvgScene)
 end
 
@@ -1829,101 +1910,76 @@ function CreateUI()
                 id = "menuPage_main",
                 position = "absolute",
                 top = 0, left = 0, right = 0, bottom = 0,
-                padding = 32,
-                gap = 16,
-                backgroundColor = { 5, 8, 15, 245 },
-                justifyContent = "center",
-                alignItems = "center",
+                backgroundImage = "Textures/menu_bg.png",
+                backgroundFit = "fill",
                 children = {
-                    UI.Label {
-                        text = "扫雷搜打撤",
-                        fontSize = 26,
-                        fontColor = { 255, 240, 180, 255 },
-                    },
-                    UI.Label {
-                        text = "扫雷情报驱动的撤离地牢",
-                        fontSize = 12,
-                        fontColor = { 140, 150, 170, 200 },
-                    },
+                    -- 右侧按钮区域，对应图片中"灰尾公司"招牌位置
                     UI.Panel {
-                        flexDirection = "row",
-                        gap = 8,
-                        marginTop = 4,
-                        alignItems = "center",
-                        children = {
-                            UI.Label {
-                                id = "menuGoldLabel",
-                                text = "金币: 0",
-                                fontSize = 14,
-                                fontColor = { 255, 220, 80, 255 },
-                            },
-                        }
-                    },
-                    UI.Panel {
-                        id = "menuEquippedInfo",
-                        marginTop = 2,
-                        alignItems = "center",
-                        children = {
-                            UI.Label {
-                                id = "menuEquippedLabel",
-                                text = "装备: 无",
-                                fontSize = 12,
-                                fontColor = { 160, 200, 255, 200 },
-                            },
-                        }
-                    },
-                    UI.Button {
-                        text = "出发探索",
-                        variant = "primary",
-                        width = 180,
-                        marginTop = 8,
-                        onClick = function()
-                            StartNewGame()
-                        end,
-                    },
-                    UI.Button {
-                        text = "评审演示",
-                        width = 180,
-                        onClick = function()
-                            StartJudgeDemo()
-                        end,
-                    },
-                    UI.Panel {
-                        flexDirection = "row",
-                        gap = 12,
-                        marginTop = 4,
+                        visible = false,
+                        position = "absolute",
+                        right = "5%",
+                        top = "28%",
+                        width = "22%",
+                        gap = 10,
+                        alignItems = "stretch",
                         children = {
                             UI.Button {
-                                text = "装备",
-                                width = 90,
+                                text = "出发探索",
+                                variant = "primary",
+                                height = 40,
+                                onClick = function()
+                                    StartNewGame()
+                                end,
+                            },
+                            UI.Button {
+                                text = "新手教程",
+                                height = 40,
+                                onClick = function()
+                                    StartTutorial()
+                                end,
+                            },
+                            UI.Button {
+                                text = "装备/天赋",
+                                height = 40,
                                 onClick = function()
                                     ShowMenuPage("equip")
                                 end,
                             },
                             UI.Button {
-                                text = "天赋",
-                                width = 90,
+                                text = "设置",
+                                height = 40,
                                 onClick = function()
-                                    ShowMenuPage("talent")
+                                    ShowMenuPage("gm")
                                 end,
                             },
                         }
                     },
-                    UI.Label {
-                        id = "menuStatsLabel",
-                        text = "",
-                        fontSize = 11,
-                        fontColor = { 120, 130, 150, 180 },
-                        marginTop = 6,
-                    },
-                    UI.Button {
-                        text = "🔧 GM",
-                        width = 60,
-                        height = 24,
-                        marginTop = 4,
-                        onClick = function()
-                            ShowMenuPage("gm")
-                        end,
+                    -- 左下角金币/装备信息
+                    UI.Panel {
+                        position = "absolute",
+                        left = 16,
+                        bottom = 16,
+                        gap = 4,
+                        children = {
+                            UI.Label {
+                                id = "menuGoldLabel",
+                                text = "金币: 0",
+                                fontSize = 13,
+                                fontColor = { 255, 220, 80, 255 },
+                            },
+                            UI.Label {
+                                id = "menuEquippedLabel",
+                                text = "装备: 无",
+                                fontSize = 11,
+                                fontColor = { 160, 200, 255, 200 },
+                            },
+                            UI.Label {
+                                id = "menuStatsLabel",
+                                text = "",
+                                fontSize = 11,
+                                fontColor = { 120, 130, 150, 180 },
+                            },
+                        }
                     },
                 }
             },
@@ -2537,6 +2593,7 @@ function HandleKeyDown(eventType, eventData)
         if key == KEY_ESCAPE or key == KEY_M then
             MapOverlay.Hide()
             phase = PHASE.PLAYING
+            Tutorial.NotifyAction("close_map")
         end
         return
     end
@@ -2605,6 +2662,8 @@ function HandleKeyDown(eventType, eventData)
         phase = PHASE.MAP_OPEN
         MapOverlay.visible = true
         RefreshMapData()
+        -- 教程:通知打开地图
+        Tutorial.NotifyAction("open_map")
         local w = screenW / dpr
         local h = screenH / dpr
         MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
@@ -2618,9 +2677,25 @@ function HandleMouseDown(eventType, eventData)
     local mx = eventData["X"]:GetInt() / dpr
     local my = eventData["Y"]:GetInt() / dpr
 
+    -- 教程对话框点击(优先消耗)
+    if button == MOUSEB_LEFT and Tutorial.IsActive() then
+        if Tutorial.HandleClick() then
+            -- 教程完成后回到菜单
+            if not Tutorial.IsActive() then
+                ReturnToMenu()
+                ShowMessage("教程完成! 可以开始正式探索了.")
+            end
+            return
+        end
+    end
+
     -- 放大地图交互
     if phase == PHASE.MAP_OPEN then
         MapOverlay.HandleClick(mx, my, button)
+        return
+    end
+
+    if button == MOUSEB_LEFT and HandleMenuHotspotClick(mx, my) then
         return
     end
 
@@ -2646,6 +2721,7 @@ function HandleMouseDown(eventType, eventData)
         phase = PHASE.MAP_OPEN
         MapOverlay.visible = true
         RefreshMapData()
+        Tutorial.NotifyAction("open_map")
         MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
         return
     end

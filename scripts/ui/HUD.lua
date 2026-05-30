@@ -143,11 +143,11 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     -- 标题: 区域扫描图
     nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 13)
+    nvgFontSize(vg, 15)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(180, 200, 230, 255))
     nvgText(vg, contentX, curY, "区域扫描图")
-    curY = curY + 18
+    curY = curY + 21
 
     -- 小地图(嵌入左侧栏)
     if context.visibleMap then
@@ -180,12 +180,12 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     end
 
     -- 图例
-    nvgFontSize(vg, 10)
+    nvgFontSize(vg, 11)
     nvgFillColor(vg, nvgRGBA(140, 150, 170, 200))
     nvgText(vg, contentX, curY, "数字 = 周围8格雷险")
-    curY = curY + 14
+    curY = curY + 16
     nvgText(vg, contentX, curY, "特殊房不计入数字")
-    curY = curY + 18
+    curY = curY + 21
 
     -- 分隔线
     nvgBeginPath(vg)
@@ -197,7 +197,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     curY = curY + 8
 
     -- 状态信息
-    nvgFontSize(vg, 12)
+    nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
 
     -- HP
@@ -207,9 +207,9 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     local hpRatio = maxHp > 0 and (hp / maxHp) or 0
 
     -- HP 条背景
-    local barW = sb.w - pad * 2 - 50
-    local barH = 10
-    local barX = contentX + 48
+    local barW = sb.w - pad * 2 - 58
+    local barH = 12
+    local barX = contentX + 56
     nvgFillColor(vg, nvgRGBA(255, 100, 100, 255))
     nvgText(vg, contentX, curY, "生命")
     nvgBeginPath(vg)
@@ -221,32 +221,32 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgFillColor(vg, nvgRGBA(220, 60, 60, 255))
     nvgFill(vg)
     -- HP 数字
-    nvgFontSize(vg, 10)
+    nvgFontSize(vg, 11)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(255, 255, 255, 230))
     nvgText(vg, barX + barW / 2, curY + 2 + barH / 2, hp .. "/" .. maxHp)
-    curY = curY + barH + 10
+    curY = curY + barH + 12
 
     -- 战斗力/金币/零件
-    nvgFontSize(vg, 12)
+    nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
 
     nvgFillColor(vg, nvgRGBA(255, 180, 60, 255))
     nvgText(vg, contentX, curY, "战力: " .. (combat.power or 10))
-    curY = curY + 16
+    curY = curY + 19
 
     local inv = context.inventory or {}
     nvgFillColor(vg, nvgRGBA(255, 230, 80, 255))
     nvgText(vg, contentX, curY, "金币: " .. (inv.gold or 0))
-    curY = curY + 16
+    curY = curY + 19
 
     nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
     nvgText(vg, contentX, curY, "零件: " .. (inv.parts or 0))
-    curY = curY + 16
+    curY = curY + 19
 
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
     nvgText(vg, contentX, curY, "已探索: " .. (context.exploredCount or 0) .. " 格")
-    curY = curY + 22
+    curY = curY + 24
 
     -- 分隔线
     nvgBeginPath(vg)
@@ -258,22 +258,22 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     curY = curY + 8
 
     -- 当前目标
-    nvgFontSize(vg, 11)
+    nvgFontSize(vg, 13)
     nvgFillColor(vg, nvgRGBA(120, 230, 160, 255))
     nvgText(vg, contentX, curY, "目标:")
-    curY = curY + 14
+    curY = curY + 17
     nvgFillColor(vg, nvgRGBA(200, 220, 200, 220))
     nvgText(vg, contentX, curY, "搜刮物资, 前往撤离点")
-    curY = curY + 18
+    curY = curY + 21
 
     -- 附近危险
     local adjacent = context.adjacent or 0
     if adjacent > 0 and context.roomType ~= "mine" then
-        nvgFontSize(vg, 12)
+        nvgFontSize(vg, 14)
         local dangerColor = adjacent >= 3 and nvgRGBA(255, 80, 60, 255) or nvgRGBA(255, 200, 80, 255)
         nvgFillColor(vg, dangerColor)
         nvgText(vg, contentX, curY, "附近危险: " .. adjacent .. " 格")
-        curY = curY + 18
+        curY = curY + 21
     end
 
     -- 协议等级(内联)
@@ -301,7 +301,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         nvgStroke(vg)
         curY = curY + 8
 
-        nvgFontSize(vg, 11)
+        nvgFontSize(vg, 13)
         nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
         nvgText(vg, contentX, curY, "协议等级")
 
@@ -318,22 +318,17 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
         curY = curY + 16
 
-        nvgFontSize(vg, 10)
+        nvgFontSize(vg, 12)
         nvgFillColor(vg, nvgRGBA(pColor[1], pColor[2], pColor[3], 200))
         nvgText(vg, contentX, curY, pTitle)
-        curY = curY + 14
+        curY = curY + 16
 
         nvgFillColor(vg, nvgRGBA(160, 170, 190, 160))
         nvgText(vg, contentX, curY, PROTOCOL_DESCS[level] or "")
         curY = curY + 18
     end
 
-    -- 提示消息
-    if context.message and context.message ~= "" then
-        nvgFontSize(vg, 11)
-        nvgFillColor(vg, nvgRGBA(255, 220, 100, 240))
-        nvgText(vg, contentX, curY, context.message)
-    end
+
 end
 
 -- ============================================================================
@@ -519,6 +514,136 @@ function HUD.CalcExitDistance(playerX, playerY, exits)
     if dir == "" then dir = "此处" end
 
     return minDist, dir
+end
+
+-- ============================================================================
+-- 教程对话框
+-- ============================================================================
+
+--- 绘制教程对话框(底部半透明面板)
+---@param vg userdata
+---@param screenW number
+---@param screenH number
+---@param step table { text, subtext, type }
+function HUD.DrawTutorialDialog(vg, screenW, screenH, step)
+    if not step then return end
+
+    -- 底部对话框区域
+    local panelH = 90
+    local panelW = math.min(screenW * 0.8, 520)
+    local px = (screenW - panelW) / 2
+    local py = screenH - panelH - 30
+
+    -- 背景
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, px, py, panelW, panelH, 10)
+    nvgFillColor(vg, nvgRGBA(15, 20, 30, 220))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(100, 180, 220, 180))
+    nvgStrokeWidth(vg, 1.5)
+    nvgStroke(vg)
+
+    -- 左侧小图标(对话气泡)
+    local iconX = px + 24
+    local iconY = py + panelH / 2
+    nvgBeginPath(vg)
+    nvgCircle(vg, iconX, iconY, 14)
+    nvgFillColor(vg, nvgRGBA(60, 160, 200, 200))
+    nvgFill(vg)
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 16)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(255, 255, 255, 240))
+    nvgText(vg, iconX, iconY, "?")
+
+    -- 主文本
+    local textX = px + 52
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 15)
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(240, 245, 255, 255))
+    nvgText(vg, textX, py + panelH * 0.4, step.text or "")
+
+    -- 副文本/提示
+    if step.subtext and step.subtext ~= "" then
+        nvgFontSize(vg, 12)
+        nvgFillColor(vg, nvgRGBA(160, 200, 230, 200))
+        nvgText(vg, textX, py + panelH * 0.7, step.subtext)
+    end
+
+    -- 步骤指示器(右下角)
+    -- 由调用方在外部传入 stepIndex/totalSteps 更好, 这里用简单脉冲提示可点击
+    if step.type == "dialog" then
+        local pulse = (math.sin(os.clock() * 4) + 1) * 0.5
+        local triX = px + panelW - 24
+        local triY = py + panelH - 20
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, triX - 5, triY - 4)
+        nvgLineTo(vg, triX + 5, triY)
+        nvgLineTo(vg, triX - 5, triY + 4)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBA(200, 230, 255, math.floor(120 + 135 * pulse)))
+        nvgFill(vg)
+    end
+end
+
+-- ============================================================================
+-- 居中播报(Toast)
+-- ============================================================================
+
+--- 绘制居中播报消息(一闪即逝效果)
+---@param vg userdata
+---@param layout table
+---@param message string
+---@param timer number 剩余时间
+---@param duration number 总时长
+function HUD.DrawCenterToast(vg, layout, message, timer, duration)
+    if not message or message == "" or timer <= 0 then return end
+
+    local screenW = layout.screenW or (layout.center.x + layout.center.w)
+    local screenH = layout.screenH or (layout.center.h)
+    -- 偏右下，大约在游戏场景宝箱位置(避开左侧栏)
+    local sidebarW = screenW * 0.24
+    local cx = sidebarW + (screenW - sidebarW) * 0.5
+    local cy = screenH * 0.52
+
+    -- 淡入淡出: 前0.3秒淡入, 后0.8秒淡出
+    local alpha = 1.0
+    local elapsed = duration - timer
+    local fadeIn = 0.25
+    local fadeOut = 0.8
+    if elapsed < fadeIn then
+        alpha = elapsed / fadeIn
+    elseif timer < fadeOut then
+        alpha = timer / fadeOut
+    end
+
+    -- 轻微上浮动画
+    local offsetY = 0
+    if timer < fadeOut then
+        offsetY = (1 - timer / fadeOut) * -8
+    end
+
+    local a = math.floor(alpha * 255)
+
+    -- 背景条
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 15)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    local bounds = {}
+    local tw = nvgTextBounds(vg, cx, cy, message, bounds)
+    local pw, ph = tw + 28, 32
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, cx - pw / 2, cy + offsetY - ph / 2, pw, ph, 6)
+    nvgFillColor(vg, nvgRGBA(10, 12, 20, math.floor(alpha * 180)))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(255, 220, 100, math.floor(alpha * 80)))
+    nvgStrokeWidth(vg, 1)
+    nvgStroke(vg)
+
+    -- 文本
+    nvgFillColor(vg, nvgRGBA(255, 235, 140, a))
+    nvgText(vg, cx, cy + offsetY, message)
 end
 
 return HUD
