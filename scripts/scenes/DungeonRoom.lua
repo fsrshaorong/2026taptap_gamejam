@@ -38,6 +38,7 @@ function DungeonRoom.Init(vg)
     imgRoomTreasure = nvgCreateImage(vg, "Textures/room_treasure.png", 0)
     imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
     imgRoomEvent = nvgCreateImage(vg, "Textures/room_event.png", 0)
+    imgRoomMonster = nvgCreateImage(vg, "Textures/room_monster.png", 0)
     imagesLoaded = true
 end
 
@@ -418,7 +419,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     local roomBgImg = imgRoomSafe
     if roomType == "mine" then roomBgImg = imgRoomDanger
     elseif roomType == "chest" then roomBgImg = imgRoomTreasure
-    elseif roomType == "monster" then roomBgImg = imgRoomDanger
+    elseif roomType == "monster" then roomBgImg = imgRoomMonster
     elseif roomType == "event" then roomBgImg = imgRoomEvent
     end
     if cell and cell.exitId then roomBgImg = imgRoomExit end
