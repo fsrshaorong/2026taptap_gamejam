@@ -19,6 +19,50 @@ local CONFIG = {
     enemyRadius = 22,
 }
 
+-- 图片句柄(Init 时加载)
+local imgPlayer = -1
+local imgEnemy = -1
+local imgRoomSafe = -1
+local imgRoomDanger = -1
+local imgRoomTreasure = -1
+local imgRoomExit = -1
+local imagesLoaded = false
+
+--- 初始化图片资源(只调用一次)
+function DungeonRoom.Init(vg)
+    if imagesLoaded then return end
+    imgPlayer = nvgCreateImage(vg, "Textures/player.png", 0)
+    imgEnemy = nvgCreateImage(vg, "Textures/enemy_slime.png", 0)
+    imgRoomSafe = nvgCreateImage(vg, "Textures/room_safe.png", 0)
+    imgRoomDanger = nvgCreateImage(vg, "Textures/room_danger.png", 0)
+    imgRoomTreasure = nvgCreateImage(vg, "Textures/room_treasure.png", 0)
+    imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
+    imagesLoaded = true
+end
+
+--- 绘制图片精灵(居中, 指定大小)
+local function drawSprite(vg, img, cx, cy, size, alpha)
+    if img < 0 then return end
+    alpha = alpha or 1.0
+    local half = size / 2
+    local paint = nvgImagePattern(vg, cx - half, cy - half, size, size, 0, img, alpha)
+    nvgBeginPath(vg)
+    nvgRect(vg, cx - half, cy - half, size, size)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+end
+
+--- 绘制房间背景贴图(平铺填充区域)
+local function drawRoomBg(vg, img, x, y, w, h, alpha)
+    if img < 0 then return end
+    alpha = alpha or 1.0
+    local paint = nvgImagePattern(vg, x, y, w, h, 0, img, alpha)
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, x, y, w, h, 8)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+end
+
 local playerPos = { x = 0.5, y = 0.5 }
 
 -- 踩雷红闪效果
@@ -373,10 +417,27 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     local layout = DungeonRoom.GetLayout(w, h)
 
+    -- 房间背景贴图
+    DungeonRoom.Init(vg)
+    local roomBgImg = imgRoomSafe
+    if roomType == "mine" then roomBgImg = imgRoomDanger
+    elseif roomType == "chest" then roomBgImg = imgRoomTreasure
+    elseif roomType == "monster" then roomBgImg = imgRoomDanger
+    end
+    if cell and cell.exitId then roomBgImg = imgRoomExit end
+
+    if roomBgImg >= 0 then
+        drawRoomBg(vg, roomBgImg, layout.x, layout.y, layout.w, layout.h, 0.85)
+    else
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, layout.x, layout.y, layout.w, layout.h, 8)
+        nvgFillColor(vg, nvgRGBA(roomFillR, roomFillG, roomFillB, 210))
+        nvgFill(vg)
+    end
+
+    -- 房间边框
     nvgBeginPath(vg)
     nvgRoundedRect(vg, layout.x, layout.y, layout.w, layout.h, 8)
-    nvgFillColor(vg, nvgRGBA(roomFillR, roomFillG, roomFillB, 210))
-    nvgFill(vg)
     nvgStrokeColor(vg, nvgRGBA(roomStrokeR, roomStrokeG, roomStrokeB, 220))
     nvgStrokeWidth(vg, 2)
     nvgStroke(vg)
@@ -432,46 +493,16 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFillColor(vg, nvgRGBA(210, 30, 40, fleeAlpha))
             nvgFill(vg)
 
-            -- 活着的敌人:红色大圆 + 角 + 眼睛
-            nvgBeginPath(vg)
-            nvgCircle(vg, enemyX, enemyY, er)
-            nvgFillColor(vg, nvgRGBA(180, 35, 35, 240))
-            nvgFill(vg)
-            nvgStrokeColor(vg, nvgRGBA(255, 80, 60, 255))
-            nvgStrokeWidth(vg, 3)
-            nvgStroke(vg)
-
-            -- 两只角
-            nvgBeginPath(vg)
-            nvgMoveTo(vg, enemyX - 10, enemyY - er + 2)
-            nvgLineTo(vg, enemyX - 6, enemyY - er - 10)
-            nvgLineTo(vg, enemyX - 2, enemyY - er + 2)
-            nvgFillColor(vg, nvgRGBA(255, 100, 50, 255))
-            nvgFill(vg)
-            nvgBeginPath(vg)
-            nvgMoveTo(vg, enemyX + 2, enemyY - er + 2)
-            nvgLineTo(vg, enemyX + 6, enemyY - er - 10)
-            nvgLineTo(vg, enemyX + 10, enemyY - er + 2)
-            nvgFillColor(vg, nvgRGBA(255, 100, 50, 255))
-            nvgFill(vg)
-
-            -- 眼睛(红色发光)
-            nvgBeginPath(vg)
-            nvgCircle(vg, enemyX - 7, enemyY - 3, 4)
-            nvgCircle(vg, enemyX + 7, enemyY - 3, 4)
-            nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
-            nvgFill(vg)
-
-            -- 嘴巴
-            nvgBeginPath(vg)
-            nvgMoveTo(vg, enemyX - 8, enemyY + 7)
-            nvgLineTo(vg, enemyX - 4, enemyY + 11)
-            nvgLineTo(vg, enemyX, enemyY + 8)
-            nvgLineTo(vg, enemyX + 4, enemyY + 11)
-            nvgLineTo(vg, enemyX + 8, enemyY + 7)
-            nvgStrokeColor(vg, nvgRGBA(255, 200, 50, 255))
-            nvgStrokeWidth(vg, 2)
-            nvgStroke(vg)
+            -- 敌人精灵图
+            local enemySize = er * 2.8
+            drawSprite(vg, imgEnemy, enemyX, enemyY, enemySize, 1.0)
+            -- fallback
+            if imgEnemy < 0 then
+                nvgBeginPath(vg)
+                nvgCircle(vg, enemyX, enemyY, er)
+                nvgFillColor(vg, nvgRGBA(180, 35, 35, 240))
+                nvgFill(vg)
+            end
 
             -- 名字和战力
             nvgFontFace(vg, "sans")
@@ -521,13 +552,19 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     local playerCX = layout.x + playerPos.x * layout.w
     local playerCY = layout.y + playerPos.y * layout.h
-    nvgBeginPath(vg)
-    nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius)
-    nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
-    nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 220))
-    nvgStrokeWidth(vg, 2)
-    nvgStroke(vg)
+    -- 玩家精灵
+    local playerSize = CONFIG.playerRadius * 2.5
+    drawSprite(vg, imgPlayer, playerCX, playerCY, playerSize, 1.0)
+    -- 如果图片加载失败, fallback 圆形
+    if imgPlayer < 0 then
+        nvgBeginPath(vg)
+        nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius)
+        nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
+        nvgFill(vg)
+        nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 220))
+        nvgStrokeWidth(vg, 2)
+        nvgStroke(vg)
+    end
 
     if cell and cell.adjacent and cell.adjacent > 0 and roomType ~= "mine" then
         nvgFontFace(vg, "sans")

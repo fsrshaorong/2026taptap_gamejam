@@ -70,6 +70,8 @@ local battleState = {
 }
 local BATTLE_VS_DURATION = 1.2    -- VS 展示时间
 local BATTLE_RESULT_DURATION = 1.5 -- 结果展示时间
+local imgBattlePlayer = -1
+local imgBattleEnemy = -1
 
 -- 菜单子页面状态
 local menuPage = "main"  -- "main" | "equip" | "talent"
@@ -103,6 +105,8 @@ function Start()
         return
     end
     nvgCreateFont(nvgScene, "sans", "Fonts/FusionPixel.otf")
+    imgBattlePlayer = nvgCreateImage(nvgScene, "Textures/player.png", 0)
+    imgBattleEnemy = nvgCreateImage(nvgScene, "Textures/enemy_slime.png", 0)
 
     -- 初始化 UI
     UI.Init({
@@ -1127,16 +1131,20 @@ function DrawBattleOverlay(vg, w, h)
         nvgFontFace(vg, "sans")
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
 
-        -- 玩家圆形头像背景
-        nvgBeginPath(vg)
-        nvgCircle(vg, playerX, cy - 20, 36)
-        nvgFillColor(vg, nvgRGBA(40, 120, 200, 220))
-        nvgFill(vg)
-
-        -- 玩家图标
-        nvgFontSize(vg, 32)
-        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
-        nvgText(vg, playerX, cy - 20, "🧑")
+        -- 玩家精灵
+        if imgBattlePlayer >= 0 then
+            local sz = 64
+            local paint = nvgImagePattern(vg, playerX - sz/2, cy - 20 - sz/2, sz, sz, 0, imgBattlePlayer, 1.0)
+            nvgBeginPath(vg)
+            nvgRect(vg, playerX - sz/2, cy - 20 - sz/2, sz, sz)
+            nvgFillPaint(vg, paint)
+            nvgFill(vg)
+        else
+            nvgBeginPath(vg)
+            nvgCircle(vg, playerX, cy - 20, 36)
+            nvgFillColor(vg, nvgRGBA(40, 120, 200, 220))
+            nvgFill(vg)
+        end
 
         -- 玩家战力
         nvgFontSize(vg, 14)
@@ -1157,16 +1165,20 @@ function DrawBattleOverlay(vg, w, h)
         -- 敌人侧(右)
         local enemyX = cx + 120 * slideIn
 
-        -- 敌人圆形头像背景
-        nvgBeginPath(vg)
-        nvgCircle(vg, enemyX, cy - 20, 36)
-        nvgFillColor(vg, nvgRGBA(180, 40, 40, 220))
-        nvgFill(vg)
-
-        -- 敌人图标
-        nvgFontSize(vg, 32)
-        nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
-        nvgText(vg, enemyX, cy - 20, "👹")
+        -- 敌人精灵
+        if imgBattleEnemy >= 0 then
+            local sz = 64
+            local paint = nvgImagePattern(vg, enemyX - sz/2, cy - 20 - sz/2, sz, sz, 0, imgBattleEnemy, 1.0)
+            nvgBeginPath(vg)
+            nvgRect(vg, enemyX - sz/2, cy - 20 - sz/2, sz, sz)
+            nvgFillPaint(vg, paint)
+            nvgFill(vg)
+        else
+            nvgBeginPath(vg)
+            nvgCircle(vg, enemyX, cy - 20, 36)
+            nvgFillColor(vg, nvgRGBA(180, 40, 40, 220))
+            nvgFill(vg)
+        end
 
         -- 敌人名称
         nvgFontSize(vg, 13)
