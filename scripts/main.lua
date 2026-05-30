@@ -50,6 +50,7 @@ local phase = PHASE.MENU
 -- 消息
 local message = ""
 local messageTimer = 0
+local messageDuration = 0
 local blockedWallHintTimer = 0
 
 -- 事件房交易记录(key = "x,y")
@@ -1377,8 +1378,8 @@ end
 
 function ShowMessage(text)
     message = text
-    messageTimer = 4.0
-    -- 消息现在由 NanoVG HUD 左侧栏显示
+    messageTimer = 3.0
+    messageDuration = 3.0
 end
 
 function CountVisitedCells()
@@ -1679,6 +1680,9 @@ function HandleNanoVGRender(eventType, eventData)
         MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
         MapOverlay.Draw(nvgScene, w, h)
     end
+
+    -- 居中播报(始终绘制在最上层)
+    HUD.DrawCenterToast(nvgScene, { screenW = w, screenH = h }, message, messageTimer, messageDuration)
 
     nvgEndFrame(nvgScene)
 end

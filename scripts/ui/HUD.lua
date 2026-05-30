@@ -328,12 +328,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         curY = curY + 18
     end
 
-    -- 提示消息
-    if context.message and context.message ~= "" then
-        nvgFontSize(vg, 13)
-        nvgFillColor(vg, nvgRGBA(255, 220, 100, 240))
-        nvgText(vg, contentX, curY, context.message)
-    end
+
 end
 
 -- ============================================================================
@@ -519,6 +514,65 @@ function HUD.CalcExitDistance(playerX, playerY, exits)
     if dir == "" then dir = "此处" end
 
     return minDist, dir
+end
+
+-- ============================================================================
+-- 居中播报(Toast)
+-- ============================================================================
+
+--- 绘制居中播报消息(一闪即逝效果)
+---@param vg userdata
+---@param layout table
+---@param message string
+---@param timer number 剩余时间
+---@param duration number 总时长
+function HUD.DrawCenterToast(vg, layout, message, timer, duration)
+    if not message or message == "" or timer <= 0 then return end
+
+    local screenW = layout.screenW or (layout.center.x + layout.center.w)
+    local screenH = layout.screenH or (layout.center.h)
+    -- 偏右下，大约在游戏场景宝箱位置(避开左侧栏)
+    local sidebarW = screenW * 0.24
+    local cx = sidebarW + (screenW - sidebarW) * 0.5
+    local cy = screenH * 0.52
+
+    -- 淡入淡出: 前0.3秒淡入, 后0.8秒淡出
+    local alpha = 1.0
+    local elapsed = duration - timer
+    local fadeIn = 0.25
+    local fadeOut = 0.8
+    if elapsed < fadeIn then
+        alpha = elapsed / fadeIn
+    elseif timer < fadeOut then
+        alpha = timer / fadeOut
+    end
+
+    -- 轻微上浮动画
+    local offsetY = 0
+    if timer < fadeOut then
+        offsetY = (1 - timer / fadeOut) * -8
+    end
+
+    local a = math.floor(alpha * 255)
+
+    -- 背景条
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 15)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    local bounds = {}
+    local tw = nvgTextBounds(vg, cx, cy, message, bounds)
+    local pw, ph = tw + 28, 32
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, cx - pw / 2, cy + offsetY - ph / 2, pw, ph, 6)
+    nvgFillColor(vg, nvgRGBA(10, 12, 20, math.floor(alpha * 180)))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(255, 220, 100, math.floor(alpha * 80)))
+    nvgStrokeWidth(vg, 1)
+    nvgStroke(vg)
+
+    -- 文本
+    nvgFillColor(vg, nvgRGBA(255, 235, 140, a))
+    nvgText(vg, cx, cy + offsetY, message)
 end
 
 return HUD
