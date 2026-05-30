@@ -383,9 +383,13 @@ function HUD.GetInteractHint(context)
     end
     if context.hasEnemy and context.enemyAlive then
         if context.playerPower and context.enemyPower then
-            return "[F] 清理异常体  我方 " .. context.playerPower .. " / 威胁 " .. context.enemyPower .. "  可直接离开"
+            local hpText = ""
+            if context.enemyHP and context.enemyMaxHP then
+                hpText = " HP " .. context.enemyHP .. "/" .. context.enemyMaxHP
+            end
+            return "[F] 攻击异常体  我方 " .. context.playerPower .. " / 威胁 " .. context.enemyPower .. hpText .. "  可直接离开"
         end
-        return "[F] 清理异常体  /  可直接离开"
+        return "[F] 攻击异常体  /  可直接离开"
     end
     if context.hasEnemy then
         return "异常体已清理"

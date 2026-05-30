@@ -178,6 +178,10 @@ function DungeonRoom.ResetPlayer()
     playerPos.y = 0.5
 end
 
+function DungeonRoom.GetPlayerPosition()
+    return { x = playerPos.x, y = playerPos.y }
+end
+
 --- 触发踩雷红闪效果
 function DungeonRoom.TriggerMineFlash()
     mineFlashTimer = MINE_FLASH_DURATION
@@ -232,7 +236,8 @@ function DungeonRoom.SetRoomObstacles(context, screenW, screenH, dpr)
     -- 怪物(活着时阻挡)
     local enemy = context.enemy
     if enemy and enemy.alive then
-        roomObstacles[#roomObstacles + 1] = { x = 0.35, y = 0.45, r = pixToNorm(32) }
+        local pos = enemy.monsterPosition or { x = 0.35, y = 0.45 }
+        roomObstacles[#roomObstacles + 1] = { x = pos.x, y = pos.y, r = pixToNorm(32) }
     end
 
     -- 事件 NPC
@@ -741,21 +746,41 @@ function DungeonRoom.Draw(vg, w, h, context)
     -- 绘制敌人(活着=红色威胁, 死了=灰色倒地)
     local enemy = context.enemy
     if enemy then
-        local enemyX = layout.x + layout.w * 0.35
-        local enemyY = layout.y + layout.h * 0.45
+        local enemyPos = enemy.monsterPosition or { x = 0.35, y = 0.45 }
+        local enemyX = layout.x + layout.w * enemyPos.x
+        local enemyY = layout.y + layout.h * enemyPos.y
         local er = CONFIG.enemyRadius
 
         if enemy.alive then
+            local attackRadius = (enemy.attackRadius or 0.20) * math.min(layout.w, layout.h)
+            if enemy.attackPhase == "warning" or enemy.attackPhase == "active" then
+                local warningPulse = (math.sin(roomTime * 12) + 1) * 0.5
+                local isActive = enemy.attackPhase == "active"
+                nvgBeginPath(vg)
+                nvgCircle(vg, enemyX, enemyY, attackRadius)
+                if isActive then
+                    nvgFillColor(vg, nvgRGBA(255, 45, 35, 70))
+                    nvgStrokeColor(vg, nvgRGBA(255, 60, 45, 230))
+                else
+                    nvgFillColor(vg, nvgRGBA(255, 190, 45, 35 + math.floor(35 * warningPulse)))
+                    nvgStrokeColor(vg, nvgRGBA(255, 210, 70, 160 + math.floor(70 * warningPulse)))
+                end
+                nvgFill(vg)
+                nvgStrokeWidth(vg, isActive and 4 or 3)
+                nvgStroke(vg)
+            end
+
             local threatPulse = (math.sin(roomTime * 6) + 1) * 0.5
             local fleeAlpha = context.monsterFleeActive and 110 or 45
             nvgBeginPath(vg)
             nvgCircle(vg, enemyX, enemyY, er + 18 + threatPulse * 8)
-            nvgFillColor(vg, nvgRGBA(210, 30, 40, fleeAlpha))
+            local hitFlash = enemy.hitFlashTimer or 0
+            nvgFillColor(vg, hitFlash > 0 and nvgRGBA(255, 245, 180, 140) or nvgRGBA(210, 30, 40, fleeAlpha))
             nvgFill(vg)
 
             -- 敌人精灵图
             local enemySize = er * 2.8
-            drawSprite(vg, imgEnemy, enemyX, enemyY, enemySize, 1.0)
+            drawSprite(vg, imgEnemy, enemyX, enemyY, enemySize, hitFlash > 0 and 0.65 or 1.0)
             -- fallback
             if imgEnemy < 0 then
                 nvgBeginPath(vg)
@@ -774,6 +799,22 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFillColor(vg, nvgRGBA(255, 180, 100, 230))
             nvgText(vg, enemyX, enemyY + er + 24, "战力: " .. enemy.power)
 
+            local hp = enemy.monsterHP or enemy.monsterMaxHP or enemy.power
+            local maxHp = enemy.monsterMaxHP or hp
+            local hpRatio = maxHp > 0 and math.max(0, math.min(1, hp / maxHp)) or 0
+            local barW = 88
+            local barH = 8
+            local barX = enemyX - barW / 2
+            local barY = enemyY - er - 18
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, barX, barY, barW, barH, 3)
+            nvgFillColor(vg, nvgRGBA(20, 18, 24, 210))
+            nvgFill(vg)
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, barX, barY, barW * hpRatio, barH, 3)
+            nvgFillColor(vg, nvgRGBA(220, 60, 70, 235))
+            nvgFill(vg)
+
             if context.combat and context.combat.power then
                 local delta = context.combat.power - enemy.power
                 local riskText = delta >= 0 and ("优势 +" .. delta) or ("危险 " .. delta)
@@ -791,7 +832,7 @@ function DungeonRoom.Draw(vg, w, h, context)
             else
                 nvgFontSize(vg, 13)
                 nvgFillColor(vg, nvgRGBA(255, 220, 120, 255))
-                nvgText(vg, enemyX, enemyY + er + 56, "F 清理 / 直接离开")
+                nvgText(vg, enemyX, enemyY + er + 56, "靠近 F 攻击 / 可离开")
             end
         else
             -- 已击败的敌人:灰色 + X 标记
@@ -854,6 +895,15 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgFill(vg)
         nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 220))
         nvgStrokeWidth(vg, 2)
+        nvgStroke(vg)
+    end
+
+    if enemy and enemy.playerInvincibleTimer and enemy.playerInvincibleTimer > 0 then
+        local pulse = (math.sin(roomTime * 18) + 1) * 0.5
+        nvgBeginPath(vg)
+        nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius + 8 + pulse * 4)
+        nvgStrokeColor(vg, nvgRGBA(120, 210, 255, 170))
+        nvgStrokeWidth(vg, 3)
         nvgStroke(vg)
     end
 

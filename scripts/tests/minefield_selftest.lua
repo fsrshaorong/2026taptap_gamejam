@@ -527,6 +527,63 @@ local function testCombatResultSignals()
     assertTrue(costly.reward and costly.reward.gold > 0, "costly combat should still pay reward")
 end
 
+local function testMonsterActiveCombatLoop()
+    Combat.Reset()
+    Combat.power = 10
+    Combat.enemies["3,3"] = { name = "test anomaly", power = 10, alive = true }
+
+    local tooFar = Combat.PlayerAttackEnemy(3, 3, { x = 0.95, y = 0.95 })
+    assertEq(tooFar.status, "too_far", "far player should not hit monster")
+
+    local firstHit = Combat.PlayerAttackEnemy(3, 3, { x = 0.35, y = 0.45 })
+    assertTrue(firstHit.ok and firstHit.hit, "close player should hit monster")
+    assertEq(firstHit.damage, 10, "monster hit should use player combat power")
+    assertTrue(firstHit.enemy.monsterHP < firstHit.enemy.monsterMaxHP, "monster hp should decrease")
+
+    local cooldown = Combat.PlayerAttackEnemy(3, 3, { x = 0.35, y = 0.45 })
+    assertEq(cooldown.status, "cooldown", "monster attack should respect player cooldown")
+
+    local killed = nil
+    for _ = 1, 8 do
+        if not Combat.enemies["3,3"].alive then break end
+        Combat.enemies["3,3"].playerAttackCooldown = 0
+        killed = Combat.PlayerAttackEnemy(3, 3, { x = 0.35, y = 0.45 })
+    end
+    assertTrue(killed and killed.killed, "repeated hits should kill monster")
+    assertTrue(killed.result and killed.result.reward and killed.result.reward.gold > 0, "killed monster should produce reward result")
+    assertTrue(not Combat.enemies["3,3"].alive, "monster should be marked dead after hp reaches zero")
+end
+
+local function testMonsterWarningAttackDamage()
+    Combat.Reset()
+    Combat.hp = 100
+    Combat.enemies["4,4"] = { name = "test caster", power = 12, alive = true }
+    local enemy = Combat.GetEnemyAny(4, 4)
+    enemy.attackPhase = "active"
+    enemy.attackTimer = 0.2
+    enemy.attackHitResolved = false
+    enemy.playerInvincibleTimer = 0
+
+    local hit = Combat.UpdateEnemy(4, 4, 0.01, { x = enemy.monsterPosition.x, y = enemy.monsterPosition.y })
+    assertTrue(hit.playerHit, "active warning area should damage player inside range")
+    assertEq(hit.damage, enemy.monsterDamage, "monster active hit should use monster damage")
+    assertEq(Combat.hp, 100 - enemy.monsterDamage, "monster hit should reduce hp once")
+
+    local noRepeat = Combat.UpdateEnemy(4, 4, 0.01, { x = enemy.monsterPosition.x, y = enemy.monsterPosition.y })
+    assertTrue(not noRepeat.playerHit, "monster should not damage every frame during same active attack")
+
+    Combat.Reset()
+    Combat.hp = 100
+    Combat.enemies["5,5"] = { name = "test caster", power = 12, alive = true }
+    local enemy2 = Combat.GetEnemyAny(5, 5)
+    enemy2.attackPhase = "active"
+    enemy2.attackTimer = 0.2
+    enemy2.attackHitResolved = false
+    local avoided = Combat.UpdateEnemy(5, 5, 0.01, { x = 0.95, y = 0.95 })
+    assertTrue(not avoided.playerHit, "player outside active warning area should avoid damage")
+    assertEq(Combat.hp, 100, "avoiding warning area should preserve hp")
+end
+
 local function testRunStats()
     RunInventory.Reset()
     local field = Minefield.New({
@@ -721,6 +778,8 @@ local tests = {
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "combat result signals", fn = testCombatResultSignals },
+    { name = "monster active combat loop", fn = testMonsterActiveCombatLoop },
+    { name = "monster warning attack damage", fn = testMonsterWarningAttackDamage },
     { name = "run stats", fn = testRunStats },
     { name = "combat reward inventory", fn = testCombatRewardInventory },
     { name = "event type determinism", fn = testEventTypeDeterminism },

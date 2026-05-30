@@ -24,10 +24,101 @@ local CONFIG = {
     monsterRewardBaseGold = 12,  -- 清理异常体基础奖励
     monsterRewardPowerGold = 1,  -- 按异常体强度追加金币
     monsterRewardPartPower = 15, -- 高威胁异常体额外掉落零件
+    monsterPositionX = 0.35,
+    monsterPositionY = 0.45,
+    monsterHpBase = 18,
+    monsterDamageMin = 4,
+    monsterAttackRadius = 0.20,
+    playerAttackRange = 0.21,
+    monsterIdleDuration = 1.10,
+    monsterWarningDuration = 0.75,
+    monsterActiveDuration = 0.28,
+    monsterCooldownDuration = 0.55,
+    playerAttackCooldown = 0.45,
+    playerInvincibleDuration = 0.90,
+    monsterHitFlashDuration = 0.20,
 }
 
 local function cellKey(x, y)
     return tostring(x) .. "," .. tostring(y)
+end
+
+local function makeReward(enemyPower)
+    return {
+        gold = CONFIG.monsterRewardBaseGold + math.floor(enemyPower * CONFIG.monsterRewardPowerGold),
+        parts = enemyPower >= CONFIG.monsterRewardPartPower and 1 or 0,
+    }
+end
+
+local function ensureMonsterState(enemy)
+    if not enemy then return nil end
+    if enemy.monsterMaxHP == nil then
+        enemy.monsterMaxHP = CONFIG.monsterHpBase + enemy.power
+    end
+    if enemy.monsterHP == nil then
+        enemy.monsterHP = enemy.monsterMaxHP
+    end
+    if enemy.monsterDamage == nil then
+        enemy.monsterDamage = math.max(CONFIG.monsterDamageMin, math.floor(enemy.power / 3))
+    end
+    if enemy.monsterPosition == nil then
+        enemy.monsterPosition = { x = CONFIG.monsterPositionX, y = CONFIG.monsterPositionY }
+    end
+    enemy.attackPhase = enemy.attackPhase or "idle"
+    enemy.attackTimer = enemy.attackTimer or CONFIG.monsterIdleDuration
+    enemy.attackRadius = enemy.attackRadius or CONFIG.monsterAttackRadius
+    enemy.playerAttackRange = enemy.playerAttackRange or CONFIG.playerAttackRange
+    enemy.playerAttackCooldown = enemy.playerAttackCooldown or 0
+    enemy.playerInvincibleTimer = enemy.playerInvincibleTimer or 0
+    enemy.hitFlashTimer = enemy.hitFlashTimer or 0
+    enemy.attackHitResolved = enemy.attackHitResolved or false
+    enemy.monsterAlive = enemy.alive == true
+    return enemy
+end
+
+local function distToEnemy(enemy, playerPos)
+    ensureMonsterState(enemy)
+    if not enemy or not playerPos then return 999 end
+    local pos = enemy.monsterPosition
+    local dx = (playerPos.x or 0) - pos.x
+    local dy = (playerPos.y or 0) - pos.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+local function buildClearResult(enemy, damage, playerWin)
+    local enemyPower = enemy and enemy.power or 0
+    return {
+        fought = true,
+        enemy = enemy,
+        damage = damage or 0,
+        hp = Combat.hp,
+        dead = Combat.hp <= 0,
+        playerWin = playerWin ~= false,
+        playerPower = Combat.power,
+        enemyPower = enemyPower,
+        cleared = true,
+        reward = makeReward(enemyPower),
+    }
+end
+
+local function transitionAttackPhase(enemy)
+    if enemy.attackPhase == "idle" then
+        enemy.attackPhase = "warning"
+        enemy.attackTimer = CONFIG.monsterWarningDuration
+        enemy.attackHitResolved = false
+    elseif enemy.attackPhase == "warning" then
+        enemy.attackPhase = "active"
+        enemy.attackTimer = CONFIG.monsterActiveDuration
+        enemy.attackHitResolved = false
+    elseif enemy.attackPhase == "active" then
+        enemy.attackPhase = "cooldown"
+        enemy.attackTimer = CONFIG.monsterCooldownDuration
+        enemy.attackHitResolved = true
+    else
+        enemy.attackPhase = "idle"
+        enemy.attackTimer = CONFIG.monsterIdleDuration
+        enemy.attackHitResolved = false
+    end
 end
 
 --- 重置战斗状态(新游戏时调用)
@@ -105,6 +196,7 @@ function Combat.TrySpawnEnemy(minefield, x, y)
         power = enemyPower,
         alive = true,
     }
+    ensureMonsterState(Combat.enemies[key])
 end
 
 --- 获取指定格子的敌人(如果有且活着)
@@ -115,6 +207,7 @@ function Combat.GetEnemy(x, y)
     local key = cellKey(x, y)
     local enemy = Combat.enemies[key]
     if enemy and enemy.alive then
+        ensureMonsterState(enemy)
         return enemy
     end
     return nil
@@ -126,7 +219,117 @@ end
 ---@return table|nil  { name, power, alive }
 function Combat.GetEnemyAny(x, y)
     local key = cellKey(x, y)
+    ensureMonsterState(Combat.enemies[key])
     return Combat.enemies[key]
+end
+
+function Combat.GetMonsterConfig()
+    return {
+        position = { x = CONFIG.monsterPositionX, y = CONFIG.monsterPositionY },
+        attackRadius = CONFIG.monsterAttackRadius,
+        playerAttackRange = CONFIG.playerAttackRange,
+    }
+end
+
+---@param x number
+---@param y number
+---@param dt number
+---@param playerPos table|nil
+---@return table
+function Combat.UpdateEnemy(x, y, dt, playerPos)
+    local enemy = Combat.GetEnemy(x, y)
+    if not enemy then return { ok = false, status = "no_enemy" } end
+    ensureMonsterState(enemy)
+
+    local elapsed = tonumber(dt) or 0
+    if elapsed < 0 then elapsed = 0 end
+    if elapsed > 0.08 then elapsed = 0.08 end
+
+    if enemy.playerAttackCooldown > 0 then
+        enemy.playerAttackCooldown = math.max(0, enemy.playerAttackCooldown - elapsed)
+    end
+    if enemy.playerInvincibleTimer > 0 then
+        enemy.playerInvincibleTimer = math.max(0, enemy.playerInvincibleTimer - elapsed)
+    end
+    if enemy.hitFlashTimer > 0 then
+        enemy.hitFlashTimer = math.max(0, enemy.hitFlashTimer - elapsed)
+    end
+
+    enemy.attackTimer = (enemy.attackTimer or CONFIG.monsterIdleDuration) - elapsed
+    while enemy.attackTimer <= 0 do
+        transitionAttackPhase(enemy)
+    end
+
+    local result = {
+        ok = true,
+        enemy = enemy,
+        playerHit = false,
+        damage = 0,
+        hp = Combat.hp,
+        dead = false,
+    }
+
+    if enemy.attackPhase == "active" and not enemy.attackHitResolved then
+        if distToEnemy(enemy, playerPos) <= enemy.attackRadius and enemy.playerInvincibleTimer <= 0 then
+            local damage = enemy.monsterDamage
+            Combat.hp = math.max(0, Combat.hp - damage)
+            enemy.playerInvincibleTimer = CONFIG.playerInvincibleDuration
+            enemy.attackHitResolved = true
+            result.playerHit = true
+            result.damage = damage
+            result.hp = Combat.hp
+            result.dead = Combat.hp <= 0
+        end
+    end
+
+    return result
+end
+
+---@param x number
+---@param y number
+---@param playerPos table|nil
+---@return table
+function Combat.PlayerAttackEnemy(x, y, playerPos)
+    local enemy = Combat.GetEnemy(x, y)
+    if not enemy then return { ok = false, status = "no_enemy" } end
+    ensureMonsterState(enemy)
+
+    if enemy.playerAttackCooldown > 0 then
+        return { ok = false, status = "cooldown", cooldown = enemy.playerAttackCooldown, enemy = enemy }
+    end
+    if distToEnemy(enemy, playerPos) > enemy.playerAttackRange then
+        return { ok = false, status = "too_far", enemy = enemy }
+    end
+
+    local damage = Combat.power
+    enemy.monsterHP = math.max(0, enemy.monsterHP - damage)
+    enemy.playerAttackCooldown = CONFIG.playerAttackCooldown
+    enemy.hitFlashTimer = CONFIG.monsterHitFlashDuration
+
+    if enemy.monsterHP <= 0 then
+        enemy.alive = false
+        enemy.monsterAlive = false
+        return {
+            ok = true,
+            status = "killed",
+            hit = true,
+            killed = true,
+            damage = damage,
+            enemy = enemy,
+            result = buildClearResult(enemy, 0, true),
+        }
+    end
+
+    return {
+        ok = true,
+        status = "hit",
+        hit = true,
+        killed = false,
+        damage = damage,
+        enemy = enemy,
+        hp = enemy.monsterHP,
+        maxHp = enemy.monsterMaxHP,
+    }
 end
 
 --- 战斗判定:玩家 vs 敌人
@@ -145,7 +348,10 @@ function Combat.FightEnemy(x, y)
 
     local playerPower = Combat.power
     local enemyPower = enemy.power
+    ensureMonsterState(enemy)
     enemy.alive = false
+    enemy.monsterAlive = false
+    enemy.monsterHP = 0
     local damage = 0
     local playerWin = true
 
@@ -155,24 +361,7 @@ function Combat.FightEnemy(x, y)
         playerWin = false
     end
 
-    local rewardGold = CONFIG.monsterRewardBaseGold + math.floor(enemyPower * CONFIG.monsterRewardPowerGold)
-    local rewardParts = enemyPower >= CONFIG.monsterRewardPartPower and 1 or 0
-
-    return {
-        fought = true,
-        enemy = enemy,
-        damage = damage,
-        hp = Combat.hp,
-        dead = Combat.hp <= 0,
-        playerWin = playerWin,
-        playerPower = playerPower,
-        enemyPower = enemyPower,
-        cleared = true,
-        reward = {
-            gold = rewardGold,
-            parts = rewardParts,
-        },
-    }
+    return buildClearResult(enemy, damage, playerWin)
 end
 
 --- 搜索时可能获得战斗力加成

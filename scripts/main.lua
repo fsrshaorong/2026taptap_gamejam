@@ -823,6 +823,29 @@ function FinishBattle()
     UpdateHUD()
 end
 
+local function buildRewardText(reward)
+    reward = reward or { gold = 0, parts = 0 }
+    local rewardText = ""
+    if (reward.gold or 0) > 0 then
+        rewardText = rewardText .. " 获得结算币 +" .. reward.gold
+    end
+    if (reward.parts or 0) > 0 then
+        rewardText = rewardText .. " 零件 +" .. reward.parts
+    end
+    return rewardText
+end
+
+local function CompleteActiveMonsterClear(result, cx, cy)
+    if not result or not result.fought then return end
+    RunInventory.RecordCombat(result)
+    if minefield then
+        minefield:ClearRoom(cx, cy)
+    end
+    local enemyName = result.enemy and result.enemy.name or "异常体"
+    ShowMessage(enemyName .. " 已清理. 区域风险下降." .. buildRewardText(result.reward))
+    UpdateHUD()
+end
+
 --- 主动清理当前异常体
 function ForceFightCurrentEnemy()
     if not run then return end
@@ -836,6 +859,50 @@ function ForceFightCurrentEnemy()
     monsterFleeActive = false
     monsterFleeTimer = 0
     StartBattle(enemy, p.x, p.y)
+end
+
+function AttackCurrentEnemy()
+    if not run then return end
+    local p = run:GetPlayer()
+    local enemy = Combat.GetEnemy(p.x, p.y)
+    if not enemy then
+        SearchCurrentRoom()
+        return
+    end
+
+    local attack = Combat.PlayerAttackEnemy(p.x, p.y, DungeonRoom.GetPlayerPosition())
+    if not attack.ok then
+        if attack.status == "too_far" then
+            ShowMessage("距离过远. 靠近异常体后按 F 攻击.")
+        elseif attack.status == "cooldown" then
+            ShowMessage("攻击冷却中.")
+        end
+        return
+    end
+
+    if attack.killed then
+        CompleteActiveMonsterClear(attack.result, p.x, p.y)
+    else
+        local hpText = (attack.hp or 0) .. "/" .. (attack.maxHp or 0)
+        ShowMessage("命中异常体 -" .. attack.damage .. " HP (" .. hpText .. ").")
+    end
+end
+
+function UpdateCurrentMonsterCombat(dt)
+    if phase ~= PHASE.PLAYING or not run or not minefield or battleState.active then return end
+    local p = run:GetPlayer()
+    local enemy = Combat.GetEnemy(p.x, p.y)
+    if not enemy then return end
+
+    local result = Combat.UpdateEnemy(p.x, p.y, dt, DungeonRoom.GetPlayerPosition())
+    if result.playerHit then
+        if result.dead then
+            ShowFailurePanel("被异常体攻击击倒! 受到 " .. result.damage .. " 伤害.")
+        else
+            ShowMessage("被异常体攻击命中! -" .. result.damage .. " HP (剩余 " .. result.hp .. ").")
+        end
+        UpdateHUD()
+    end
 end
 
 --- 获取中央游戏区的 "虚拟屏幕" 物理尺寸(供 DungeonRoom 使用)
@@ -965,8 +1032,8 @@ function MovePlayer(dx, dy)
             if enemy then
                 monsterFleeActive = false
                 monsterFleeTimer = 0
-                ShowMessage("检测到异常体活动. 可绕行, 可清理. 异常体威胁:" ..
-                    enemy.power .. " 你的战斗力:" .. Combat.power .. " 按 F 清理.")
+                ShowMessage("检测到异常体活动. 可绕行, 可战斗. 靠近后按 F 攻击, 躲开预警范围. 威胁:" ..
+                    enemy.power .. " 战力:" .. Combat.power)
             elseif result.status == "at_exit" then
                 local cell = minefield:GetCellView(p.x, p.y)
                 DungeonRoom.TriggerExitPulse()
@@ -1529,6 +1596,8 @@ function HandleNanoVGRender(eventType, eventData)
             hasEnemy = enemy ~= nil,
             enemyAlive = enemy and enemy.alive or false,
             enemyPower = enemy and enemy.power or nil,
+            enemyHP = enemy and enemy.monsterHP or nil,
+            enemyMaxHP = enemy and enemy.monsterMaxHP or nil,
             playerPower = combatStatus.power,
             hasExit = cell and cell.exitId ~= nil,
             canTrade = roomType == "event" and not eventCompleted,
@@ -2234,6 +2303,7 @@ function HandleUpdate(eventType, eventData)
     end
     DungeonRoom.Update(dt)
     MiniMap.Update(dt)
+    UpdateCurrentMonsterCombat(dt)
 
     -- VS 战斗演出计时
     if battleState.active then
@@ -2329,7 +2399,7 @@ function HandleKeyDown(eventType, eventData)
         local p = run and run:GetPlayer() or nil
         local enemy = p and Combat.GetEnemy(p.x, p.y) or nil
         if enemy then
-            ForceFightCurrentEnemy()
+            AttackCurrentEnemy()
         else
             SearchCurrentRoom()
         end
