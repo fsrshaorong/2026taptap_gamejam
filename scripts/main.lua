@@ -921,13 +921,13 @@ function DoExtract()
         local riskText = "协议等级: " .. protocol.level .. " (" .. protocol.description .. ")"
         local partsLine = ""
         if totals.parts > 0 then
-            partsLine = "\n零件 " .. totals.parts .. " → 金币 +" .. reward.convertedGold
+            partsLine = "\n零件折算：+" .. reward.convertedGold .. " 金币（" .. totals.parts .. " 个）"
         end
         info:SetText(
-            "局内金币:" .. totals.gold ..
+            "安全金币：+" .. totals.gold ..
             partsLine ..
-            "\n预计带出金币:" .. reward.totalGold ..
-            "\n搜索房间:" .. totals.searchedRooms ..
+            "\n本次撤离预计：+" .. reward.totalGold .. " 金币" ..
+            "\n已搜索房间：" .. totals.searchedRooms ..
             "\n" .. riskText
         )
     end
@@ -1133,10 +1133,24 @@ function DrawBattleOverlay(vg, w, h)
         nvgFillColor(vg, nvgRGBA(255, 80, 80, 255))
         nvgText(vg, enemyX, cy + 46, "战力 " .. enemy.power)
 
+        local delta = combat.power - enemy.power
+        local compareText = delta >= 0 and ("优势 +" .. delta) or ("危险 " .. delta)
+        local compareColor = delta >= 0 and { 90, 240, 130 } or { 255, 90, 70 }
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, cx - 62, cy + 64, 124, 24, 5)
+        nvgFillColor(vg, nvgRGBA(12, 16, 26, 220))
+        nvgFill(vg)
+        nvgStrokeColor(vg, nvgRGBA(compareColor[1], compareColor[2], compareColor[3], 170))
+        nvgStrokeWidth(vg, 1.5)
+        nvgStroke(vg)
+        nvgFontSize(vg, 13)
+        nvgFillColor(vg, nvgRGBA(compareColor[1], compareColor[2], compareColor[3], 245))
+        nvgText(vg, cx, cy + 76, compareText)
+
         -- 底部提示
         nvgFontSize(vg, 11)
         nvgFillColor(vg, nvgRGBA(180, 180, 200, math.floor(150 + 80 * pulse)))
-        nvgText(vg, cx, cy + 80, "按任意键跳过")
+        nvgText(vg, cx, cy + 106, "按任意键跳过")
 
     elseif battleState.phase == "result" then
         -- === 结果阶段 ===
@@ -1156,7 +1170,7 @@ function DrawBattleOverlay(vg, w, h)
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(200, 255, 200, 220))
-            nvgText(vg, cx, cy + 20, "战力 " .. combat.power .. " > " .. enemy.power .. " 毫发无损")
+            nvgText(vg, cx, cy + 20, "战力 " .. combat.power .. " >= " .. enemy.power .. "，无伤通过")
         elseif result.dead then
             -- 死亡
             nvgFontSize(vg, 36 * scaleIn)
@@ -1178,7 +1192,7 @@ function DrawBattleOverlay(vg, w, h)
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(255, 220, 150, 220))
-            nvgText(vg, cx, cy + 20, "击败敌人但受伤 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
+            nvgText(vg, cx, cy + 20, "击败敌人，损失 -" .. result.damage .. " HP（剩余 " .. result.hp .. "）")
         end
 
         -- 底部提示

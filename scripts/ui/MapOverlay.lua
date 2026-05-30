@@ -63,6 +63,65 @@ function MapOverlay.ComputeLayout(fieldWidth, fieldHeight, screenW, screenH)
     MapOverlay.offsetY = math.floor((screenH - totalH) / 2) + 20  -- 留顶部标题
 end
 
+local function drawNumberBadge(vg, cx, cy, cs, adjacent)
+    if not adjacent or adjacent <= 0 then return end
+    local col = NUMBER_COLORS[adjacent] or { 220, 220, 220 }
+    local badgeSize = math.max(10, cs * 0.36)
+    local bx = cx + cs - badgeSize - 3
+    local by = cy + cs - badgeSize - 3
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, bx, by, badgeSize, badgeSize, 3)
+    nvgFillColor(vg, nvgRGBA(5, 8, 14, 220))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(180, 190, 210, 100))
+    nvgStrokeWidth(vg, 1)
+    nvgStroke(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, math.max(8, cs * 0.24))
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
+    nvgText(vg, bx + badgeSize / 2, by + badgeSize / 2, tostring(adjacent))
+end
+
+local function drawRoomIcon(vg, cell, cx, cy, cs)
+    if not cell.revealed or not cell.roomType then return false end
+    local ix = cx + cs / 2
+    local iy = cy + cs / 2
+
+    if cell.roomType == "chest" then
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, ix - cs * 0.22, iy - cs * 0.16, cs * 0.44, cs * 0.32, 3)
+        nvgFillColor(vg, nvgRGBA(255, 200, 50, 245))
+        nvgFill(vg)
+        nvgBeginPath(vg)
+        nvgRect(vg, ix - cs * 0.025, iy - cs * 0.16, cs * 0.05, cs * 0.32)
+        nvgFillColor(vg, nvgRGBA(120, 80, 20, 190))
+        nvgFill(vg)
+        return true
+    elseif cell.roomType == "monster" then
+        local r = cs * 0.22
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, ix, iy - r)
+        nvgLineTo(vg, ix + r, iy)
+        nvgLineTo(vg, ix, iy + r)
+        nvgLineTo(vg, ix - r, iy)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBA(255, 60, 60, 245))
+        nvgFill(vg)
+        return true
+    elseif cell.roomType == "event" then
+        nvgBeginPath(vg)
+        nvgCircle(vg, ix, iy, cs * 0.2)
+        nvgFillColor(vg, nvgRGBA(60, 200, 210, 245))
+        nvgFill(vg)
+        return true
+    end
+
+    return false
+end
+
 --- 显示放大地图
 function MapOverlay.Show()
     MapOverlay.visible = true
@@ -151,14 +210,23 @@ function MapOverlay.Draw(vg, screenW, screenH)
                 nvgText(vg, cx + cs / 2, cy + cs / 2, "E")
             end
 
+            local specialIcon = false
+            if not cell.exitId then
+                specialIcon = drawRoomIcon(vg, cell, cx, cy, cs)
+            end
+
             -- 数字
             if cell.state == "number" and cell.adjacent then
-                local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
-                nvgFontFace(vg, "sans")
-                nvgFontSize(vg, cs * 0.6)
-                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
-                nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+                if specialIcon or cell.exitId then
+                    drawNumberBadge(vg, cx, cy, cs, cell.adjacent)
+                else
+                    local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
+                    nvgFontFace(vg, "sans")
+                    nvgFontSize(vg, cs * 0.6)
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                    nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
+                    nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+                end
             end
 
             -- 旗标

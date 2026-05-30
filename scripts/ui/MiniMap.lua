@@ -62,6 +62,73 @@ function MiniMap.ComputeLayout(fieldWidth, fieldHeight)
     MiniMap.totalH = MiniMap.cellSize * fieldHeight + MiniMap.padding * 2
 end
 
+local function drawNumberBadge(vg, cx, cy, cs, adjacent)
+    if not adjacent or adjacent <= 0 or cs < 8 then return end
+    local col = NUMBER_COLORS[adjacent] or { 220, 220, 220 }
+    local badgeSize = math.max(6, cs * 0.55)
+    local bx = cx + cs - badgeSize - 1
+    local by = cy + cs - badgeSize - 1
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, bx, by, badgeSize, badgeSize, 2)
+    nvgFillColor(vg, nvgRGBA(5, 8, 14, 210))
+    nvgFill(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, math.max(6, cs * 0.48))
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
+    nvgText(vg, bx + badgeSize / 2, by + badgeSize / 2, tostring(adjacent))
+end
+
+local function drawRoomIcon(vg, cell, cx, cy, cs)
+    if not cell.revealed or not cell.roomType or cs < 6 then return false end
+
+    if cell.roomType == "chest" then
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, cx + cs * 0.18, cy + cs * 0.25, cs * 0.64, cs * 0.48, 2)
+        nvgFillColor(vg, nvgRGBA(255, 200, 50, 240))
+        nvgFill(vg)
+        nvgBeginPath(vg)
+        nvgRect(vg, cx + cs * 0.45, cy + cs * 0.25, cs * 0.1, cs * 0.48)
+        nvgFillColor(vg, nvgRGBA(120, 80, 20, 180))
+        nvgFill(vg)
+        return true
+    elseif cell.roomType == "monster" then
+        local mcx = cx + cs / 2
+        local mcy = cy + cs / 2
+        local mr = cs * 0.32
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, mcx, mcy - mr)
+        nvgLineTo(vg, mcx + mr, mcy)
+        nvgLineTo(vg, mcx, mcy + mr)
+        nvgLineTo(vg, mcx - mr, mcy)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBA(255, 60, 60, 240))
+        nvgFill(vg)
+        return true
+    elseif cell.roomType == "mine" and cell.state == "mine" then
+        local tcx = cx + cs / 2
+        local tcy = cy + cs * 0.25
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, tcx, tcy)
+        nvgLineTo(vg, tcx + cs * 0.32, cy + cs * 0.78)
+        nvgLineTo(vg, tcx - cs * 0.32, cy + cs * 0.78)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBA(255, 140, 30, 240))
+        nvgFill(vg)
+        return true
+    elseif cell.roomType == "event" then
+        nvgBeginPath(vg)
+        nvgCircle(vg, cx + cs / 2, cy + cs / 2, cs * 0.3)
+        nvgFillColor(vg, nvgRGBA(60, 200, 210, 240))
+        nvgFill(vg)
+        return true
+    end
+
+    return false
+end
+
 --- 绘制小地图
 ---@param vg userdata NanoVG context
 ---@param visibleMap table Minefield:GetVisibleMap() 返回的二维数组
@@ -127,51 +194,8 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 nvgStroke(vg)
             end
 
-            -- 特殊房型图标(揭示后才显示)
-            local drawnIcon = false
-            if cell.revealed and cell.roomType and cs >= 6 then
-                if cell.roomType == "chest" then
-                    -- 宝箱图标:金色方块
-                    nvgBeginPath(vg)
-                    nvgRect(vg, cx + cs * 0.2, cy + cs * 0.25, cs * 0.6, cs * 0.5)
-                    nvgFillColor(vg, nvgRGBA(255, 200, 50, 240))
-                    nvgFill(vg)
-                    drawnIcon = true
-                elseif cell.roomType == "monster" then
-                    -- 怪物图标:红色菱形
-                    local mcx = cx + cs / 2
-                    local mcy = cy + cs / 2
-                    local mr = cs * 0.3
-                    nvgBeginPath(vg)
-                    nvgMoveTo(vg, mcx, mcy - mr)
-                    nvgLineTo(vg, mcx + mr, mcy)
-                    nvgLineTo(vg, mcx, mcy + mr)
-                    nvgLineTo(vg, mcx - mr, mcy)
-                    nvgClosePath(vg)
-                    nvgFillColor(vg, nvgRGBA(255, 60, 60, 240))
-                    nvgFill(vg)
-                    drawnIcon = true
-                elseif cell.roomType == "mine" and cell.state == "mine" then
-                    -- 已触发雷:橙色三角警示
-                    local tcx = cx + cs / 2
-                    local tcy = cy + cs * 0.3
-                    nvgBeginPath(vg)
-                    nvgMoveTo(vg, tcx, tcy)
-                    nvgLineTo(vg, tcx + cs * 0.3, cy + cs * 0.8)
-                    nvgLineTo(vg, tcx - cs * 0.3, cy + cs * 0.8)
-                    nvgClosePath(vg)
-                    nvgFillColor(vg, nvgRGBA(255, 140, 30, 240))
-                    nvgFill(vg)
-                    drawnIcon = true
-                elseif cell.roomType == "event" then
-                    -- 事件房:蓝绿色圆点(旅商)
-                    nvgBeginPath(vg)
-                    nvgCircle(vg, cx + cs / 2, cy + cs / 2, cs * 0.3)
-                    nvgFillColor(vg, nvgRGBA(60, 200, 210, 240))
-                    nvgFill(vg)
-                    drawnIcon = true
-                end
-            end
+            -- 特殊房型图标（揭示后才显示）。特殊房也保留雷数字角标。
+            local drawnIcon = drawRoomIcon(vg, cell, cx, cy, cs)
 
             -- 数字(如果格子够大且没有图标覆盖)
             if not drawnIcon and cell.state == "number" and cell.adjacent and cs >= 8 then
@@ -181,6 +205,8 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
                 nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
                 nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+            elseif drawnIcon and cell.state == "number" then
+                drawNumberBadge(vg, cx, cy, cs, cell.adjacent)
             end
 
             -- 旗标图标
