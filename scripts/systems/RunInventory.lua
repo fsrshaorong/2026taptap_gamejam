@@ -169,6 +169,10 @@ function RunInventory.RecordCombat(result)
     if not result or not result.fought then return end
     RunInventory.stats.monstersDefeated = RunInventory.stats.monstersDefeated + 1
     RunInventory.stats.combatDamage = RunInventory.stats.combatDamage + (result.damage or 0)
+    if result.reward and not result.dead then
+        RunInventory.gold = RunInventory.gold + (result.reward.gold or 0)
+        RunInventory.parts = RunInventory.parts + (result.reward.parts or 0)
+    end
 end
 
 function RunInventory.RecordTrade()

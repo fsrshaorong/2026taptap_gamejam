@@ -687,6 +687,10 @@ function DungeonRoom.Draw(vg, w, h, context)
                 nvgFillColor(vg, nvgRGBA(255, 220, 120, 255))
                 local remain = math.max(0, math.ceil(context.monsterFleeTimer or 0))
                 nvgText(vg, enemyX, enemyY + er + 56, "逃跑窗口: " .. remain .. "s")
+            else
+                nvgFontSize(vg, 13)
+                nvgFillColor(vg, nvgRGBA(255, 220, 120, 255))
+                nvgText(vg, enemyX, enemyY + er + 56, "F 清理 / 直接离开")
             end
         else
             -- 已击败的敌人:灰色 + X 标记
@@ -860,7 +864,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgFontSize(vg, 16)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBA(255, 80, 80, 230))
-        nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "怪物房")
+        nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "异常体区域")
     end
 
     -- 事件房 NPC 绘制

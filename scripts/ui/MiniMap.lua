@@ -145,6 +145,16 @@ local function drawRoomIcon(vg, cell, cx, cy, cs)
         nvgFill(vg)
         return true
     elseif cell.roomType == "monster" then
+        if cell.monsterCleared then
+            if drawIcon(vg, iconImages.cleared, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
+                return true
+            end
+            nvgBeginPath(vg)
+            nvgCircle(vg, cx + cs / 2, cy + cs / 2, cs * 0.32)
+            nvgFillColor(vg, nvgRGBA(65, 190, 120, 240))
+            nvgFill(vg)
+            return true
+        end
         if drawIcon(vg, iconImages.monster, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
             return true
         end

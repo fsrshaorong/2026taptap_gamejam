@@ -21,6 +21,9 @@ local CONFIG = {
     enemyPowerMax = 20,          -- 敌人最高战斗力
     powerUpChance = 0.20,        -- 搜索后获得战斗力加成概率
     powerUpAmount = 3,           -- 战斗力加成数值
+    monsterRewardBaseGold = 12,  -- 清理异常体基础奖励
+    monsterRewardPowerGold = 1,  -- 按异常体强度追加金币
+    monsterRewardPartPower = 15, -- 高威胁异常体额外掉落零件
 }
 
 local function cellKey(x, y)
@@ -152,6 +155,9 @@ function Combat.FightEnemy(x, y)
         playerWin = false
     end
 
+    local rewardGold = CONFIG.monsterRewardBaseGold + math.floor(enemyPower * CONFIG.monsterRewardPowerGold)
+    local rewardParts = enemyPower >= CONFIG.monsterRewardPartPower and 1 or 0
+
     return {
         fought = true,
         enemy = enemy,
@@ -162,6 +168,10 @@ function Combat.FightEnemy(x, y)
         playerPower = playerPower,
         enemyPower = enemyPower,
         cleared = true,
+        reward = {
+            gold = rewardGold,
+            parts = rewardParts,
+        },
     }
 end
 
