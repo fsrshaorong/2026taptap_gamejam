@@ -140,12 +140,14 @@ function Combat.FightEnemy(x, y)
         return { fought = false }
     end
 
+    local playerPower = Combat.power
+    local enemyPower = enemy.power
     enemy.alive = false
     local damage = 0
     local playerWin = true
 
-    if Combat.power < enemy.power then
-        damage = enemy.power - Combat.power
+    if playerPower < enemyPower then
+        damage = enemyPower - playerPower
         Combat.hp = math.max(0, Combat.hp - damage)
         playerWin = false
     end
@@ -157,6 +159,9 @@ function Combat.FightEnemy(x, y)
         hp = Combat.hp,
         dead = Combat.hp <= 0,
         playerWin = playerWin,
+        playerPower = playerPower,
+        enemyPower = enemyPower,
+        cleared = true,
     }
 end
 

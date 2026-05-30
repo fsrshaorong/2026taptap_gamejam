@@ -733,7 +733,7 @@ function StartBattle(enemy, cx, cy)
     battleState.active = true
     battleState.phase = "vs"
     battleState.timer = BATTLE_VS_DURATION
-    battleState.enemy = { name = enemy.name, power = enemy.power }
+    battleState.enemy = { name = enemy.name, power = enemy.power, playerPower = Combat.power }
     battleState.result = nil
     battleState.cellX = cx
     battleState.cellY = cy
@@ -756,12 +756,22 @@ function FinishBattle()
 
     if not result or not result.fought then return end
 
+    local playerPower = result.playerPower or enemy.playerPower or Combat.power
+    local enemyPower = result.enemyPower or enemy.power
+
     if result.dead then
         ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败!")
     elseif result.playerWin then
         ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")!你毫发无损.")
     else
         ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. result.damage .. " HP (剩余 " .. Combat.hp .. ")")
+    end
+    if not result.dead then
+        if result.playerWin then
+            ShowMessage("击败 " .. enemy.name .. "! 房间已清理 (我方" .. playerPower .. " vs 敌方" .. enemyPower .. ")")
+        else
+            ShowMessage("击败 " .. enemy.name .. ", 房间已清理, 代价 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
+        end
     end
     UpdateHUD()
 end
@@ -1271,6 +1281,8 @@ function DrawBattleOverlay(vg, w, h)
 
         local progress = 1.0 - (battleState.timer / BATTLE_RESULT_DURATION)
         local scaleIn = math.min(1.0, progress * 4.0)
+        local playerPower = result.playerPower or enemy.playerPower or combat.power
+        local enemyPower = result.enemyPower or enemy.power
 
         if result.playerWin then
             -- 胜利
@@ -1308,6 +1320,14 @@ function DrawBattleOverlay(vg, w, h)
         end
 
         -- 底部提示
+        local statusText = result.dead
+            and ("我方 " .. playerPower .. " / 敌方 " .. enemyPower .. "  战败")
+            or ("我方 " .. playerPower .. " / 敌方 " .. enemyPower .. "  房间已清理")
+        nvgFontSize(vg, 12)
+        nvgFillColor(vg, nvgRGBA(210, 220, 240, 220))
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgText(vg, cx, cy + 42, statusText)
+
         local pulse = math.abs(math.sin(progress * math.pi * 2)) * 0.4 + 0.6
         nvgFontSize(vg, 11)
         nvgFillColor(vg, nvgRGBA(180, 180, 200, math.floor(150 + 80 * pulse)))
@@ -1381,6 +1401,8 @@ function HandleNanoVGRender(eventType, eventData)
             searchState = GetSearchState(),
             hasEnemy = enemy ~= nil,
             enemyAlive = enemy and enemy.alive or false,
+            enemyPower = enemy and enemy.power or nil,
+            playerPower = combatStatus.power,
             hasExit = cell and cell.exitId ~= nil,
             canTrade = roomType == "event" and not eventTraded and invTotals.parts > 0,
             tradeUnavailable = roomType == "event" and not eventTraded and invTotals.parts <= 0,

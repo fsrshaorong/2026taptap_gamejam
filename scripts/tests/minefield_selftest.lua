@@ -9,6 +9,7 @@ local Minefield = require("systems.Minefield")
 local ExtractionRun = require("systems.ExtractionRun")
 local Protocol = require("systems.Protocol")
 local RunInventory = require("systems.RunInventory")
+local Combat = require("systems.Combat")
 
 local function assertEq(actual, expected, message)
     if actual ~= expected then
@@ -365,6 +366,36 @@ local function testJudgeModeManualMap()
     assertAdjacency(field)
 end
 
+local function testCombatResultSignals()
+    Combat.Reset()
+    Combat.power = 12
+    Combat.hp = 100
+    Combat.enemies["1,1"] = { name = "test enemy", power = 9, alive = true }
+
+    local win = Combat.FightEnemy(1, 1)
+    assertTrue(win.fought, "combat should fight alive enemy")
+    assertTrue(win.playerWin, "stronger player should win cleanly")
+    assertTrue(win.cleared, "combat result should mark room cleared")
+    assertEq(win.playerPower, 12, "combat result should include player power")
+    assertEq(win.enemyPower, 9, "combat result should include enemy power")
+    assertEq(win.damage, 0, "winning combat should not cost hp")
+    assertTrue(not Combat.enemies["1,1"].alive, "enemy should be cleared after fight")
+
+    Combat.Reset()
+    Combat.power = 6
+    Combat.hp = 100
+    Combat.enemies["2,2"] = { name = "test brute", power = 14, alive = true }
+
+    local costly = Combat.FightEnemy(2, 2)
+    assertTrue(costly.fought, "combat should fight stronger enemy")
+    assertTrue(not costly.playerWin, "weaker player should pay hp cost")
+    assertTrue(costly.cleared, "stronger enemy should still be cleared")
+    assertEq(costly.playerPower, 6, "costly combat should include player power")
+    assertEq(costly.enemyPower, 14, "costly combat should include enemy power")
+    assertEq(costly.damage, 8, "combat damage should be power gap")
+    assertEq(costly.hp, 92, "combat hp should reflect damage")
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "normal mode random generation", fn = testNormalModeRandomGeneration },
@@ -376,6 +407,7 @@ local tests = {
     { name = "protocol progression", fn = testProtocolProgression },
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
+    { name = "combat result signals", fn = testCombatResultSignals },
 }
 
 for _, test in ipairs(tests) do

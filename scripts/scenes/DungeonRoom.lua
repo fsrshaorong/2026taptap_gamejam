@@ -558,11 +558,20 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFillColor(vg, nvgRGBA(255, 180, 100, 230))
             nvgText(vg, enemyX, enemyY + er + 24, "战力: " .. enemy.power)
 
+            if context.combat and context.combat.power then
+                local delta = context.combat.power - enemy.power
+                local riskText = delta >= 0 and ("优势 +" .. delta) or ("危险 " .. delta)
+                local riskColor = delta >= 0 and { 90, 230, 120 } or { 255, 90, 70 }
+                nvgFontSize(vg, 12)
+                nvgFillColor(vg, nvgRGBA(riskColor[1], riskColor[2], riskColor[3], 235))
+                nvgText(vg, enemyX, enemyY + er + 40, riskText)
+            end
+
             if context.monsterFleeActive then
                 nvgFontSize(vg, 13)
                 nvgFillColor(vg, nvgRGBA(255, 220, 120, 255))
                 local remain = math.max(0, math.ceil(context.monsterFleeTimer or 0))
-                nvgText(vg, enemyX, enemyY + er + 42, "逃跑窗口: " .. remain .. "s")
+                nvgText(vg, enemyX, enemyY + er + 56, "逃跑窗口: " .. remain .. "s")
             end
         else
             -- 已击败的敌人:灰色 + X 标记
@@ -591,6 +600,10 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
             nvgFillColor(vg, nvgRGBA(140, 130, 130, 180))
             nvgText(vg, enemyX, enemyY + er * 0.8 + 6, "已击败")
+
+            nvgFontSize(vg, 12)
+            nvgFillColor(vg, nvgRGBA(120, 220, 150, 210))
+            nvgText(vg, enemyX, enemyY + er * 0.8 + 24, "房间已清理")
         end
     end
 

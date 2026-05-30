@@ -382,7 +382,13 @@ function HUD.GetInteractHint(context)
         return "[E] 启动撤离信标"
     end
     if context.hasEnemy and context.enemyAlive then
+        if context.playerPower and context.enemyPower then
+            return "[F] 战斗  我方 " .. context.playerPower .. " / 敌方 " .. context.enemyPower
+        end
         return "[F] 战斗  /  离开房间"
+    end
+    if context.hasEnemy then
+        return "怪物已清理"
     end
     if context.canTrade then
         return "[T] 交易: 1零件换金币"
