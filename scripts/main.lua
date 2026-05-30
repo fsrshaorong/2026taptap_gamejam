@@ -857,6 +857,9 @@ function SearchCurrentRoom()
     end
 
     local reward = result.reward
+    if reward.isChest then
+        DungeonRoom.TriggerChestOpen()
+    end
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
@@ -907,6 +910,7 @@ function DoExtract()
     end
     -- 弹出确认面板
     phase = PHASE.CONFIRM_EXTRACT
+    DungeonRoom.TriggerExitPulse()
     local totals = RunInventory.GetTotals()
     local protocol = Protocol.GetStatus()
     local reward = RunInventory.GetExtractionReward()
@@ -991,6 +995,7 @@ function DoTrade()
     RunInventory.parts = RunInventory.parts - 1
     RunInventory.gold = RunInventory.gold + tradePrice
     tradedRooms[key] = true
+    DungeonRoom.TriggerTradePulse()
     ShowMessage("交易成功！用 1 零件换了 " .. tradePrice .. " 金币。")
     UpdateHUD()
 end
@@ -1204,6 +1209,8 @@ function HandleNanoVGRender(eventType, eventData)
             enemy = Combat.GetEnemyAny(p.x, p.y),
             combat = Combat.GetStatus(),
             eventTraded = tradedRooms[tradeKey] or false,
+            monsterFleeActive = monsterFleeActive,
+            monsterFleeTimer = monsterFleeTimer,
         })
 
         -- 绘制小地图

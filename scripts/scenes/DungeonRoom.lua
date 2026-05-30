@@ -24,6 +24,13 @@ local playerPos = { x = 0.5, y = 0.5 }
 -- 踩雷红闪效果
 local mineFlashTimer = 0
 local MINE_FLASH_DURATION = 0.6
+local chestOpenTimer = 0
+local tradePulseTimer = 0
+local exitPulseTimer = 0
+local roomTime = 0
+local CHEST_OPEN_DURATION = 0.9
+local TRADE_PULSE_DURATION = 0.8
+local EXIT_PULSE_DURATION = 0.8
 
 function DungeonRoom.ResetPlayer()
     playerPos.x = 0.5
@@ -35,11 +42,36 @@ function DungeonRoom.TriggerMineFlash()
     mineFlashTimer = MINE_FLASH_DURATION
 end
 
+function DungeonRoom.TriggerChestOpen()
+    chestOpenTimer = CHEST_OPEN_DURATION
+end
+
+function DungeonRoom.TriggerTradePulse()
+    tradePulseTimer = TRADE_PULSE_DURATION
+end
+
+function DungeonRoom.TriggerExitPulse()
+    exitPulseTimer = EXIT_PULSE_DURATION
+end
+
 --- 更新红闪计时器（在 HandleUpdate 中调用）
 function DungeonRoom.Update(dt)
+    roomTime = roomTime + dt
     if mineFlashTimer > 0 then
         mineFlashTimer = mineFlashTimer - dt
         if mineFlashTimer < 0 then mineFlashTimer = 0 end
+    end
+    if chestOpenTimer > 0 then
+        chestOpenTimer = chestOpenTimer - dt
+        if chestOpenTimer < 0 then chestOpenTimer = 0 end
+    end
+    if tradePulseTimer > 0 then
+        tradePulseTimer = tradePulseTimer - dt
+        if tradePulseTimer < 0 then tradePulseTimer = 0 end
+    end
+    if exitPulseTimer > 0 then
+        exitPulseTimer = exitPulseTimer - dt
+        if exitPulseTimer < 0 then exitPulseTimer = 0 end
     end
 end
 
@@ -165,8 +197,21 @@ local function drawSearchPoint(vg, layout, searchState)
     end
 
     local rect = DungeonRoom.GetSearchPointRect(layout)
+    local flash = chestOpenTimer / CHEST_OPEN_DURATION
     local bodyColor = searchState.searched and nvgRGBA(75, 65, 55, 180) or nvgRGBA(145, 95, 45, 240)
     local lidColor = searchState.searched and nvgRGBA(95, 85, 75, 180) or nvgRGBA(190, 135, 65, 255)
+    if flash > 0 then
+        bodyColor = nvgRGBA(185, 120, 45, 240)
+        lidColor = nvgRGBA(255, 205, 80, 255)
+    end
+
+    if flash > 0 then
+        local glow = math.floor(150 * flash)
+        nvgBeginPath(vg)
+        nvgCircle(vg, rect.x + rect.w / 2, rect.y + rect.h / 2, 42 + 28 * (1 - flash))
+        nvgFillColor(vg, nvgRGBA(255, 205, 70, glow))
+        nvgFill(vg)
+    end
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, rect.x, rect.y + rect.h * 0.25, rect.w, rect.h * 0.75, 4)
@@ -177,7 +222,8 @@ local function drawSearchPoint(vg, layout, searchState)
     nvgStroke(vg)
 
     nvgBeginPath(vg)
-    nvgRoundedRect(vg, rect.x + 4, rect.y, rect.w - 8, rect.h * 0.35, 4)
+    local lidLift = flash * 10
+    nvgRoundedRect(vg, rect.x + 4, rect.y - lidLift, rect.w - 8, rect.h * 0.35, 4)
     nvgFillColor(vg, lidColor)
     nvgFill(vg)
 
@@ -185,6 +231,23 @@ local function drawSearchPoint(vg, layout, searchState)
     nvgRect(vg, rect.x + rect.w * 0.45, rect.y + rect.h * 0.25, rect.w * 0.1, rect.h * 0.7)
     nvgFillColor(vg, nvgRGBA(210, 180, 85, searchState.searched and 120 or 240))
     nvgFill(vg)
+
+    if flash > 0 then
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 16)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(255, 235, 120, math.floor(255 * flash)))
+        nvgText(vg, rect.x + rect.w / 2, rect.y - 20 - 18 * (1 - flash), "+")
+
+        for i = -1, 1 do
+            local coinX = rect.x + rect.w / 2 + i * 18
+            local coinY = rect.y + 8 - (1 - flash) * (18 + math.abs(i) * 8)
+            nvgBeginPath(vg)
+            nvgCircle(vg, coinX, coinY, 5)
+            nvgFillColor(vg, nvgRGBA(255, 210, 70, math.floor(230 * flash)))
+            nvgFill(vg)
+        end
+    end
 
     nvgFontFace(vg, "sans")
     nvgFontSize(vg, 12)
@@ -203,14 +266,32 @@ local function drawExitDevice(vg, layout, cell)
 
     local cx = layout.x + layout.w / 2
     local y = layout.y + 54
+    local idlePulse = (math.sin(roomTime * 3.0) + 1) * 0.5
+    local activePulse = exitPulseTimer / EXIT_PULSE_DURATION
+    local glowAlpha = math.floor(45 + idlePulse * 45 + activePulse * 120)
+    local glowRadius = 56 + idlePulse * 10 + activePulse * 24
+
+    nvgBeginPath(vg)
+    nvgCircle(vg, cx, y, glowRadius)
+    nvgFillColor(vg, nvgRGBA(60, 235, 140, glowAlpha))
+    nvgFill(vg)
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, cx - 58, y - 18, 116, 36, 6)
-    nvgFillColor(vg, nvgRGBA(25, 95, 65, 230))
+    nvgFillColor(vg, nvgRGBA(25, 95 + math.floor(idlePulse * 20), 65, 230))
     nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(100, 255, 140, 220))
-    nvgStrokeWidth(vg, 2)
+    nvgStrokeColor(vg, nvgRGBA(100, 255, 140, 220 + math.floor(activePulse * 35)))
+    nvgStrokeWidth(vg, 2 + activePulse * 2)
     nvgStroke(vg)
+
+    for i = 0, 2 do
+        local dotX = cx - 30 + i * 30
+        local dotAlpha = 120 + math.floor(100 * ((math.sin(roomTime * 5 + i) + 1) * 0.5))
+        nvgBeginPath(vg)
+        nvgCircle(vg, dotX, y + 22, 3)
+        nvgFillColor(vg, nvgRGBA(120, 255, 170, dotAlpha))
+        nvgFill(vg)
+    end
 
     nvgFontFace(vg, "sans")
     nvgFontSize(vg, 14)
@@ -302,6 +383,15 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     drawRoomGrid(vg, layout)
 
+    if context.monsterFleeActive then
+        local pulse = (math.sin(roomTime * 10) + 1) * 0.5
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, layout.x + 5, layout.y + 5, layout.w - 10, layout.h - 10, 8)
+        nvgStrokeColor(vg, nvgRGBA(255, 70, 60, 130 + math.floor(90 * pulse)))
+        nvgStrokeWidth(vg, 3)
+        nvgStroke(vg)
+    end
+
     for _, door in ipairs(DungeonRoom.GetDoors(layout, p, minefield)) do
         local nx = p.x + door.dx
         local ny = p.y + door.dy
@@ -335,6 +425,13 @@ function DungeonRoom.Draw(vg, w, h, context)
         local er = CONFIG.enemyRadius
 
         if enemy.alive then
+            local threatPulse = (math.sin(roomTime * 6) + 1) * 0.5
+            local fleeAlpha = context.monsterFleeActive and 110 or 45
+            nvgBeginPath(vg)
+            nvgCircle(vg, enemyX, enemyY, er + 18 + threatPulse * 8)
+            nvgFillColor(vg, nvgRGBA(210, 30, 40, fleeAlpha))
+            nvgFill(vg)
+
             -- 活着的敌人：红色大圆 + 角 + 眼睛
             nvgBeginPath(vg)
             nvgCircle(vg, enemyX, enemyY, er)
@@ -385,6 +482,13 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFontSize(vg, 12)
             nvgFillColor(vg, nvgRGBA(255, 180, 100, 230))
             nvgText(vg, enemyX, enemyY + er + 24, "战力: " .. enemy.power)
+
+            if context.monsterFleeActive then
+                nvgFontSize(vg, 13)
+                nvgFillColor(vg, nvgRGBA(255, 220, 120, 255))
+                local remain = math.max(0, math.ceil(context.monsterFleeTimer or 0))
+                nvgText(vg, enemyX, enemyY + er + 42, "逃跑窗口: " .. remain .. "s")
+            end
         else
             -- 已击败的敌人：灰色 + X 标记
             nvgBeginPath(vg)
@@ -484,6 +588,18 @@ function DungeonRoom.Draw(vg, w, h, context)
     if roomType == "mine" then
         local cx = layout.x + layout.w / 2
         local cy = layout.y + layout.h * 0.38
+        local flash = mineFlashTimer / MINE_FLASH_DURATION
+
+        if flash > 0 then
+            for i = 1, 2 do
+                local radius = 28 + (1 - flash) * (34 + i * 18)
+                nvgBeginPath(vg)
+                nvgCircle(vg, cx, cy, radius)
+                nvgStrokeColor(vg, nvgRGBA(255, 95, 60, math.floor(180 * flash / i)))
+                nvgStrokeWidth(vg, 3)
+                nvgStroke(vg)
+            end
+        end
 
         -- 地雷图标（大圆 + 刺）
         nvgBeginPath(vg)
@@ -501,6 +617,21 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgMoveTo(vg, cx - 26, cy)
         nvgLineTo(vg, cx + 26, cy)
         nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 180))
+        nvgStrokeWidth(vg, 2)
+        nvgStroke(vg)
+
+        -- 地面裂纹
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, cx - 42, cy + 18)
+        nvgLineTo(vg, cx - 18, cy + 9)
+        nvgLineTo(vg, cx - 4, cy + 22)
+        nvgMoveTo(vg, cx + 12, cy + 18)
+        nvgLineTo(vg, cx + 34, cy + 8)
+        nvgLineTo(vg, cx + 48, cy + 24)
+        nvgMoveTo(vg, cx - 8, cy - 26)
+        nvgLineTo(vg, cx + 6, cy - 42)
+        nvgLineTo(vg, cx + 18, cy - 30)
+        nvgStrokeColor(vg, nvgRGBA(190, 75, 60, 150))
         nvgStrokeWidth(vg, 2)
         nvgStroke(vg)
 
@@ -539,6 +670,23 @@ function DungeonRoom.Draw(vg, w, h, context)
         local npcX = layout.x + layout.w * 0.5
         local npcY = layout.y + layout.h * 0.35
         local traded = context.eventTraded
+        local tradeFlash = tradePulseTimer / TRADE_PULSE_DURATION
+
+        if tradeFlash > 0 then
+            nvgBeginPath(vg)
+            nvgCircle(vg, npcX, npcY, 44 + 24 * (1 - tradeFlash))
+            nvgFillColor(vg, nvgRGBA(70, 220, 230, math.floor(120 * tradeFlash)))
+            nvgFill(vg)
+        end
+
+        -- 小摊位
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, npcX - 44, npcY + 42, 88, 20, 4)
+        nvgFillColor(vg, traded and nvgRGBA(45, 55, 55, 170) or nvgRGBA(55, 115, 120, 220))
+        nvgFill(vg)
+        nvgStrokeColor(vg, traded and nvgRGBA(80, 95, 95, 130) or nvgRGBA(100, 220, 210, 190))
+        nvgStrokeWidth(vg, 1.5)
+        nvgStroke(vg)
 
         -- NPC 身体（蓝绿色圆形）
         nvgBeginPath(vg)
@@ -578,6 +726,14 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFontSize(vg, 12)
             nvgFillColor(vg, nvgRGBA(180, 220, 220, 200))
             nvgText(vg, npcX, npcY + 42, "按 T 交易")
+        end
+
+        if tradeFlash > 0 then
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, 16)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
+            nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "+金")
         end
     end
 
