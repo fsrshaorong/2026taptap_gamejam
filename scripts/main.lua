@@ -1152,6 +1152,7 @@ function GetActiveTalentEffects()
 end
 
 function StartNormalRun()
+    Tutorial.Reset()
     StartNewGame({
         mode = "normal",
         useLoadout = true,
