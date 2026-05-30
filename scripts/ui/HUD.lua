@@ -15,9 +15,9 @@ local HUD = {}
 
 local LAYOUT = {
     -- 左侧信息栏
-    sidebarWidthRatio = 0.30,  -- 屏幕宽度 30%
-    sidebarMinW = 240,
-    sidebarMaxW = 400,
+    sidebarWidthRatio = 0.35,  -- 屏幕宽度 35%
+    sidebarMinW = 280,
+    sidebarMaxW = 460,
     sidebarPadding = 12,
 
     -- 底部栏
@@ -45,7 +45,6 @@ local LAYOUT = {
 function HUD.ComputeLayout(w, h)
     -- 左侧栏宽度
     local sidebarW = math.floor(w * LAYOUT.sidebarWidthRatio)
-    sidebarW = math.max(LAYOUT.sidebarMinW, math.min(LAYOUT.sidebarMaxW, sidebarW))
 
     local bottomH = LAYOUT.bottomBarH
 
@@ -155,15 +154,9 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, "区域扫描图")
     curY = curY + 24
 
-    -- 小地图(嵌入左侧栏)
+    -- 小地图(嵌入左侧栏, 随侧边栏宽度缩放)
     if context.visibleMap then
         local mapW = sb.w - pad * 2
-        -- 重新计算小地图尺寸适配侧边栏
-        local maxDim = math.max(context.fieldWidth or 15, context.fieldHeight or 15)
-        local cellSize = math.floor(mapW / maxDim)
-        if cellSize < 4 then cellSize = 4 end
-        local actualMapW = cellSize * (context.fieldWidth or 15)
-        local actualMapH = cellSize * (context.fieldHeight or 15)
 
         -- 临时覆盖 MiniMap 参数
         local oldMapX = MiniMap.mapX
@@ -182,7 +175,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         MiniMap.mapY = oldMapY
         MiniMap.maxSize = oldMaxSize
 
-        curY = curY + actualMapH + 8
+        curY = curY + MiniMap.totalH + 8
     end
 
     -- 图例
