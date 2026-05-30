@@ -22,6 +22,10 @@ local function newStats()
         monstersDefeated = 0,
         combatDamage = 0,
         trades = 0,
+        eventsCompleted = 0,
+        diceEvents = 0,
+        altarEvents = 0,
+        trapEvents = 0,
     }
 end
 
@@ -179,6 +183,19 @@ function RunInventory.RecordTrade()
     RunInventory.stats.trades = RunInventory.stats.trades + 1
 end
 
+function RunInventory.RecordEvent(eventType)
+    RunInventory.stats.eventsCompleted = RunInventory.stats.eventsCompleted + 1
+    if eventType == "trader" then
+        RunInventory.RecordTrade()
+    elseif eventType == "dice" then
+        RunInventory.stats.diceEvents = RunInventory.stats.diceEvents + 1
+    elseif eventType == "altar" then
+        RunInventory.stats.altarEvents = RunInventory.stats.altarEvents + 1
+    elseif eventType == "trap" then
+        RunInventory.stats.trapEvents = RunInventory.stats.trapEvents + 1
+    end
+end
+
 function RunInventory.GetRunStats(run)
     return {
         moves = RunInventory.stats.moves,
@@ -189,6 +206,10 @@ function RunInventory.GetRunStats(run)
         monstersDefeated = RunInventory.stats.monstersDefeated,
         combatDamage = RunInventory.stats.combatDamage,
         trades = RunInventory.stats.trades,
+        eventsCompleted = RunInventory.stats.eventsCompleted,
+        diceEvents = RunInventory.stats.diceEvents,
+        altarEvents = RunInventory.stats.altarEvents,
+        trapEvents = RunInventory.stats.trapEvents,
         turns = run and run.turn or 0,
     }
 end

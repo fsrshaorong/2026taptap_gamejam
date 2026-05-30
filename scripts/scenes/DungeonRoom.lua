@@ -1028,10 +1028,10 @@ function DungeonRoom.Draw(vg, w, h, context)
 
         -- 事件类型视觉配置
         local evtVisual = {
-            trader = { bodyColor = nvgRGBA(40, 140, 150, 230), hatColor = nvgRGBA(60, 180, 190, 240), accentColor = nvgRGBA(80, 220, 230, 255), label = "旅商", hint = "T:零件换金币" },
-            dice   = { bodyColor = nvgRGBA(180, 120, 40, 230), hatColor = nvgRGBA(220, 160, 50, 240), accentColor = nvgRGBA(255, 200, 80, 255), label = "赌徒", hint = "T:赌10金(4+赢)" },
-            altar  = { bodyColor = nvgRGBA(120, 50, 150, 230), hatColor = nvgRGBA(160, 70, 200, 240), accentColor = nvgRGBA(200, 130, 255, 255), label = "祭坛", hint = "T:1HP换资源" },
-            trap   = { bodyColor = nvgRGBA(150, 80, 40, 230), hatColor = nvgRGBA(190, 100, 50, 240), accentColor = nvgRGBA(240, 150, 70, 255), label = "机关", hint = "T:拆解(需战力)" },
+            trader = { bodyColor = nvgRGBA(40, 140, 150, 230), hatColor = nvgRGBA(60, 180, 190, 240), accentColor = nvgRGBA(80, 220, 230, 255), label = "旅商", hint = "T:打开交易面板" },
+            dice   = { bodyColor = nvgRGBA(180, 120, 40, 230), hatColor = nvgRGBA(220, 160, 50, 240), accentColor = nvgRGBA(255, 200, 80, 255), label = "赌徒", hint = "T:打开下注面板" },
+            altar  = { bodyColor = nvgRGBA(120, 50, 150, 230), hatColor = nvgRGBA(160, 70, 200, 240), accentColor = nvgRGBA(200, 130, 255, 255), label = "祭坛", hint = "T:打开祭坛面板" },
+            trap   = { bodyColor = nvgRGBA(150, 80, 40, 230), hatColor = nvgRGBA(190, 100, 50, 240), accentColor = nvgRGBA(240, 150, 70, 255), label = "机关", hint = "T:打开机关面板" },
         }
         local vis = evtVisual[eventType] or evtVisual.trader
 

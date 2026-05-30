@@ -695,6 +695,43 @@ local function testEventExecTrader()
     -- Already completed
     local r3 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
     assert(not r3.ok, "completed event should fail")
+
+    local state = EventSystem.GetEventState(10, 10)
+    assertEq(state.optionState.completedOption, "sell_parts", "completed trader should remember selected option")
+end
+
+local function testEventTraderOptionsAndAdapter()
+    EventSystem.Reset(51)
+    EventSystem.assignedEvents["11,11"] = "trader"
+
+    local tradables = EventSystem.getTradableItems({ parts = 3 })
+    assertEq(tradables[1].id, "parts", "virtual tradable should expose parts id")
+    assertEq(tradables[1].count, 3, "virtual tradable should expose current parts")
+    assertEq(EventSystem.getTradeDisplayName("parts"), "异常回收物", "parts display name mismatch")
+
+    local menu = EventSystem.GetOptions(11, 11, { gold = 0, parts = 0, hp = 100, maxHp = 100, tradePrice = 15, power = 10 })
+    assertEq(#menu.options, 5, "trader should expose five options")
+    assertTrue(menu.options[1].enabled == false, "sell parts should be disabled without parts")
+    assertEq(menu.options[1].disabledReason, "异常回收物不足", "sell disabled reason mismatch")
+    assertTrue(menu.options[2].enabled == false, "heal should be disabled at full hp")
+    assertEq(menu.options[2].disabledReason, "生命已满", "heal full hp reason mismatch")
+
+    local ok, reason = EventSystem.canExecuteTrade(menu.options[1], menu.state)
+    assertTrue(not ok, "canExecuteTrade should reject disabled option")
+    assertEq(reason, "异常回收物不足", "canExecuteTrade disabled reason mismatch")
+end
+
+local function testEventExecTraderHealFull()
+    EventSystem.Reset(52)
+    EventSystem.assignedEvents["12,12"] = "trader"
+
+    local full = EventSystem.ExecuteOptionById(12, 12, "heal", { gold = 20, parts = 0, hp = 100, maxHp = 100, tradePrice = 15, power = 10 })
+    assertTrue(not full.ok, "trader heal should fail at full hp")
+    assertEq(full.msg, "生命已满", "trader heal full hp message mismatch")
+
+    local poor = EventSystem.ExecuteOptionById(12, 12, "heal", { gold = 0, parts = 0, hp = 50, maxHp = 100, tradePrice = 15, power = 10 })
+    assertTrue(not poor.ok, "trader heal should fail without gold")
+    assertEq(poor.msg, "结算币不足", "trader heal insufficient gold message mismatch")
 end
 
 local function testEventExecDice()
@@ -727,6 +764,7 @@ local function testEventExecAltar()
     assertEq(r2.hpDelta, -1, "altar costs 1 hp")
     assertEq(r2.goldDelta, 15, "altar gives 15 gold")
     assertEq(r2.partsDelta, 1, "altar gives 1 part")
+    assertEq(r2.pressureDelta, 5, "altar should raise pressure")
 end
 
 local function testEventExecTrap()
@@ -738,6 +776,7 @@ local function testEventExecTrap()
     assert(r1.ok, "trap always 'succeeds' (executes), even on fail check")
     assertEq(r1.goldDelta, 0, "trap fail gives no gold")
     assertEq(r1.hpDelta, -1, "trap fail costs 1 hp")
+    assertEq(r1.pressureDelta, 5, "trap fail should raise pressure")
 
     -- Reset for high power test
     EventSystem.Reset(50)
@@ -749,6 +788,22 @@ local function testEventExecTrap()
     assertEq(r2.goldDelta, 25, "trap success gives 25 gold")
     assertEq(r2.partsDelta, 2, "trap success gives 2 parts")
     assertEq(r2.hpDelta, 0, "trap success no hp cost")
+    assertEq(r2.pressureDelta, 0, "trap success should not raise pressure")
+end
+
+local function testEventStatsRecordEvent()
+    RunInventory.Reset()
+    RunInventory.RecordEvent("trader")
+    RunInventory.RecordEvent("dice")
+    RunInventory.RecordEvent("altar")
+    RunInventory.RecordEvent("trap")
+
+    local stats = RunInventory.GetRunStats(nil)
+    assertEq(stats.eventsCompleted, 4, "event stats should count all completed events")
+    assertEq(stats.trades, 1, "event stats should count trader as trade")
+    assertEq(stats.diceEvents, 1, "event stats should count dice")
+    assertEq(stats.altarEvents, 1, "event stats should count altar")
+    assertEq(stats.trapEvents, 1, "event stats should count trap")
 end
 
 local function testEventEnterMessage()
@@ -785,9 +840,12 @@ local tests = {
     { name = "event type determinism", fn = testEventTypeDeterminism },
     { name = "event completed state", fn = testEventCompletedState },
     { name = "event exec trader", fn = testEventExecTrader },
+    { name = "event trader options and adapter", fn = testEventTraderOptionsAndAdapter },
+    { name = "event exec trader heal full", fn = testEventExecTraderHealFull },
     { name = "event exec dice", fn = testEventExecDice },
     { name = "event exec altar", fn = testEventExecAltar },
     { name = "event exec trap", fn = testEventExecTrap },
+    { name = "event stats record event", fn = testEventStatsRecordEvent },
     { name = "event enter message", fn = testEventEnterMessage },
 }
 

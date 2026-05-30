@@ -41,6 +41,7 @@ local PHASE = {
     MENU = "menu",
     PLAYING = "playing",
     MAP_OPEN = "map_open",
+    EVENT_PANEL = "event_panel",
     CONFIRM_EXTRACT = "confirm_extract",
     GAME_OVER = "game_over",
     EXTRACTED = "extracted",
@@ -54,6 +55,14 @@ local blockedWallHintTimer = 0
 
 -- 事件房交易记录(key = "x,y")
 local tradedRooms = {}
+local eventPanel = {
+    active = false,
+    x = 0,
+    y = 0,
+    selected = 1,
+    data = nil,
+    message = "",
+}
 
 -- 威压天赋:怪物逃跑窗口
 local monsterFleeTimer = 0       -- 逃跑倒计时(秒)
@@ -655,7 +664,7 @@ function ShowFailurePanel(reason)
         local statsLine = uiRoot_:FindById("failureStatsLine")
         if statsLine then
             statsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
-                " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+                " | 触雷:" .. stats.mineHits .. " | 事件:" .. stats.eventsCompleted)
         end
     end
 
@@ -696,7 +705,7 @@ function ShowFailurePanel(reason)
             local statsLine = uiRoot_:FindById("failureStatsLine")
             if statsLine then
                 statsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
-                    " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+                    " | 触雷:" .. stats.mineHits .. " | 事件:" .. stats.eventsCompleted)
             end
         end
     end
@@ -751,7 +760,7 @@ function ApplyFailureSalvage(choice)
         local statsLine = uiRoot_:FindById("failureStatsLine")
         if statsLine then
             statsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
-                " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+                " | 触雷:" .. stats.mineHits .. " | 事件:" .. stats.eventsCompleted)
         end
     end
 
@@ -1184,7 +1193,7 @@ function DoExtract()
     local searchLine = uiRoot_:FindById("extractSearchLine")
     if searchLine then
         searchLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. totals.searchedRooms ..
-            " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+            " | 事件:" .. stats.eventsCompleted)
     end
 
     local protocolLine = uiRoot_:FindById("extractProtocolLine")
@@ -1237,7 +1246,7 @@ function ConfirmExtract()
         local winRiskLine = uiRoot_:FindById("winRiskLine")
         if winRiskLine then
             winRiskLine:SetText("触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated ..
-                " | 交易:" .. stats.trades)
+                " | 事件:" .. stats.eventsCompleted .. " | 交易:" .. stats.trades)
         end
     end
 end
@@ -1249,24 +1258,9 @@ function CancelExtract()
     if panel then panel:Hide() end
 end
 
---- 事件房交互（统一入口：旅商/骰子/祭坛/机关）
-function DoTrade()
-    if not run or not minefield then return end
-    local p = run:GetPlayer()
-    local cell = minefield:GetCellView(p.x, p.y)
-    if not cell or cell.roomType ~= "event" then
-        ShowMessage("这里没有可交互的事件.")
-        return
-    end
-    if EventSystem.IsCompleted(p.x, p.y) then
-        local def = EventSystem.GetEventDef(EventSystem.GetEventType(p.x, p.y))
-        ShowMessage(def and def.doneMsg or "事件已完成.")
-        return
-    end
-
-    -- 构建上下文
+local function GetEventContext()
     local totals = RunInventory.GetTotals()
-    local ctx = {
+    return {
         gold = totals.gold,
         parts = totals.parts,
         hp = Combat.hp,
@@ -1274,17 +1268,44 @@ function DoTrade()
         tradePrice = MetaProgress.GetTalentEffects().tradePrice,
         power = Combat.power,
     }
+end
 
-    local result = EventSystem.Execute(p.x, p.y, ctx)
+local function RefreshEventPanel()
+    if not eventPanel.active then return end
+    eventPanel.data = EventSystem.GetOptions(eventPanel.x, eventPanel.y, GetEventContext())
+    local count = #(eventPanel.data.options or {})
+    if count < 1 then
+        eventPanel.selected = 1
+    elseif eventPanel.selected > count then
+        eventPanel.selected = count
+    elseif eventPanel.selected < 1 then
+        eventPanel.selected = 1
+    end
+end
+
+local function CloseEventPanel(msg)
+    eventPanel.active = false
+    eventPanel.data = nil
+    eventPanel.message = ""
+    phase = PHASE.PLAYING
+    if msg and msg ~= "" then
+        ShowMessage(msg)
+    end
+end
+
+local function ApplyEventResult(result, x, y)
+    if not result then return end
+    local displayMsg = result.msg or ""
     if not result.ok then
-        DungeonRoom.TriggerTradePulse()
-        ShowMessage(result.msg)
+        eventPanel.message = displayMsg ~= "" and displayMsg or "条件不足."
+        ShowMessage(eventPanel.message)
+        RefreshEventPanel()
         return
     end
 
-    -- 应用结果
     if result.goldDelta ~= 0 then
         RunInventory.gold = RunInventory.gold + result.goldDelta
+        if RunInventory.gold < 0 then RunInventory.gold = 0 end
     end
     if result.partsDelta ~= 0 then
         RunInventory.parts = RunInventory.parts + result.partsDelta
@@ -1295,24 +1316,69 @@ function DoTrade()
         if Combat.hp < 0 then Combat.hp = 0 end
         if Combat.hp > Combat.maxHp then Combat.hp = Combat.maxHp end
     end
+    if result.powerDelta and result.powerDelta ~= 0 then
+        Combat.power = Combat.power + result.powerDelta
+    end
+    if result.pressureDelta and result.pressureDelta > 0 then
+        local protoResult = Protocol.AddPressure(result.pressureDelta)
+        local pressureMsg = "协议压力 +" .. result.pressureDelta
+        if protoResult.changed then
+            pressureMsg = pressureMsg .. ", 协议降至 " .. protoResult.level .. " - " .. protoResult.description
+        end
+        displayMsg = (displayMsg ~= "" and (displayMsg .. " ") or "") .. pressureMsg .. "."
+    end
 
-    -- 向后兼容 tradedRooms（HUD 状态查询可能依赖）
-    local key = tostring(p.x) .. "," .. tostring(p.y)
-    tradedRooms[key] = true
-    RunInventory.RecordTrade()
+    if result.completed then
+        local key = tostring(x) .. "," .. tostring(y)
+        tradedRooms[key] = true
+        RunInventory.RecordEvent(result.eventType)
+        if minefield then
+            minefield:ClearRoom(x, y)
+        end
+        DungeonRoom.TriggerTradePulse()
+    end
 
-    -- v0.3: 事件完成后标记房间已清理
-    minefield:ClearRoom(p.x, p.y)
-    DungeonRoom.TriggerTradePulse()
-    ShowMessage(result.msg)
-
-    -- 检查 HP 归零
     if Combat.hp <= 0 then
+        CloseEventPanel()
         ShowFailurePanel("事件导致血量归零!")
         return
     end
 
+    if result.closePanel then
+        CloseEventPanel(displayMsg)
+    else
+        eventPanel.message = displayMsg
+        ShowMessage(eventPanel.message)
+        RefreshEventPanel()
+    end
     UpdateHUD()
+end
+
+function ConfirmEventOption()
+    if not eventPanel.active or not eventPanel.data then return end
+    local options = eventPanel.data.options or {}
+    local selected = options[eventPanel.selected]
+    if not selected then return end
+    local result = EventSystem.ExecuteOptionById(eventPanel.x, eventPanel.y, selected.id, GetEventContext())
+    ApplyEventResult(result, eventPanel.x, eventPanel.y)
+end
+
+--- 事件房交互（打开统一事件面板）
+function DoTrade()
+    if not run or not minefield then return end
+    local p = run:GetPlayer()
+    local cell = minefield:GetCellView(p.x, p.y)
+    if not cell or cell.roomType ~= "event" then
+        ShowMessage("这里没有可交互的事件.")
+        return
+    end
+    eventPanel.active = true
+    eventPanel.x = p.x
+    eventPanel.y = p.y
+    eventPanel.selected = 1
+    eventPanel.message = ""
+    phase = PHASE.EVENT_PANEL
+    RefreshEventPanel()
 end
 
 --- 刷新地图数据给 MiniMap 和 MapOverlay
@@ -1512,6 +1578,111 @@ function DrawBattleOverlay(vg, w, h)
     end
 end
 
+function DrawEventPanel(vg, w, h)
+    if not eventPanel.active or not eventPanel.data then return end
+
+    local data = eventPanel.data
+    local options = data.options or {}
+    local panelW = math.min(620, w - 90)
+    local panelH = math.min(math.max(430, 190 + #options * 50), h - 50)
+    local x = (w - panelW) / 2
+    local y = (h - panelH) / 2
+
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(0, 0, 0, 145))
+    nvgFill(vg)
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, x, y, panelW, panelH, 8)
+    nvgFillColor(vg, nvgRGBA(18, 24, 34, 238))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(90, 180, 190, 210))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+    nvgFontSize(vg, 22)
+    nvgFillColor(vg, nvgRGBA(235, 250, 255, 255))
+    nvgText(vg, x + 28, y + 22, data.title or "事件")
+
+    nvgFontSize(vg, 13)
+    nvgFillColor(vg, nvgRGBA(170, 205, 210, 230))
+    nvgText(vg, x + 28, y + 56, data.description or "")
+
+    local listY = y + 96
+    local rowH = 50
+    local maxRows = math.floor((panelH - 188) / rowH)
+    if maxRows < 1 then maxRows = 1 end
+    local startIndex = 1
+    if #options > maxRows then
+        startIndex = eventPanel.selected - math.floor(maxRows / 2)
+        if startIndex < 1 then startIndex = 1 end
+        if startIndex > #options - maxRows + 1 then
+            startIndex = #options - maxRows + 1
+        end
+    end
+    local endIndex = math.min(#options, startIndex + maxRows - 1)
+
+    if #options > maxRows then
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
+        nvgFontSize(vg, 10)
+        nvgFillColor(vg, nvgRGBA(150, 170, 180, 210))
+        nvgText(vg, x + panelW - 28, y + 62, "选项 " .. startIndex .. "-" .. endIndex .. " / " .. #options)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+    end
+
+    for i = startIndex, endIndex do
+        local opt = options[i]
+        local oy = listY + (i - startIndex) * rowH
+        local selected = i == eventPanel.selected
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, x + 24, oy, panelW - 48, rowH - 6, 6)
+        if selected then
+            nvgFillColor(vg, nvgRGBA(55, 90, 105, 235))
+        else
+            nvgFillColor(vg, nvgRGBA(28, 38, 50, 210))
+        end
+        nvgFill(vg)
+        if selected then
+            nvgStrokeColor(vg, nvgRGBA(120, 235, 230, 230))
+            nvgStrokeWidth(vg, 2)
+            nvgStroke(vg)
+        end
+
+        local enabled = opt.enabled ~= false
+        nvgFontSize(vg, 14)
+        nvgFillColor(vg, enabled and nvgRGBA(245, 240, 200, 255) or nvgRGBA(120, 125, 130, 210))
+        nvgText(vg, x + 40, oy + 8, (selected and "> " or "  ") .. (opt.label or "选项"))
+
+        nvgFontSize(vg, 10)
+        nvgFillColor(vg, enabled and nvgRGBA(165, 185, 195, 230) or nvgRGBA(105, 110, 118, 190))
+        local meta = "成本: " .. (opt.cost or "无") .. "   收益: " .. (opt.reward or "无") .. "   风险: " .. (opt.risk or "无")
+        if not enabled and opt.disabledReason then
+            meta = meta .. "   [" .. opt.disabledReason .. "]"
+        end
+        nvgText(vg, x + 40, oy + 27, meta)
+    end
+
+    local selected = options[eventPanel.selected]
+    if selected then
+        nvgFontSize(vg, 12)
+        nvgFillColor(vg, nvgRGBA(200, 220, 220, 230))
+        nvgText(vg, x + 28, y + panelH - 70, selected.description or "")
+    end
+    if eventPanel.message and eventPanel.message ~= "" then
+        nvgFontSize(vg, 12)
+        nvgFillColor(vg, nvgRGBA(255, 185, 120, 245))
+        nvgText(vg, x + 28, y + panelH - 44, eventPanel.message)
+    end
+
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
+    nvgFontSize(vg, 11)
+    nvgFillColor(vg, nvgRGBA(150, 165, 180, 220))
+    nvgText(vg, x + panelW - 28, y + panelH - 30, "W/S 或 ↑/↓ 选择   T/Enter 确认   Esc 返回")
+end
+
 function HandleNanoVGRender(eventType, eventData)
     if not nvgScene then return end
 
@@ -1520,7 +1691,7 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(nvgScene, screenW, screenH, dpr)
 
-    if phase == PHASE.PLAYING or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
+    if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
         local hudLayout = HUD.ComputeLayout(w, h)
         local p = run:GetPlayer()
         local cell = minefield and minefield:GetCellView(p.x, p.y) or nil
@@ -1533,6 +1704,8 @@ function HandleNanoVGRender(eventType, eventData)
                     if mapCell.roomType == "monster" then
                         local mapEnemy = Combat.GetEnemyAny(x, y)
                         mapCell.monsterCleared = mapEnemy ~= nil and mapEnemy.alive == false
+                    elseif mapCell.roomType == "event" then
+                        mapCell.eventCompleted = EventSystem.IsCompleted(x, y)
                     end
                 end
             end
@@ -1621,6 +1794,9 @@ function HandleNanoVGRender(eventType, eventData)
         -- VS 战斗演出叠加层
         if battleState.active then
             DrawBattleOverlay(nvgScene, w, h)
+        end
+        if phase == PHASE.EVENT_PANEL then
+            DrawEventPanel(nvgScene, w, h)
         end
     elseif phase == PHASE.MAP_OPEN then
         -- 绘制放大地图
@@ -2361,6 +2537,26 @@ function HandleKeyDown(eventType, eventData)
         if key == KEY_ESCAPE or key == KEY_M then
             MapOverlay.Hide()
             phase = PHASE.PLAYING
+        end
+        return
+    end
+
+    if phase == PHASE.EVENT_PANEL then
+        local count = eventPanel.data and #(eventPanel.data.options or {}) or 0
+        if key == KEY_ESCAPE then
+            CloseEventPanel("事件交互取消.")
+        elseif key == KEY_W or key == KEY_UP then
+            if count > 0 then
+                eventPanel.selected = eventPanel.selected - 1
+                if eventPanel.selected < 1 then eventPanel.selected = count end
+            end
+        elseif key == KEY_S or key == KEY_DOWN then
+            if count > 0 then
+                eventPanel.selected = eventPanel.selected + 1
+                if eventPanel.selected > count then eventPanel.selected = 1 end
+            end
+        elseif key == KEY_T or key == KEY_RETURN then
+            ConfirmEventOption()
         end
         return
     end

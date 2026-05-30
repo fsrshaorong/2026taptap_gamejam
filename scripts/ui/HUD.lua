@@ -423,7 +423,7 @@ function HUD.DrawBottomBar(vg, layout, context)
     -- 底部次要操作
     nvgFontSize(vg, 10)
     nvgFillColor(vg, nvgRGBA(140, 150, 170, 180))
-    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/战斗  E:撤离  T:交易")
+    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/攻击  E:撤离  T:事件")
 
     -- 右侧: 撤离距离
     if context.exitDistance then
@@ -471,9 +471,9 @@ function HUD.GetInteractHint(context)
     end
     if context.eventTraded then
         if context.eventName then
-            return context.eventName .. "已完成"
+            return "[T] 查看: " .. context.eventName .. "已完成"
         end
-        return "事件已完成"
+        return "[T] 查看: 事件已完成"
     end
     if context.roomType == "chest" and context.searchState == "idle" then
         return "[F] 搜索物资箱"

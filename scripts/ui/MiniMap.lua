@@ -185,9 +185,14 @@ local function drawRoomIcon(vg, cell, cx, cy, cs)
         nvgFill(vg)
         return true
     elseif cell.roomType == "event" then
+        if cell.eventCompleted then
+            if drawIcon(vg, iconImages.cleared, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
+                return true
+            end
+        end
         nvgBeginPath(vg)
         nvgCircle(vg, cx + cs / 2, cy + cs / 2, cs * 0.3)
-        nvgFillColor(vg, nvgRGBA(60, 200, 210, 240))
+        nvgFillColor(vg, cell.eventCompleted and nvgRGBA(70, 190, 120, 230) or nvgRGBA(60, 200, 210, 240))
         nvgFill(vg)
         return true
     end
