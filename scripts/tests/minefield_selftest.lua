@@ -252,32 +252,29 @@ local function testProtocolPressure()
     assertEq(status.level, 5, "protocol should start at level 5")
     assertEq(status.pressure, 0, "protocol should start at 0 pressure")
 
-    -- 每次探索增加 5 压力, 4次 = 20 → level 4
-    for i = 1, 4 do
+    -- 每次探索 +2 压力, 10 次 = 20 -> level 4
+    for i = 1, 10 do
         Protocol.AddPressure()
     end
     assertEq(Protocol.GetStatus().level, 4, "protocol level 4 at pressure 20")
-    assertEq(Protocol.GetStatus().pressure, 20, "protocol pressure should be 20 after 4 explores")
+    assertEq(Protocol.GetStatus().pressure, 20, "protocol pressure should be 20 after 10 explores")
 
-    -- 再 4 次 = 40 → level 3
-    for i = 1, 4 do
+    for i = 1, 10 do
         Protocol.AddPressure()
     end
     assertEq(Protocol.GetStatus().level, 3, "protocol level 3 at pressure 40")
 
-    -- 再 4 次 = 60 → level 2
-    for i = 1, 4 do
+    for i = 1, 10 do
         Protocol.AddPressure()
     end
     assertEq(Protocol.GetStatus().level, 2, "protocol level 2 at pressure 60")
 
-    -- 再 4 次 = 80 → level 1
-    for i = 1, 4 do
+    for i = 1, 10 do
         Protocol.AddPressure()
     end
-    local result = Protocol.AddPressure()  -- 85, still level 1
+    local result = Protocol.AddPressure()
     assertEq(Protocol.GetStatus().level, 1, "protocol level 1 at pressure 80+")
-    assertTrue(result.penalty, "protocol 1 should report penalty")
+    assertTrue(not result.penalty, "protocol 1 should not report penalty")
 end
 
 local function testProtocolPenaltyDamageCanKill()
@@ -290,7 +287,7 @@ local function testProtocolPenaltyDamageCanKill()
     end
 
     local result = Protocol.AddPressure()
-    assertTrue(result.penalty, "protocol 1 should report penalty before applying damage")
+    assertTrue(not result.penalty, "protocol 1 should not report penalty")
 
     local damage = Combat.ApplyDamage(1)
     assertEq(damage.hp, 0, "protocol penalty should clamp hp to zero")
@@ -413,24 +410,26 @@ end
 
 local function testFailureSalvage()
     RunInventory.Reset()
-    RunInventory.gold = 23
+    RunInventory.pendingGold = 23
+    RunInventory.safeGold = 7
     RunInventory.parts = 3
 
     local options = RunInventory.GetFailureSalvageOptions()
-    assertEq(options.safeGold, 23, "failure salvage should keep safe gold")
+    assertEq(options.safeGold, 7, "failure salvage should keep only safe gold")
+    assertEq(options.pendingGoldLost, 23, "failure salvage should lose pending gold")
     assertEq(options.lostParts, 3, "failure salvage should mark all parts as lost")
-    assertTrue(options.canSalvagePart, "failure salvage should allow part salvage")
-    assertEq(options.salvageBonus, 10, "failure salvage bonus mismatch")
+    assertTrue(not options.canSalvagePart, "failure salvage should not use old part salvage")
+    assertEq(options.salvageBonus, 0, "failure salvage bonus should be removed")
 
     local accept = RunInventory.ApplyFailureSalvage("accept")
-    assertEq(accept.gold, 23, "accept salvage should keep safe gold")
+    assertEq(accept.gold, 7, "accept salvage should keep safe gold")
     assertEq(accept.parts, 0, "accept salvage should lose parts")
     assertEq(accept.bonus, 0, "accept salvage should not add bonus")
 
     local salvaged = RunInventory.ApplyFailureSalvage("salvage_part")
-    assertEq(salvaged.gold, 33, "part salvage should add bonus gold")
+    assertEq(salvaged.gold, 7, "legacy salvage_part should not add bonus gold")
     assertEq(salvaged.parts, 0, "part salvage should still lose parts")
-    assertEq(salvaged.bonus, 10, "part salvage bonus mismatch")
+    assertEq(salvaged.bonus, 0, "part salvage bonus mismatch")
 end
 
 local function testSearchedChestState()
@@ -504,10 +503,12 @@ local function testNormalSearchGeneratesCarriedItem()
     local field, run = makeSearchRun("normal")
     local searched = RunInventory.SearchCurrentRoom(field, run)
     assertTrue(searched.ok, "normal search should succeed")
-    assertTrue(searched.reward.gold > 0, "normal search should grant gold")
-    assertTrue(#searched.reward.items >= 1, "seeded normal search should grant a concrete item")
+    assertTrue(searched.reward.gold >= 0 and searched.reward.gold <= 4, "normal search gold should use tuned 0-4 range")
+    assertEq(RunInventory.pendingGold, searched.reward.gold, "normal search should add pending gold")
     assertEq(RunInventory.GetCarriedItemCount(), searched.reward.parts, "carried count should match reward parts")
-    assertTrue(RunInventory.GetCarriedItemValue() > 0, "carried items should have value")
+    if searched.reward.parts > 0 then
+        assertTrue(RunInventory.GetCarriedItemValue() > 0, "carried items should have value")
+    end
 
     local repeated = RunInventory.SearchCurrentRoom(field, run)
     assertTrue(not repeated.ok, "searched room should not repeat rewards")
@@ -545,15 +546,18 @@ end
 
 local function testFailureSalvageWithCarriedItems()
     RunInventory.Reset()
-    RunInventory.gold = 12
+    RunInventory.pendingGold = 12
+    RunInventory.safeGold = 5
     RunInventory.parts = 1
     RunInventory.AddCarriedItem("static_lens", 1, "test")
     local options = RunInventory.GetFailureSalvageOptions()
-    assertEq(options.safeGold, 12, "failure should keep direct gold")
+    assertEq(options.safeGold, 5, "failure should keep only safe gold")
+    assertEq(options.pendingGoldLost, 12, "failure should lose pending gold")
     assertEq(options.lostItemCount, 1, "failure should report lost carried item count")
     assertTrue(options.lostItemValue > 0, "failure should report lost carried value")
     local salvage = RunInventory.ApplyFailureSalvage("salvage_part")
-    assertEq(salvage.gold, 22, "failure salvage should still support old parts rescue")
+    assertEq(salvage.gold, 5, "failure salvage should not add old parts rescue")
+    assertTrue(salvage.salvagedItem ~= nil, "failure should auto keep highest value item")
 end
 
 local function testTradableLoosePartsOnly()
@@ -743,12 +747,13 @@ local function testMetaProgressFailureDoesNotRecordWarehouse()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
         RunInventory.Reset()
-        RunInventory.gold = 9
+        RunInventory.pendingGold = 9
+        RunInventory.safeGold = 4
         RunInventory.parts = 1
         RunInventory.AddCarriedItem("static_lens", 1, "test")
         local salvage = RunInventory.ApplyFailureSalvage("accept")
         MetaProgress.AddGold(salvage.gold)
-        assertEq(MetaProgress.GetGold(), 9, "failure direct gold should still enter meta gold")
+        assertEq(MetaProgress.GetGold(), 4, "failure should only add safe gold")
         assertEq(MetaProgress.GetWarehouseSummary().totalItems, 0, "failed run should not store carried items")
     end)
 end
@@ -783,7 +788,7 @@ local function testMetaProgressGrowthEffectsStillApply()
         assertTrue(bought, "should buy armor with extracted gold")
         local equipped = MetaProgress.ToggleEquip("armor")
         assertTrue(equipped, "should equip bought armor")
-        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "armor should still grant HP")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 20, "armor should grant tuned HP")
 
         local unlocked = MetaProgress.UnlockTalent("talent_mine")
         assertTrue(unlocked, "should unlock mine talent with extracted gold")
@@ -1178,76 +1183,62 @@ end
 
 local function testEventExecTrader()
     EventSystem.Reset(50)
-    -- Force the assignment to trader by finding a coord that gives "trader"
-    -- We'll directly assign for testing
     EventSystem.assignedEvents["10,10"] = "trader"
 
-    -- Not enough parts
-    local r1 = EventSystem.Execute(10, 10, { gold = 100, parts = 0, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
-    assert(not r1.ok, "trader should fail with 0 parts")
-    assertEq(r1.goldDelta, 0, "no gold change on fail")
+    local noItem = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = {}, hp = 3, maxHp = 5, power = 5 })
+    assert(noItem.ok, "default trader action should leave when no item exists")
+    assertEq(noItem.completed, false, "leave should not complete trader")
 
-    -- Enough parts
-    local r2 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
-    assert(r2.ok, "trader should succeed with parts")
-    assertEq(r2.goldDelta, 20, "should gain tradePrice gold")
-    assertEq(r2.partsDelta, -1, "should spend 1 part")
+    local item = { id = "static_lens", itemId = "static_lens", name = "静电透镜", count = 1, value = 16, baseValue = 16, type = "tool" }
+    local r2 = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = { item }, hp = 3, maxHp = 5, power = 5 })
+    assert(r2.ok, "trader should sell concrete item")
+    assertEq(r2.safeGoldDelta, 12, "trader should pay floor(baseValue * 0.75)")
+    assertEq(r2.sellItemId, "static_lens", "trader should request concrete item removal")
     assertEq(r2.hpDelta, 0, "no hp change for trader")
 
-    -- Already completed
-    local r3 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    local r3 = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = { item }, hp = 3, maxHp = 5, power = 5 })
     assert(not r3.ok, "completed event should fail")
 
     local state = EventSystem.GetEventState(10, 10)
-    assertEq(state.optionState.completedOption, "sell_parts", "completed trader should remember selected option")
+    assertEq(state.optionState.completedOption, "sell_item:static_lens", "completed trader should remember selected option")
 end
 
 local function testEventTraderOptionsAndAdapter()
     EventSystem.Reset(51)
     EventSystem.assignedEvents["11,11"] = "trader"
 
-    local tradables = EventSystem.getTradableItems({ parts = 3 })
-    assertEq(tradables[1].id, "parts", "virtual tradable should expose parts id")
-    assertEq(tradables[1].count, 3, "virtual tradable should expose current parts")
-    assertEq(EventSystem.getTradeDisplayName("parts"), "异常回收物", "parts display name mismatch")
+    local tradables = EventSystem.getTradableItems({ tradableItems = { { id = "dim_capacitor", itemId = "dim_capacitor", count = 2 } } })
+    assertEq(tradables[1].id, "dim_capacitor", "concrete tradable should pass through")
+    assertEq(tradables[1].count, 2, "concrete tradable should expose current count")
 
-    local menu = EventSystem.GetOptions(11, 11, { gold = 0, parts = 0, hp = 100, maxHp = 100, tradePrice = 15, power = 10 })
-    assertEq(#menu.options, 5, "trader should expose five options")
-    assertTrue(menu.options[1].enabled == false, "sell parts should be disabled without parts")
-    assertEq(menu.options[1].disabledReason, "异常回收物不足", "sell disabled reason mismatch")
-    assertTrue(menu.options[2].enabled == false, "heal should be disabled at full hp")
-    assertEq(menu.options[2].disabledReason, "生命已满", "heal full hp reason mismatch")
+    local menu = EventSystem.GetOptions(11, 11, { pendingGold = 0, tradableItems = {}, hp = 100, maxHp = 100, power = 10 })
+    assertEq(#menu.options, 2, "trader without items should expose disabled placeholder and leave")
+    assertTrue(menu.options[1].enabled == false, "sell should be disabled without concrete items")
 
     local ok, reason = EventSystem.canExecuteTrade(menu.options[1], menu.state)
     assertTrue(not ok, "canExecuteTrade should reject disabled option")
-    assertEq(reason, "异常回收物不足", "canExecuteTrade disabled reason mismatch")
+    assertEq(reason, "没有可出售的回收物。", "canExecuteTrade disabled reason mismatch")
 end
 
 local function testEventExecTraderHealFull()
     EventSystem.Reset(52)
     EventSystem.assignedEvents["12,12"] = "trader"
 
-    local full = EventSystem.ExecuteOptionById(12, 12, "heal", { gold = 20, parts = 0, hp = 100, maxHp = 100, tradePrice = 15, power = 10 })
-    assertTrue(not full.ok, "trader heal should fail at full hp")
-    assertEq(full.msg, "生命已满", "trader heal full hp message mismatch")
-
-    local poor = EventSystem.ExecuteOptionById(12, 12, "heal", { gold = 0, parts = 0, hp = 50, maxHp = 100, tradePrice = 15, power = 10 })
-    assertTrue(not poor.ok, "trader heal should fail without gold")
-    assertEq(poor.msg, "结算币不足", "trader heal insufficient gold message mismatch")
+    local full = EventSystem.ExecuteOptionById(12, 12, "heal", { pendingGold = 20, tradableItems = {}, hp = 100, maxHp = 100, power = 10 })
+    assertTrue(not full.ok, "removed trader heal option should fail")
+    assertEq(full.msg, "未知事件选项。", "removed heal option message mismatch")
 end
 
 local function testEventExecDice()
     EventSystem.Reset(50)
     EventSystem.assignedEvents["20,20"] = "dice"
 
-    -- Not enough gold
-    local r1 = EventSystem.Execute(20, 20, { gold = 5, parts = 1, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
-    assert(not r1.ok, "dice should fail with insufficient gold")
+    local r1 = EventSystem.Execute(20, 20, { pendingGold = 5, hp = 3, maxHp = 5, power = 5 })
+    assert(not r1.ok, "dice should fail with insufficient pending gold")
 
-    -- Enough gold - should produce a result (win or lose)
-    local r2 = EventSystem.Execute(20, 20, { gold = 50, parts = 1, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
-    assert(r2.ok, "dice should succeed with enough gold")
-    assert(r2.goldDelta == 10 or r2.goldDelta == -10, "dice should net +10 (win) or -10 (lose), got: " .. r2.goldDelta)
+    local r2 = EventSystem.Execute(20, 20, { pendingGold = 50, hp = 3, maxHp = 5, power = 5 })
+    assert(r2.ok, "dice should succeed with enough pending gold")
+    assert(r2.pendingGoldDelta == -20 or r2.pendingGoldDelta == 20 or r2.pendingGoldDelta == 60, "dice should use tuned net results, got: " .. r2.pendingGoldDelta)
     assertEq(r2.partsDelta, 0, "dice no parts change")
     assertEq(r2.hpDelta, 0, "dice no hp change")
 end
@@ -1256,43 +1247,37 @@ local function testEventExecAltar()
     EventSystem.Reset(50)
     EventSystem.assignedEvents["30,30"] = "altar"
 
-    -- Not enough HP (hp <= cost)
-    local r1 = EventSystem.Execute(30, 30, { gold = 10, parts = 0, hp = 1, maxHp = 5, tradePrice = 15, power = 5 })
-    assert(not r1.ok, "altar should fail with hp <= cost")
+    local r1 = EventSystem.Execute(30, 30, { pendingGold = 10, hp = 10, maxHp = 100, power = 5 })
+    assert(not r1.ok, "altar should fail with hp <= first cost")
 
-    -- Enough HP
-    local r2 = EventSystem.Execute(30, 30, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
-    assert(r2.ok, "altar should succeed with hp > cost")
-    assertEq(r2.hpDelta, -1, "altar costs 1 hp")
-    assertEq(r2.goldDelta, 15, "altar gives 15 gold")
-    assertEq(r2.partsDelta, 1, "altar gives 1 part")
-    assertEq(r2.pressureDelta, 5, "altar should raise pressure")
+    local r2 = EventSystem.Execute(30, 30, { pendingGold = 10, hp = 30, maxHp = 100, power = 5 })
+    assert(r2.ok, "altar should succeed with hp > first cost")
+    assertEq(r2.hpDelta, -10, "altar first cost should be 10 hp")
+    assertTrue(r2.pendingGoldDelta > 0, "altar should give pending gold")
+    assertTrue(r2.rewardItemQuality ~= nil, "altar should return reward item quality")
+    assertEq(r2.pressureDelta, 0, "altar tuned rule should not add pressure")
 end
 
 local function testEventExecTrap()
     EventSystem.Reset(50)
     EventSystem.assignedEvents["40,40"] = "trap"
 
-    -- Low power - fail
-    local r1 = EventSystem.Execute(40, 40, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 3 })
-    assert(r1.ok, "trap always 'succeeds' (executes), even on fail check")
-    assertEq(r1.goldDelta, 0, "trap fail gives no gold")
+    local r1 = EventSystem.Execute(40, 40, { pendingGold = 10, hp = 3, maxHp = 5, power = 3 })
+    assert(r1.ok, "trap always executes, even on fail check")
+    assertEq(r1.pendingGoldDelta, 0, "trap fail gives no gold")
     assertEq(r1.hpDelta, -1, "trap fail costs 1 hp")
     assertEq(r1.pressureDelta, 5, "trap fail should raise pressure")
 
-    -- Reset for high power test
     EventSystem.Reset(50)
     EventSystem.assignedEvents["40,40"] = "trap"
 
-    -- High power - success
-    local r2 = EventSystem.Execute(40, 40, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 10 })
+    local r2 = EventSystem.Execute(40, 40, { pendingGold = 10, hp = 3, maxHp = 5, power = 10 })
     assert(r2.ok, "trap should succeed")
-    assertEq(r2.goldDelta, 25, "trap success gives 25 gold")
-    assertEq(r2.partsDelta, 2, "trap success gives 2 parts")
+    assertEq(r2.pendingGoldDelta, 25, "trap success gives pending gold")
+    assertEq(#r2.rewardItems, 2, "trap success gives two reward item entries")
     assertEq(r2.hpDelta, 0, "trap success no hp cost")
     assertEq(r2.pressureDelta, 0, "trap success should not raise pressure")
 end
-
 local function testEventStatsRecordEvent()
     RunInventory.Reset()
     RunInventory.RecordEvent("trader")

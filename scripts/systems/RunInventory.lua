@@ -3,9 +3,13 @@
 -- Tracks one extraction run's loot and searched rooms.
 -- ============================================================================
 
+local Balance = require("systems.Balance")
+
 local RunInventory = {}
 
 RunInventory.gold = 0
+RunInventory.pendingGold = 0
+RunInventory.safeGold = 0
 RunInventory.parts = 0
 RunInventory.searchedRooms = {}
 RunInventory.carriedItems = {}
@@ -102,7 +106,37 @@ RunInventory.ITEM_DEFS = {
 
 local ITEM_DEF_LOOKUP = {}
 for _, def in ipairs(RunInventory.ITEM_DEFS) do
+    def.baseValue = def.baseValue or def.value or 0
+    def.value = def.value or def.baseValue
     ITEM_DEF_LOOKUP[def.id] = def
+end
+
+local QUALITY_ITEMS = {
+    low = "broken_copper_wire",
+    common = "dim_capacitor",
+    rare = "static_lens",
+    precious = "whisper_wick",
+    abnormal = "sealed_core_shard",
+}
+
+local function syncGoldAlias()
+    RunInventory.gold = RunInventory.pendingGold
+end
+
+local function itemBaseValue(def)
+    return def and (def.baseValue or def.value or 0) or 0
+end
+
+local function pickQualityFromTable(dropTable, roll, adjacent)
+    if adjacent and adjacent >= Balance.search.highAdjacentBonus.adjacentAtLeast then
+        roll = math.min(100, roll + Balance.search.highAdjacentBonus.rareBonus)
+    end
+    for _, entry in ipairs(dropTable or {}) do
+        if roll <= entry.max then
+            return entry.quality
+        end
+    end
+    return nil
 end
 
 local function newStats()
@@ -128,12 +162,37 @@ end
 
 function RunInventory.Reset()
     RunInventory.gold = 0
+    RunInventory.pendingGold = 0
+    RunInventory.safeGold = 0
     RunInventory.parts = 0
     RunInventory.searchedRooms = {}
     RunInventory.carriedItems = {}
     RunInventory.failureSalvage = nil
     RunInventory.searchBonus = 0
     RunInventory.stats = newStats()
+end
+
+function RunInventory.AddPendingGold(amount)
+    amount = math.floor(tonumber(amount) or 0)
+    RunInventory.pendingGold = math.max(0, RunInventory.pendingGold + amount)
+    syncGoldAlias()
+    return RunInventory.pendingGold
+end
+
+function RunInventory.AddSafeGold(amount)
+    amount = math.floor(tonumber(amount) or 0)
+    RunInventory.safeGold = math.max(0, RunInventory.safeGold + amount)
+    syncGoldAlias()
+    return RunInventory.safeGold
+end
+
+function RunInventory.SpendPendingGold(amount)
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then return true end
+    if RunInventory.pendingGold < amount then return false end
+    RunInventory.pendingGold = RunInventory.pendingGold - amount
+    syncGoldAlias()
+    return true
 end
 
 function RunInventory.CellKey(x, y)
@@ -154,7 +213,8 @@ function RunInventory.GetItemDisplayData(itemId)
         rarity = def.rarity or "common",
         rarityName = def.rarityName or "Common",
         icon = def.icon or "",
-        value = def.value or 0,
+        value = itemBaseValue(def),
+        baseValue = itemBaseValue(def),
         effectText = def.effectText,
         description = def.description or "",
         source = "recovered",
@@ -208,6 +268,16 @@ function RunInventory.AddCarriedItem(itemId, count, source)
     return true, copyItemStack(stack)
 end
 
+function RunInventory.AddRewardItemByQuality(quality, source)
+    local itemId = QUALITY_ITEMS[quality or "common"] or QUALITY_ITEMS.common
+    local ok, stack = RunInventory.AddCarriedItem(itemId, 1, source or "event")
+    if ok then
+        RunInventory.parts = RunInventory.parts + 1
+        return stack
+    end
+    return nil
+end
+
 function RunInventory.GetCarriedItems()
     local items = {}
     for _, stack in pairs(RunInventory.carriedItems) do
@@ -231,7 +301,7 @@ function RunInventory.GetCarriedItemValue()
     local value = 0
     for _, stack in pairs(RunInventory.carriedItems) do
         local def = RunInventory.GetItemDef(stack.itemId)
-        value = value + ((def and def.value or 0) * (stack.count or 0))
+        value = value + (itemBaseValue(def) * (stack.count or 0))
     end
     return value
 end
@@ -274,7 +344,7 @@ function RunInventory.GetTradableItems()
             itemId = stack.itemId,
             name = stack.def and stack.def.name or stack.itemId,
             count = stack.count,
-            value = stack.def and stack.def.value or 0,
+            value = itemBaseValue(stack.def),
             type = stack.def and stack.def.type or "unknown",
         })
     end
@@ -319,33 +389,23 @@ function RunInventory.RemoveTradableItem(itemId, count)
     return true
 end
 
-local function chooseItemId(roll, isChest, index)
-    roll = (roll + index * 17) % 100
-    if isChest then
-        if roll >= 88 then return "sealed_core_shard" end
-        if roll >= 70 then return "whisper_wick" end
-        if roll >= 48 then return "static_lens" end
-        if roll >= 28 then return "blackbox_tag" end
-        return "dim_capacitor"
-    end
-    if roll >= 96 then return "whisper_wick" end
-    if roll >= 82 then return "blackbox_tag" end
-    if roll >= 68 then return "static_lens" end
-    if roll >= 38 then return "dim_capacitor" end
-    return "broken_copper_wire"
+local function chooseItemId(roll, isChest, index, adjacent)
+    roll = ((roll or 0) + (index or 1) * 17) % 100 + 1
+    local quality = pickQualityFromTable(isChest and Balance.chest.dropTable or Balance.search.dropTable, roll, adjacent)
+    return quality and QUALITY_ITEMS[quality] or nil
 end
 
-local function buildRewardItems(roll, isChest)
+local function buildRewardItems(roll, isChest, adjacent)
     local itemCount = 0
     if isChest then
-        itemCount = 1 + (roll % 3)
-    elseif roll % 100 >= 45 then
+        itemCount = Balance.RollRange(roll, adjacent or 0, 0, 5, Balance.chest.minItems, Balance.chest.maxItems)
+    elseif chooseItemId(roll, false, 1, adjacent) then
         itemCount = 1
     end
 
     local items = {}
     for i = 1, itemCount do
-        local itemId = chooseItemId(roll, isChest, i)
+        local itemId = chooseItemId(roll, isChest, i, adjacent)
         local found = nil
         for _, stack in ipairs(items) do
             if stack.itemId == itemId then
@@ -369,24 +429,24 @@ function RunInventory.GetReward(minefield, x, y)
     local roll = (x * 37 + y * 53 + seed * 7) % 100
 
     local isChest = (cell and cell.roomType == "chest")
-    local gold = 4 + adjacent * 2 + (roll % 6)
-    local items = buildRewardItems(roll, isChest)
+    local gold = 0
+    if isChest then
+        gold = Balance.RollRange(seed, x, y, 11, Balance.chest.baseMin, Balance.chest.baseMax) + adjacent
+        gold = math.min(Balance.chest.goldCap, gold)
+    else
+        gold = Balance.RollRange(seed, x, y, 7, Balance.search.baseMin, Balance.search.baseMax)
+            + math.floor(adjacent / Balance.search.adjacentDivisor)
+        gold = math.min(Balance.search.goldCap, gold)
+    end
+    local items = buildRewardItems(roll, isChest, adjacent)
     local parts = 0
     for _, stack in ipairs(items) do
         parts = parts + stack.count
     end
 
     -- 宝箱房奖励加成:金币翻倍, 必给零件
-    if isChest then
-        gold = gold * 2 + 16
-    end
-
     -- 搜索奖励加成(大背包装备效果)
-    if RunInventory.searchBonus > 0 then
-        gold = math.floor(gold * (1 + RunInventory.searchBonus / 100))
-    end
-
-    return { gold = gold, parts = parts, items = items, isChest = isChest, itemValue = 0 }
+    return { gold = gold, pendingGold = gold, parts = parts, items = items, isChest = isChest, itemValue = 0 }
 end
 
 function RunInventory.GetSearchState(minefield, run)
@@ -446,13 +506,13 @@ function RunInventory.SearchCurrentRoom(minefield, run)
     local reward = state.reward
 
     RunInventory.searchedRooms[key] = true
-    RunInventory.gold = RunInventory.gold + reward.gold
+    RunInventory.AddPendingGold(reward.pendingGold or reward.gold or 0)
     RunInventory.parts = RunInventory.parts + reward.parts
     reward.itemValue = 0
     for _, stack in ipairs(reward.items or {}) do
         RunInventory.AddCarriedItem(stack.itemId, stack.count, stack.source)
         local def = RunInventory.GetItemDef(stack.itemId)
-        reward.itemValue = reward.itemValue + ((def and def.value or 0) * stack.count)
+        reward.itemValue = reward.itemValue + (itemBaseValue(def) * stack.count)
     end
     RunInventory.stats.searchedRooms = RunInventory.stats.searchedRooms + 1
     if reward.isChest then
@@ -464,6 +524,8 @@ function RunInventory.SearchCurrentRoom(minefield, run)
         status = "searched",
         reward = reward,
         gold = RunInventory.gold,
+        pendingGold = RunInventory.pendingGold,
+        safeGold = RunInventory.safeGold,
         parts = RunInventory.parts,
         carriedItems = RunInventory.GetCarriedItems(),
     }
@@ -478,8 +540,12 @@ function RunInventory.GetSearchedCount()
 end
 
 function RunInventory.GetTotals()
+    syncGoldAlias()
     return {
         gold = RunInventory.gold,
+        pendingGold = RunInventory.pendingGold,
+        safeGold = RunInventory.safeGold,
+        totalRunGold = RunInventory.pendingGold + RunInventory.safeGold,
         parts = RunInventory.parts,
         looseParts = RunInventory.GetLooseParts(),
         carriedItemCount = RunInventory.GetCarriedItemCount(),
@@ -503,10 +569,12 @@ end
 
 function RunInventory.RecordCombat(result)
     if not result or not result.fought then return end
+    if result.inventoryRecorded then return end
+    result.inventoryRecorded = true
     RunInventory.stats.monstersDefeated = RunInventory.stats.monstersDefeated + 1
     RunInventory.stats.combatDamage = RunInventory.stats.combatDamage + (result.damage or 0)
     if result.reward and not result.dead then
-        RunInventory.gold = RunInventory.gold + (result.reward.gold or 0)
+        RunInventory.AddPendingGold(result.reward.pendingGold or result.reward.gold or 0)
         RunInventory.parts = RunInventory.parts + (result.reward.parts or 0)
     end
 end
@@ -554,12 +622,15 @@ function RunInventory.GetExtractionReward(partsToGoldRate)
     local carriedCount = RunInventory.GetCarriedItemCount()
     local carriedValue = RunInventory.GetCarriedItemValue()
     local looseParts = RunInventory.GetLooseParts()
-    local loosePartsGold = looseParts * partsToGoldRate
-    local convertedGold = loosePartsGold
+    local loosePartsGold = 0
+    local convertedGold = 0
+    local totalGold = RunInventory.pendingGold + RunInventory.safeGold
     return {
-        totalGold = RunInventory.gold + loosePartsGold,
+        totalGold = totalGold,
         convertedGold = convertedGold,
-        directGold = RunInventory.gold,
+        directGold = totalGold,
+        pendingGold = RunInventory.pendingGold,
+        safeGold = RunInventory.safeGold,
         parts = RunInventory.parts,
         looseParts = looseParts,
         loosePartsGold = loosePartsGold,
@@ -574,19 +645,28 @@ end
 --- 新机制:金币自动保留(安全资产), 零件全部丢失(风险资产)
 --- 保底选择:是否用1个零件换取额外金币(10g)
 function RunInventory.GetFailureSalvageOptions()
-    local PARTS_SALVAGE_RATE = 10  -- 保底抢救1零件=10金币
-    local canSalvagePart = RunInventory.parts >= 1
     local carriedItemCount = RunInventory.GetCarriedItemCount()
     local carriedItemValue = RunInventory.GetCarriedItemValue()
+    local salvagedItem = nil
+    local bestValue = -1
+    for _, stack in ipairs(RunInventory.GetCarriedItems()) do
+        local value = itemBaseValue(stack.def)
+        if value > bestValue then
+            bestValue = value
+            salvagedItem = { itemId = stack.itemId, count = 1, source = stack.source, def = stack.def }
+        end
+    end
     return {
-        safeGold = RunInventory.gold,       -- 自动保留的金币
-        lostParts = RunInventory.parts,     -- 将丢失的零件数
+        safeGold = RunInventory.safeGold,
+        pendingGoldLost = RunInventory.pendingGold,
+        lostParts = RunInventory.parts,
         lostItemCount = carriedItemCount,
         lostItemValue = carriedItemValue,
         lostItems = RunInventory.GetCarriedItems(),
-        canSalvagePart = canSalvagePart,    -- 是否有零件可抢救
-        salvageBonus = canSalvagePart and PARTS_SALVAGE_RATE or 0,  -- 抢救1零件得到的金币
-        currentGold = RunInventory.gold,
+        salvagedItem = salvagedItem,
+        canSalvagePart = false,
+        salvageBonus = 0,
+        currentGold = RunInventory.pendingGold,
         currentParts = RunInventory.parts,
         carriedItemCount = carriedItemCount,
         carriedItemValue = carriedItemValue,
@@ -594,24 +674,19 @@ function RunInventory.GetFailureSalvageOptions()
     }
 end
 
---- 应用保底
----@param choice string "salvage_part"=抢救1零件换金币, "accept"=直接接受结果
 function RunInventory.ApplyFailureSalvage(choice)
     local options = RunInventory.GetFailureSalvageOptions()
     local salvage = {
         choice = choice,
-        gold = options.safeGold,   -- 金币始终保留
-        parts = 0,                  -- 零件全部丢失
+        gold = options.safeGold,
+        pendingGoldLost = options.pendingGoldLost,
+        parts = 0,
         bonus = 0,
+        salvagedItem = options.salvagedItem,
+        carriedItems = options.salvagedItem and { options.salvagedItem } or {},
     }
-
-    if choice == "salvage_part" and options.canSalvagePart then
-        salvage.bonus = options.salvageBonus
-        salvage.gold = salvage.gold + options.salvageBonus
-    end
 
     RunInventory.failureSalvage = salvage
     return salvage
 end
-
 return RunInventory

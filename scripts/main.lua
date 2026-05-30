@@ -8,6 +8,8 @@ local ExtractionRun = require("systems.ExtractionRun")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Protocol = require("systems.Protocol")
+local Balance = require("systems.Balance")
+local GameText = require("systems.GameText")
 local MetaProgress = require("systems.MetaProgress")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
@@ -315,6 +317,7 @@ end
 
 --- 返回主菜单(从游戏结束/撤离成功面板)
 function ReturnToMenu()
+    Tutorial.Reset()
     phase = PHASE.MENU
     setVisible("gameOverPanel", false)
     setVisible("winPanel", false)
@@ -764,6 +767,8 @@ local function mergeConfig(base, override)
 end
 
 function StartNewGame(override)
+    Tutorial.Reset()
+
     local config = mergeConfig({
         mode = "normal",
         width = 10,
@@ -817,6 +822,9 @@ function StartNewGame(override)
     end
     if equipBonus.searchBonus > 0 then
         RunInventory.searchBonus = equipBonus.searchBonus
+    end
+    if equipBonus.mineDmgReduce and equipBonus.mineDmgReduce > 0 then
+        Combat.mineDmgReduce = Combat.mineDmgReduce + equipBonus.mineDmgReduce
     end
 
     -- 应用天赋效果
@@ -881,6 +889,8 @@ function StartTutorial()
     ShowMessage("")  -- 清除默认提示,教程对话框接管
 end
 
+local RecordFailureSalvageToMeta
+
 function ShowFailurePanel(reason)
     phase = PHASE.GAME_OVER
 
@@ -930,13 +940,10 @@ function ShowFailurePanel(reason)
     else
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
-        -- 无零件可抢救, 直接结算金币
+        local salvage = RunInventory.ApplyFailureSalvage("accept")
+        RecordFailureSalvageToMeta(salvage)
         local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
-        local finalGold = totals.gold + talentBonus
-        if finalGold > 0 and not failureSettlementRecorded then
-            MetaProgress.AddGold(finalGold)
-            failureSettlementRecorded = true
-        end
+        local finalGold = (salvage.gold or 0) + talentBonus
         local goInfo2 = uiRoot_:FindById("gameOverInfo")
         if goInfo2 then
             local reasonLine = uiRoot_:FindById("failureReasonLine")
@@ -975,11 +982,7 @@ function ApplyFailureSalvage(choice)
     local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
     local finalGold = salvage.gold + talentBonus
 
-    -- 写入局外金币
-    if finalGold > 0 and not failureSettlementRecorded then
-        MetaProgress.AddGold(finalGold)
-        failureSettlementRecorded = true
-    end
+    RecordFailureSalvageToMeta(salvage)
 
     local text = "保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")"
     if salvage.bonus > 0 then
@@ -1024,6 +1027,33 @@ function ApplyFailureSalvage(choice)
     ShowMessage(text)
 end
 
+function RecordFailureSalvageToMeta(salvage)
+    if not salvage or failureSettlementRecorded then return end
+    local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
+    local finalGold = (salvage.gold or 0) + talentBonus
+    if finalGold > 0 then
+        MetaProgress.AddGold(finalGold)
+    end
+    if salvage.carriedItems and #salvage.carriedItems > 0 then
+        MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
+        MetaProgress.Save()
+    end
+    failureSettlementRecorded = true
+end
+
+local function ApplyMonsterClearRewards(result)
+    if not result or not result.fought then return 0, nil end
+    RunInventory.RecordCombat(result)
+    local powerGain = Combat.GrantMonsterKillPower(result)
+    local pressureResult = nil
+    local enemy = result.enemy
+    if not result.dead and enemy and not enemy.killPressureApplied then
+        enemy.killPressureApplied = true
+        pressureResult = Protocol.AddPressure(result.pressureDelta or Balance.pressure.monsterKill)
+    end
+    return powerGain, pressureResult
+end
+
 --- 启动 VS 战斗演出(替代直接结算)
 ---@param enemy table 敌人信息
 ---@param cx number 格子 x
@@ -1054,7 +1084,7 @@ function FinishBattle()
     battleState.phase = "none"
 
     if not result or not result.fought then return end
-    RunInventory.RecordCombat(result)
+    local powerGain, pressureResult = ApplyMonsterClearRewards(result)
 
     local playerPower = result.playerPower or enemy.playerPower or Combat.power
     local enemyPower = result.enemyPower or enemy.power
@@ -1066,6 +1096,12 @@ function FinishBattle()
     end
     if (reward.parts or 0) > 0 then
         rewardText = rewardText .. " 零件 +" .. reward.parts
+    end
+    if powerGain and powerGain > 0 then
+        rewardText = rewardText .. " 战力 +" .. powerGain
+    end
+    if pressureResult and pressureResult.changed then
+        rewardText = rewardText .. " " .. GameText.protocol.downgrade .. pressureResult.level
     end
 
     if result.dead then
@@ -1103,12 +1139,15 @@ end
 
 local function CompleteActiveMonsterClear(result, cx, cy)
     if not result or not result.fought then return end
-    RunInventory.RecordCombat(result)
+    local powerGain, pressureResult = ApplyMonsterClearRewards(result)
     if minefield then
         minefield:ClearRoom(cx, cy)
     end
     local enemyName = result.enemy and result.enemy.name or "异常体"
-    ShowMessage(enemyName .. " 已清理. 区域风险下降." .. buildRewardText(result.reward))
+    local extra = ""
+    if powerGain and powerGain > 0 then extra = extra .. " 战力 +" .. powerGain end
+    if pressureResult and pressureResult.changed then extra = extra .. " " .. GameText.protocol.downgrade .. pressureResult.level end
+    ShowMessage(enemyName .. " 已清理. 区域风险下降." .. buildRewardText(result.reward) .. extra)
     UpdateHUD()
 end
 
@@ -1272,6 +1311,10 @@ function MovePlayer(dx, dy)
             local mineResult = Combat.TakeMineHit()
             if result.mineTriggered then
                 RunInventory.RecordMineHit(mineResult.immuneUsed)
+                local protoResult = Protocol.AddPressure(Balance.pressure.mine)
+                if protoResult.changed then
+                    ShowMessage(GameText.protocol.downgrade .. protoResult.level .. " - " .. protoResult.description)
+                end
             end
             DungeonRoom.TriggerMineFlash()
             if not mineResult.immuneUsed then
@@ -1423,7 +1466,7 @@ function SearchCurrentRoom()
 
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()
-    local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
+    local powerUp = 0
 
     local msg = reward.isChest and ("宝箱开启! 金币 +" .. reward.gold) or ("搜索完成:金币 +" .. reward.gold)
     if reward.parts > 0 then
@@ -1576,11 +1619,14 @@ local function GetEventContext()
     local totals = RunInventory.GetTotals()
     return {
         gold = totals.gold,
+        pendingGold = totals.pendingGold,
+        safeGold = totals.safeGold,
         parts = totals.looseParts or 0,
         hp = Combat.hp,
         maxHp = Combat.maxHp,
         tradePrice = MetaProgress.GetTalentEffects().tradePrice,
         power = Combat.power,
+        tradableItems = RunInventory.GetTradableItems(),
     }
 end
 
@@ -1618,12 +1664,29 @@ local function ApplyEventResult(result, x, y)
     end
 
     if result.goldDelta ~= 0 then
-        RunInventory.gold = RunInventory.gold + result.goldDelta
-        if RunInventory.gold < 0 then RunInventory.gold = 0 end
+        RunInventory.AddPendingGold(result.goldDelta)
+    end
+    if result.pendingGoldDelta and result.pendingGoldDelta ~= 0 then
+        RunInventory.AddPendingGold(result.pendingGoldDelta)
+    end
+    if result.safeGoldDelta and result.safeGoldDelta ~= 0 then
+        RunInventory.AddSafeGold(result.safeGoldDelta)
     end
     if result.partsDelta ~= 0 then
         RunInventory.parts = RunInventory.parts + result.partsDelta
         if RunInventory.parts < 0 then RunInventory.parts = 0 end
+    end
+    if result.sellItemId then
+        RunInventory.RemoveTradableItem(result.sellItemId, result.sellCount or 1)
+    end
+    if result.rewardItemQuality then
+        RunInventory.AddRewardItemByQuality(result.rewardItemQuality, "altar")
+    end
+    for _, rewardItem in ipairs(result.rewardItems or {}) do
+        local count = rewardItem.count or 1
+        for _ = 1, count do
+            RunInventory.AddRewardItemByQuality(rewardItem.quality or "common", result.eventType or "event")
+        end
     end
     if result.hpDelta ~= 0 then
         Combat.ApplyHpDelta(result.hpDelta)
@@ -2259,6 +2322,8 @@ function HandleNanoVGRender(eventType, eventData)
         local invTotals = RunInventory.GetTotals()
         local invStatus = {
             gold = invTotals.gold,
+            pendingGold = invTotals.pendingGold,
+            safeGold = invTotals.safeGold,
             parts = invTotals.parts,
             carriedItemCount = invTotals.carriedItemCount,
             carriedItemValue = invTotals.carriedItemValue,

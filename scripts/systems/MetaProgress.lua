@@ -3,6 +3,8 @@
 -- 管理:全局金币,已解锁天赋,已购买/装备的带入物品,统计数据
 -- ============================================================================
 
+local Balance = require("systems.Balance")
+
 local MetaProgress = {}
 
 -- ============================================================================
@@ -59,6 +61,32 @@ MetaProgress.ITEMS = {
         icon = "[BAG]",
     },
 }
+
+table.insert(MetaProgress.ITEMS, {
+    id = "insulated_gloves",
+    name = "绝缘套",
+    desc = "雷险伤害 -10",
+    price = Balance.shop.insulated_gloves.price,
+    category = "机制",
+    icon = "[ISO]",
+})
+
+local ITEM_BALANCE_TEXT = {
+    armor = { name = "防护背心", desc = "+20 最大生命", price = Balance.shop.armor.price },
+    whetstone = { name = "磨刀石", desc = "+2 战斗力", price = Balance.shop.whetstone.price },
+    medkit = { name = "急救包", desc = "首次踩雷免疫伤害", price = Balance.shop.medkit.price },
+    compass = { name = "罗盘", desc = "开局显示撤离点所在象限", price = Balance.shop.compass.price },
+    backpack = { name = "大背包", desc = "保留原型背包收益加成", price = Balance.shop.backpack.price },
+}
+
+for _, item in ipairs(MetaProgress.ITEMS) do
+    local tuned = ITEM_BALANCE_TEXT[item.id]
+    if tuned then
+        item.name = tuned.name
+        item.desc = tuned.desc
+        item.price = tuned.price
+    end
+end
 
 -- ============================================================================
 -- 天赋定义
@@ -173,7 +201,8 @@ local function copyDisplayData(item)
         rarity = item.rarity or "common",
         rarityName = item.rarityName or "一般",
         icon = item.icon or "",
-        value = toNonNegativeNumber(item.value),
+        value = toNonNegativeNumber(item.baseValue or item.value),
+        baseValue = toNonNegativeNumber(item.baseValue or item.value),
         effectText = item.effectText,
         description = item.description or item.desc or "",
         source = item.source or "unknown",
@@ -211,7 +240,7 @@ local function displayFromStack(stack, source)
         rarity = def.rarity or stack.rarity or "common",
         rarityName = def.rarityName or stack.rarityName or "一般",
         icon = def.icon or stack.icon or "",
-        value = def.value or stack.value or 0,
+        value = def.baseValue or def.value or stack.baseValue or stack.value or 0,
         effectText = def.effectText or stack.effectText,
         description = def.description or stack.description or "",
         source = source or stack.source or "recovered",
@@ -275,7 +304,7 @@ local function pushRecentRecoveryItems(items)
                 id = stack.itemId or stack.id or "",
                 name = def.name or stack.name or stack.itemId or stack.id or "",
                 rarityName = def.rarityName or stack.rarityName or "",
-                value = toNonNegativeNumber(def.value or stack.value),
+                value = toNonNegativeNumber(def.baseValue or def.value or stack.baseValue or stack.value),
             })
         end
     end
@@ -787,16 +816,19 @@ function MetaProgress.GetEquipBonus()
         bonusHP = 0,
         bonusPower = 0,
         mineImmunity = false,
+        mineDmgReduce = 0,
         showExitHint = false,
         searchBonus = 0,
     }
     for _, itemId in ipairs(data.equippedItems) do
         if itemId == "armor" then
-            bonus.bonusHP = bonus.bonusHP + 25
+            bonus.bonusHP = bonus.bonusHP + Balance.shop.armor.bonusHP
         elseif itemId == "whetstone" then
-            bonus.bonusPower = bonus.bonusPower + 5
+            bonus.bonusPower = bonus.bonusPower + Balance.shop.whetstone.bonusPower
         elseif itemId == "medkit" then
             bonus.mineImmunity = true
+        elseif itemId == "insulated_gloves" then
+            bonus.mineDmgReduce = bonus.mineDmgReduce + Balance.shop.insulated_gloves.mineDmgReduce
         elseif itemId == "compass" then
             bonus.showExitHint = true
         elseif itemId == "backpack" then

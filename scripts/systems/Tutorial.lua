@@ -3,6 +3,8 @@
 -- 对话式引导，等待玩家操作完成后推进下一步
 -- ============================================================================
 
+local GameText = require("systems.GameText")
+
 local Tutorial = {}
 
 -- 教程状态
@@ -106,6 +108,15 @@ Tutorial.steps = {
         subtext = "(点击返回主菜单)",
     },
 }
+
+for index, text in ipairs(GameText.tutorial.steps) do
+    if Tutorial.steps[index] then
+        Tutorial.steps[index].text = text
+        if Tutorial.steps[index].type == "dialog" then
+            Tutorial.steps[index].subtext = GameText.tutorial.click
+        end
+    end
+end
 
 --- 开始教程
 function Tutorial.Start()
