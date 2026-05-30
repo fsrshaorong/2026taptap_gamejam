@@ -74,7 +74,6 @@ local function advanceWalkAnimation(dt)
     end
 end
 local animMovedThisFrame = false  -- 本帧是否调用了MovePlayer
-local ANIM_FRAME_TIME = 0.18 -- 每帧持续时间(秒)
 
 --- 初始化图片资源(只调用一次)
 function DungeonRoom.Init(vg)
@@ -215,15 +214,6 @@ function DungeonRoom.Update(dt)
     if animMoving then
         advanceWalkAnimation(dt)
     elseif animMoveAge > ANIM_IDLE_RESET_DELAY then
-    -- 动画帧切换(注意: MovePlayer在Update之后调用, 所以这里检查的是上一帧的标记)
-    -- 上一帧有移动 → 推进动画; 上一帧没移动 → 重置
-    if animMovedThisFrame then
-        animTimer = animTimer + dt
-        if animTimer >= ANIM_FRAME_TIME then
-            animTimer = animTimer - ANIM_FRAME_TIME
-            animFrame = (animFrame % 2) + 1  -- 在1和2之间切换
-        end
-    else
         animTimer = 0
         animFrame = 1
     end
@@ -895,10 +885,10 @@ function DungeonRoom.Draw(vg, w, h, context)
         end
 
         if imgPropCore >= 0 then
-            drawSpriteBottom(vg, imgPropCore, npcX - 70, npcY + 66, 84, traded and 0.5 or 0.9)
+            drawSpriteBottom(vg, imgPropCore, npcX - 70, npcY + 66, 84, completed and 0.5 or 0.9)
         end
         if imgPropMerchant >= 0 then
-            drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, traded and 0.55 or 1.0)
+            drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, completed and 0.55 or 1.0)
         end
 
         -- 小摊位/基座
