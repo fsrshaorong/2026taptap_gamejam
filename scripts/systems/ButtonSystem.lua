@@ -290,7 +290,7 @@ function ButtonSystem.Execute(buttonId, componentId)
 
     action.apply()
     GameState.RecordAction(buttonId, componentId)
-    GameState.AddMessage("【" .. buttonId .. "→" .. componentId .. "】" .. action.result)
+    GameState.AddMessage("[" .. buttonId .. "->" .. componentId .. "] " .. action.result)
     GameState.CheckObjective()
     return true
 end

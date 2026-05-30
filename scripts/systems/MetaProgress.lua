@@ -24,7 +24,7 @@ MetaProgress.ITEMS = {
         desc = "+25 最大血量",
         price = 50,
         category = "数值",
-        icon = "🛡️",
+        icon = "[DEF]",
     },
     {
         id = "whetstone",
@@ -32,7 +32,7 @@ MetaProgress.ITEMS = {
         desc = "+5 战斗力",
         price = 40,
         category = "数值",
-        icon = "⚔️",
+        icon = "[ATK]",
     },
     {
         id = "medkit",
@@ -40,7 +40,7 @@ MetaProgress.ITEMS = {
         desc = "首次踩雷免疫伤害",
         price = 60,
         category = "机制",
-        icon = "💊",
+        icon = "[MED]",
     },
     {
         id = "compass",
@@ -48,7 +48,7 @@ MetaProgress.ITEMS = {
         desc = "开局显示撤离点所在象限",
         price = 80,
         category = "机制",
-        icon = "🧭",
+        icon = "[NAV]",
     },
     {
         id = "backpack",
@@ -56,7 +56,7 @@ MetaProgress.ITEMS = {
         desc = "搜索奖励 +50%",
         price = 100,
         category = "数值",
-        icon = "🎒",
+        icon = "[BAG]",
     },
 }
 
@@ -104,7 +104,7 @@ MetaProgress.TALENTS = {
         id = "talent_event",
         direction = "事件",
         name = "议价",
-        desc = "NPC 交易价格 15→20",
+        desc = "NPC 交易价格 15->20",
         price = 120,
     },
 }
@@ -182,7 +182,7 @@ end
 
 --- 保存存档
 function MetaProgress.Save()
-    -- 转换 set → array 存储
+    -- 转换 set -> array 存储
     local talentList = {}
     for id, _ in pairs(data.unlockedTalents) do
         table.insert(talentList, id)

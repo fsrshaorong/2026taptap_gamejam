@@ -230,7 +230,7 @@ end
 function RefreshEquipPage()
     local goldLabel = uiRoot_ and uiRoot_:FindById("equipGoldLabel")
     if goldLabel then
-        goldLabel:SetText("💰 " .. MetaProgress.GetGold())
+        goldLabel:SetText("金币 " .. MetaProgress.GetGold())
     end
 
     local listPanel = uiRoot_ and uiRoot_:FindById("equipItemList")
@@ -246,7 +246,7 @@ function RefreshEquipPage()
         local btnVariant = "default"
 
         if equipped then
-            statusText = "✅ 已装备"
+            statusText = "[已装备]"
             btnText = "卸下"
         elseif owned then
             statusText = "已拥有"
@@ -314,7 +314,7 @@ end
 function RefreshTalentPage()
     local goldLabel = uiRoot_ and uiRoot_:FindById("talentGoldLabel")
     if goldLabel then
-        goldLabel:SetText("💰 " .. MetaProgress.GetGold())
+        goldLabel:SetText("金币 " .. MetaProgress.GetGold())
     end
 
     local listPanel = uiRoot_ and uiRoot_:FindById("talentList")
@@ -324,7 +324,7 @@ function RefreshTalentPage()
     for _, talent in ipairs(MetaProgress.TALENTS) do
         local unlocked = MetaProgress.HasTalent(talent.id)
 
-        local statusText = unlocked and "✅ 已解锁" or (talent.price .. "g")
+        local statusText = unlocked and "[已解锁]" or (talent.price .. "g")
         local talentId = talent.id  -- 闭包捕获
 
         local row = UI.Panel {
@@ -382,13 +382,13 @@ end
 function OnEquipItemClick(itemId)
     local owned = MetaProgress.OwnsItem(itemId)
     if owned then
-        -- 已拥有 → 切换装备
+        -- 已拥有 -> 切换装备
         local ok, err = MetaProgress.ToggleEquip(itemId)
         if not ok and err then
             print("[Menu] ToggleEquip failed: " .. err)
         end
     else
-        -- 未拥有 → 购买
+        -- 未拥有 -> 购买
         local ok, err = MetaProgress.BuyItem(itemId)
         if not ok and err then
             print("[Menu] BuyItem failed: " .. err)
@@ -533,7 +533,7 @@ function StartNewGame()
                 if exit.x < centerX then dir = dir .. "西" else dir = dir .. "东" end
                 table.insert(hints, dir)
             end
-            compassHint = " 🧭罗盘提示:撤离点在" .. table.concat(hints, ",") .. "方向"
+            compassHint = " 罗盘提示:撤离点在" .. table.concat(hints, ",") .. "方向"
         end
     end
 
@@ -781,7 +781,7 @@ function MovePlayer(dx, dy)
             if mineResult.dead then
                 ShowFailurePanel("踩雷!受到 " .. mineResult.damage .. " 伤害, 血量归零!")
             elseif mineResult.immuneUsed then
-                ShowMessage("💊 急救包发动!踩雷免疫一次伤害!")
+                ShowMessage("急救包发动!踩雷免疫一次伤害!")
             else
                 ShowMessage("踩雷!-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. "), 该雷房已触发.")
             end
@@ -815,7 +815,7 @@ function MovePlayer(dx, dy)
                     -- 启动逃跑倒计时, 玩家可在窗口内离开房间
                     monsterFleeActive = true
                     monsterFleeTimer = MONSTER_FLEE_BASE + fleeBonus
-                    ShowMessage("⚠️ 遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")!" ..
+                    ShowMessage("遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")!" ..
                         math.floor(monsterFleeTimer) .. "秒内可逃跑, 或按 F 战斗")
                 else
                     -- 无天赋直接进入 VS 演出
@@ -1466,10 +1466,6 @@ function CreateUI()
                         alignItems = "center",
                         children = {
                             UI.Label {
-                                text = "💰",
-                                fontSize = 16,
-                            },
-                            UI.Label {
                                 id = "menuGoldLabel",
                                 text = "金币: 0",
                                 fontSize = 14,
@@ -1491,7 +1487,7 @@ function CreateUI()
                         }
                     },
                     UI.Button {
-                        text = "⚔️ 出发探索",
+                        text = "出发探索",
                         variant = "primary",
                         width = 180,
                         marginTop = 8,
@@ -1505,14 +1501,14 @@ function CreateUI()
                         marginTop = 4,
                         children = {
                             UI.Button {
-                                text = "🎒 装备",
+                                text = "装备",
                                 width = 90,
                                 onClick = function()
                                     ShowMenuPage("equip")
                                 end,
                             },
                             UI.Button {
-                                text = "🌟 天赋",
+                                text = "天赋",
                                 width = 90,
                                 onClick = function()
                                     ShowMenuPage("talent")
@@ -1643,7 +1639,7 @@ function CreateUI()
                         }
                     },
                     UI.Button {
-                        text = "⚠️ 重置存档",
+                        text = "重置存档",
                         width = 120,
                         onClick = function()
                             GMResetSave()
@@ -1655,10 +1651,9 @@ function CreateUI()
                         text = "",
                         fontSize = 11,
                         fontColor = { 200, 200, 200, 200 },
-                        numberOfLines = 3,
                     },
                     UI.Button {
-                        text = "← 返回",
+                        text = "返回",
                         width = 100,
                         marginTop = 8,
                         onClick = function()
@@ -1687,13 +1682,13 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Label {
-                                text = "🎒 装备商店",
+                                text = "装备商店",
                                 fontSize = 18,
                                 fontColor = { 160, 210, 255, 255 },
                             },
                             UI.Label {
                                 id = "equipGoldLabel",
-                                text = "💰 0",
+                                text = "金币 0",
                                 fontSize = 13,
                                 fontColor = { 255, 220, 80, 255 },
                             },
@@ -1712,7 +1707,7 @@ function CreateUI()
                         children = {}
                     },
                     UI.Button {
-                        text = "← 返回",
+                        text = "返回",
                         width = 100,
                         marginTop = 8,
                         onClick = function()
@@ -1741,13 +1736,13 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Label {
-                                text = "🌟 天赋",
+                                text = "天赋",
                                 fontSize = 18,
                                 fontColor = { 255, 220, 100, 255 },
                             },
                             UI.Label {
                                 id = "talentGoldLabel",
-                                text = "💰 0",
+                                text = "金币 0",
                                 fontSize = 13,
                                 fontColor = { 255, 220, 80, 255 },
                             },
@@ -1766,7 +1761,7 @@ function CreateUI()
                         children = {}
                     },
                     UI.Button {
-                        text = "← 返回",
+                        text = "返回",
                         width = 100,
                         marginTop = 8,
                         onClick = function()

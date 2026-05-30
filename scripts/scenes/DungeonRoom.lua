@@ -677,11 +677,11 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgFontSize(vg, 20)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBA(220, 90, 70, 230))
-        nvgText(vg, cx, cy + 30, "💣 已触发地雷")
+        nvgText(vg, cx, cy + 30, "已触发地雷")
 
         nvgFontSize(vg, 14)
         nvgFillColor(vg, nvgRGBA(180, 140, 130, 180))
-        nvgText(vg, cx, cy + 56, "不再触发 · 安全通过")
+        nvgText(vg, cx, cy + 56, "不再触发 - 安全通过")
     end
 
     -- 宝箱房标题

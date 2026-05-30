@@ -319,9 +319,9 @@ function MapOverlay.HandleClick(mx, my, button)
     if not cell then return true end
 
     -- 逻辑:
-    -- 1) 隐藏格 → 插旗
-    -- 2) 已插旗 → 取消旗
-    -- 3) 已探索安全格 + 已访问 → 传送
+    -- 1) 隐藏格 -> 插旗
+    -- 2) 已插旗 -> 取消旗
+    -- 3) 已探索安全格 + 已访问 -> 传送
     if cell.state == "hidden" or cell.state == "flagged" then
         if MapOverlay.onFlag then
             MapOverlay.onFlag(gx, gy)
