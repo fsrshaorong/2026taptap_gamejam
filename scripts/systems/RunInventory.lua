@@ -158,16 +158,7 @@ function RunInventory.HasItemIcon(itemId)
     if not def or not def.icon or def.icon == "" then
         return false
     end
-    local ok = false
-    if love and love.filesystem and love.filesystem.getInfo then
-        ok = love.filesystem.getInfo(def.icon) ~= nil
-    else
-        local file = io and io.open and io.open(def.icon, "rb") or nil
-        if file then
-            file:close()
-            ok = true
-        end
-    end
+    local ok = cache:Exists(def.icon)
     return ok
 end
 

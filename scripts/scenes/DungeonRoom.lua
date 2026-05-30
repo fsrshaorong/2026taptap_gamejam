@@ -1005,22 +1005,6 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFill(vg)
         end
 
-        if imgPropCore >= 0 then
-            drawSpriteBottom(vg, imgPropCore, npcX - 70, npcY + 66, 84, completed and 0.5 or 0.9)
-        end
-        if imgPropMerchant >= 0 then
-            drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, completed and 0.55 or 1.0)
-        end
-
-        -- 小摊位/基座
-        nvgBeginPath(vg)
-        nvgRoundedRect(vg, npcX - 44, npcY + 42, 88, 20, 4)
-        nvgFillColor(vg, completed and nvgRGBA(45, 55, 55, 170) or nvgRGBA(55, 115, 120, 220))
-        nvgFill(vg)
-        nvgStrokeColor(vg, completed and nvgRGBA(80, 95, 95, 130) or vis.accentColor)
-        nvgStrokeWidth(vg, 1.5)
-        nvgStroke(vg)
-
         -- NPC/物件 身体
         nvgBeginPath(vg)
         nvgCircle(vg, npcX, npcY, 18)
@@ -1079,9 +1063,11 @@ function DungeonRoom.Draw(vg, w, h, context)
         else
             nvgFillColor(vg, vis.accentColor)
             nvgText(vg, npcX, npcY + 24, vis.label)
-            nvgFontSize(vg, 12)
-            nvgFillColor(vg, nvgRGBA(180, 220, 220, 200))
-            nvgText(vg, npcX, npcY + 42, vis.hint)
+            -- 交互提示放在 NPC 头顶上方，像素字体+黑色
+            nvgFontSize(vg, 14)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_BOTTOM)
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 230))
+            nvgText(vg, npcX, npcY - 38, vis.hint)
         end
 
         -- 脉冲文字
