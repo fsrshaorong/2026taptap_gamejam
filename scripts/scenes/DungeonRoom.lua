@@ -28,6 +28,21 @@ local imgRoomTreasure = -1
 local imgRoomExit = -1
 local imagesLoaded = false
 
+-- 角色动画帧
+local animFrames = {
+    down = { -1, -1 },
+    up = { -1, -1 },
+    left = { -1, -1 },
+    right = { -1, -1 },
+}
+local animDir = "down"       -- 当前朝向: down/up/left/right
+local animFrame = 1          -- 当前帧索引 1 or 2
+local animTimer = 0          -- 帧切换计时器
+local animMoving = false     -- 是否正在移动
+local animMoveAge = 0        -- 距上次移动的时间(用于自动停止动画)
+local ANIM_FRAME_TIME = 0.25 -- 每帧持续时间(秒)
+local ANIM_STOP_DELAY = 0.05 -- 停止移动后多久停动画
+
 --- 初始化图片资源(只调用一次)
 function DungeonRoom.Init(vg)
     if imagesLoaded then return end
@@ -39,6 +54,15 @@ function DungeonRoom.Init(vg)
     imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
     imgRoomEvent = nvgCreateImage(vg, "Textures/room_event.png", 0)
     imgRoomMonster = nvgCreateImage(vg, "Textures/room_monster.png", 0)
+    -- 加载行走动画帧
+    animFrames.down[1] = nvgCreateImage(vg, "Textures/player_walk_down_1.png", 0)
+    animFrames.down[2] = nvgCreateImage(vg, "Textures/player_walk_down_2.png", 0)
+    animFrames.up[1] = nvgCreateImage(vg, "Textures/player_walk_up_1.png", 0)
+    animFrames.up[2] = nvgCreateImage(vg, "Textures/player_walk_up_2.png", 0)
+    animFrames.left[1] = nvgCreateImage(vg, "Textures/player_walk_left_1.png", 0)
+    animFrames.left[2] = nvgCreateImage(vg, "Textures/player_walk_left_2.png", 0)
+    animFrames.right[1] = nvgCreateImage(vg, "Textures/player_walk_right_1.png", 0)
+    animFrames.right[2] = nvgCreateImage(vg, "Textures/player_walk_right_2.png", 0)
     imagesLoaded = true
 end
 
@@ -119,6 +143,21 @@ function DungeonRoom.Update(dt)
         exitPulseTimer = exitPulseTimer - dt
         if exitPulseTimer < 0 then exitPulseTimer = 0 end
     end
+    -- 动画帧切换(带自动停止)
+    animMoveAge = animMoveAge + dt
+    if animMoveAge > ANIM_STOP_DELAY then
+        animMoving = false
+    end
+    if animMoving then
+        animTimer = animTimer + dt
+        if animTimer >= ANIM_FRAME_TIME then
+            animTimer = animTimer - ANIM_FRAME_TIME
+            animFrame = (animFrame % 2) + 1  -- 在1和2之间切换
+        end
+    else
+        animTimer = 0
+        animFrame = 1
+    end
 end
 
 function DungeonRoom.GetLayout(w, h)
@@ -173,6 +212,17 @@ local function isAlignedWithDoor(dx, dy, layout)
 end
 
 function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
+    -- 更新动画方向
+    if dx ~= 0 or dy ~= 0 then
+        animMoving = true
+        animMoveAge = 0  -- 重置移动年龄,防止自动停止
+        if math.abs(dx) > math.abs(dy) then
+            animDir = dx < 0 and "left" or "right"
+        else
+            animDir = dy < 0 and "up" or "down"
+        end
+    end
+
     local layout = getCurrentLayout(screenW, screenH, dpr)
     local minX = CONFIG.playerRadius / layout.w
     local maxX = 1 - minX
@@ -530,11 +580,25 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     local playerCX = layout.x + playerPos.x * layout.w
     local playerCY = layout.y + playerPos.y * layout.h
-    -- 玩家精灵
+    -- 玩家精灵(带方向动画)
     local playerSize = CONFIG.playerRadius * 2.5
-    drawSprite(vg, imgPlayer, playerCX, playerCY, playerSize, 1.0)
+    local currentImg = imgPlayer  -- 默认静态帧
+    if animMoving then
+        -- 行走时播放动画帧
+        local frames = animFrames[animDir]
+        if frames and frames[animFrame] >= 0 then
+            currentImg = frames[animFrame]
+        end
+    else
+        -- 静止时使用当前方向的第1帧(有则用之, 否则用默认)
+        local frames = animFrames[animDir]
+        if frames and frames[1] >= 0 then
+            currentImg = frames[1]
+        end
+    end
+    drawSprite(vg, currentImg, playerCX, playerCY, playerSize, 1.0)
     -- 如果图片加载失败, fallback 圆形
-    if imgPlayer < 0 then
+    if currentImg < 0 then
         nvgBeginPath(vg)
         nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius)
         nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
