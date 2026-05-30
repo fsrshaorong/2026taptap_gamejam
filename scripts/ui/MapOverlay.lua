@@ -102,7 +102,7 @@ function MapOverlay.ComputeLayout(fieldWidth, fieldHeight, screenW, screenH)
     local csH = math.floor(maxH / fieldHeight)
     MapOverlay.cellSize = math.min(csW, csH)
     if MapOverlay.cellSize < 12 then MapOverlay.cellSize = 12 end
-    if MapOverlay.cellSize > 36 then MapOverlay.cellSize = 36 end
+    if MapOverlay.cellSize > 54 then MapOverlay.cellSize = 54 end
 
     -- 居中
     local totalW = MapOverlay.cellSize * fieldWidth

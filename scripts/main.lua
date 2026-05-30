@@ -220,11 +220,13 @@ function Start()
     -- 配置放大地图回调
     MapOverlay.onClose = function()
         phase = PHASE.PLAYING
+        Tutorial.NotifyAction("close_map")
     end
     MapOverlay.onFlag = function(x, y)
         if run then
             run:ToggleFlag(x, y)
             RefreshMapData()
+            Tutorial.NotifyAction("flag")
         end
     end
     MapOverlay.onTeleport = function(x, y)
@@ -573,8 +575,8 @@ end
 function StartNewGame(override)
     local config = mergeConfig({
         mode = "normal",
-        width = 15,
-        height = 15,
+        width = 10,
+        height = 10,
         mineDensity = 0.14,
         spawnSafeRadius = 0,
         pathWidth = 0,
@@ -2415,6 +2417,7 @@ function HandleKeyDown(eventType, eventData)
         if key == KEY_ESCAPE or key == KEY_M then
             MapOverlay.Hide()
             phase = PHASE.PLAYING
+            Tutorial.NotifyAction("close_map")
         end
         return
     end
