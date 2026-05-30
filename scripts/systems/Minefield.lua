@@ -66,6 +66,13 @@ local function clampInt(value, minValue, maxValue)
     return value
 end
 
+local function clampNumber(value, minValue, maxValue)
+    value = tonumber(value) or minValue
+    if value < minValue then return minValue end
+    if value > maxValue then return maxValue end
+    return value
+end
+
 local function sign(value)
     if value > 0 then return 1 end
     if value < 0 then return -1 end
@@ -119,6 +126,16 @@ function Minefield:Init(config)
     self.randomExitCount = clampInt(config.randomExitCount or 2, 0, 20)
     self.spawnLocked = config.spawnX ~= nil or config.spawnY ~= nil
     self.expandZeroCells = config.expandZeroCells == true
+    local normalMode = self.mode == "normal"
+    self.monsterRoomRatio = clampNumber(config.monsterRoomRatio or (normalMode and 0.035 or 0.10), 0, 1)
+    self.chestRoomRatio = clampNumber(config.chestRoomRatio or (normalMode and 0.025 or 0.08), 0, 1)
+    self.eventRoomRatio = clampNumber(config.eventRoomRatio or (normalMode and 0.018 or 0.05), 0, 1)
+    self.minMonsterRooms = clampInt(config.minMonsterRooms or 2, 0, 50)
+    self.minChestRooms = clampInt(config.minChestRooms or 2, 0, 50)
+    self.minEventRooms = clampInt(config.minEventRooms or 1, 0, 50)
+    self.maxMonsterRooms = clampInt(config.maxMonsterRooms or (normalMode and 7 or 200), 0, 200)
+    self.maxChestRooms = clampInt(config.maxChestRooms or (normalMode and 5 or 200), 0, 200)
+    self.maxEventRooms = clampInt(config.maxEventRooms or (normalMode and 3 or 200), 0, 200)
 
     self.spawn = {
         x = clampInt(config.spawnX or math.floor((self.width + 1) / 2), 1, self.width),
@@ -349,6 +366,14 @@ function Minefield:_PlaceMines()
     self.safeCellCount = self.width * self.height - self.mineCount
 end
 
+function Minefield:_SpecialRoomCount(candidateCount, ratio, minCount, maxCount, remaining)
+    local count = math.floor(candidateCount * ratio + 0.5)
+    if count < minCount then count = minCount end
+    if count > maxCount then count = maxCount end
+    if count > remaining then count = math.max(0, remaining) end
+    return count
+end
+
 --- 在安全格中分配特殊房型(怪物房,宝箱房)
 --- 怪物房不计入雷数邻接, 所以要在 _ComputeAdjacency 之前调用
 function Minefield:_AssignSpecialRooms()
@@ -366,17 +391,14 @@ function Minefield:_AssignSpecialRooms()
 
     self.rng:Shuffle(safeCandidates)
 
-    -- 怪物房数量:约 10% 的安全非保留格
-    local monsterCount = math.floor(#safeCandidates * 0.10 + 0.5)
-    if monsterCount < 2 then monsterCount = 2 end
-    if monsterCount > #safeCandidates then monsterCount = #safeCandidates end
+    local remaining = #safeCandidates
+    local monsterCount = self:_SpecialRoomCount(
+        #safeCandidates, self.monsterRoomRatio, self.minMonsterRooms, self.maxMonsterRooms, remaining)
+    remaining = remaining - monsterCount
 
-    -- 宝箱房数量:约 8% 的安全非保留格
-    local chestCount = math.floor(#safeCandidates * 0.08 + 0.5)
-    if chestCount < 2 then chestCount = 2 end
-    if chestCount > (#safeCandidates - monsterCount) then
-        chestCount = math.max(0, #safeCandidates - monsterCount)
-    end
+    local chestCount = self:_SpecialRoomCount(
+        #safeCandidates, self.chestRoomRatio, self.minChestRooms, self.maxChestRooms, remaining)
+    remaining = remaining - chestCount
 
     local idx = 1
     for i = 1, monsterCount do
@@ -390,12 +412,9 @@ function Minefield:_AssignSpecialRooms()
         idx = idx + 1
     end
 
-    -- 事件房数量:约 5% 的安全非保留格, 至少 1 个
-    local eventCount = math.floor(#safeCandidates * 0.05 + 0.5)
-    if eventCount < 1 then eventCount = 1 end
-    if eventCount > (#safeCandidates - idx + 1) then
-        eventCount = math.max(0, #safeCandidates - idx + 1)
-    end
+    local eventCount = self:_SpecialRoomCount(
+        #safeCandidates, self.eventRoomRatio, self.minEventRooms, self.maxEventRooms, remaining)
+    remaining = remaining - eventCount
     for i = 1, eventCount do
         if idx > #safeCandidates then break end
         safeCandidates[idx].roomType = "event"
