@@ -73,6 +73,8 @@ local function advanceWalkAnimation(dt)
         animFrame = (animFrame % 2) + 1
     end
 end
+local animMovedThisFrame = false  -- 本帧是否调用了MovePlayer
+local ANIM_FRAME_TIME = 0.18 -- 每帧持续时间(秒)
 
 --- 初始化图片资源(只调用一次)
 function DungeonRoom.Init(vg)
@@ -213,9 +215,20 @@ function DungeonRoom.Update(dt)
     if animMoving then
         advanceWalkAnimation(dt)
     elseif animMoveAge > ANIM_IDLE_RESET_DELAY then
+    -- 动画帧切换(注意: MovePlayer在Update之后调用, 所以这里检查的是上一帧的标记)
+    -- 上一帧有移动 → 推进动画; 上一帧没移动 → 重置
+    if animMovedThisFrame then
+        animTimer = animTimer + dt
+        if animTimer >= ANIM_FRAME_TIME then
+            animTimer = animTimer - ANIM_FRAME_TIME
+            animFrame = (animFrame % 2) + 1  -- 在1和2之间切换
+        end
+    else
         animTimer = 0
         animFrame = 1
     end
+    -- 重置标记, 本帧的MovePlayer会在之后重新设置
+    animMovedThisFrame = false
 end
 
 function DungeonRoom.GetLayout(w, h)
@@ -275,6 +288,7 @@ function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
         local resumedThisFrame = not animMoving
         animMoving = true
         animMoveAge = 0  -- 重置移动年龄,防止自动停止
+        animMovedThisFrame = true
         if math.abs(dx) > math.abs(dy) then
             animDir = dx < 0 and "left" or "right"
         else
@@ -719,7 +733,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     -- 玩家精灵(带方向动画)
     local playerSize = CONFIG.playerRadius * 2.5
     local currentImg = imgPlayer  -- 默认静态帧
-    if animMoving then
+    if animFrame > 1 or animMovedThisFrame then
         -- 行走时播放动画帧
         local frames = animFrames[animDir]
         if frames and frames[animFrame] >= 0 then
