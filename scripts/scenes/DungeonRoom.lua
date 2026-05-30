@@ -410,14 +410,9 @@ function DungeonRoom.Draw(vg, w, h, context)
         roomStrokeR, roomStrokeG, roomStrokeB = 60, 160, 180
     end
 
-    nvgBeginPath(vg)
-    nvgRect(vg, 0, 0, w, h)
-    nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
-    nvgFill(vg)
-
     local layout = DungeonRoom.GetLayout(w, h)
 
-    -- 房间背景贴图
+    -- 房间背景贴图(全屏覆盖)
     DungeonRoom.Init(vg)
     local roomBgImg = imgRoomSafe
     if roomType == "mine" then roomBgImg = imgRoomDanger
@@ -427,20 +422,20 @@ function DungeonRoom.Draw(vg, w, h, context)
     if cell and cell.exitId then roomBgImg = imgRoomExit end
 
     if roomBgImg >= 0 then
-        drawRoomBg(vg, roomBgImg, layout.x, layout.y, layout.w, layout.h, 0.85)
+        -- 全屏绘制背景图
+        local paint = nvgImagePattern(vg, 0, 0, w, h, 0, roomBgImg, 1.0)
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, w, h)
+        nvgFillPaint(vg, paint)
+        nvgFill(vg)
     else
         nvgBeginPath(vg)
-        nvgRoundedRect(vg, layout.x, layout.y, layout.w, layout.h, 8)
-        nvgFillColor(vg, nvgRGBA(roomFillR, roomFillG, roomFillB, 210))
+        nvgRect(vg, 0, 0, w, h)
+        nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
         nvgFill(vg)
     end
 
-    -- 房间边框
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, layout.x, layout.y, layout.w, layout.h, 8)
-    nvgStrokeColor(vg, nvgRGBA(roomStrokeR, roomStrokeG, roomStrokeB, 220))
-    nvgStrokeWidth(vg, 2)
-    nvgStroke(vg)
+    -- 房间边框(已隐藏, 全屏背景不需要)
 
     drawRoomGrid(vg, layout)
 
@@ -453,27 +448,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgStroke(vg)
     end
 
-    for _, door in ipairs(DungeonRoom.GetDoors(layout, p, minefield)) do
-        local nx = p.x + door.dx
-        local ny = p.y + door.dy
-        if minefield:IsInside(nx, ny) then
-            local neighbor = minefield:GetCellView(nx, ny)
-            local color = doorColorFor(neighbor)
-            nvgBeginPath(vg)
-            nvgRoundedRect(vg, door.x, door.y, layout.doorSize, layout.doorSize, 5)
-            nvgFillColor(vg, color)
-            nvgFill(vg)
-            nvgStrokeColor(vg, nvgRGBA(220, 225, 240, 90))
-            nvgStrokeWidth(vg, 1)
-            nvgStroke(vg)
-
-            nvgFontFace(vg, "sans")
-            nvgFontSize(vg, 14)
-            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            nvgFillColor(vg, nvgRGBA(255, 255, 255, 230))
-            nvgText(vg, door.x + layout.doorSize / 2, door.y + layout.doorSize / 2, door.dir)
-        end
-    end
+    -- 门按钮视觉已隐藏(点击检测保留在 HitTest 中)
 
     drawSearchPoint(vg, layout, context.searchState)
     drawExitDevice(vg, layout, cell)
