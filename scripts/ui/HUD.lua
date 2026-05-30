@@ -239,15 +239,8 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, GameText.hud.pendingGold .. (inv.pendingGold or inv.gold or 0))
     curY = curY + 21
 
-    nvgFillColor(vg, nvgRGBA(120, 240, 160, 255))
-    nvgText(vg, contentX, curY, GameText.hud.safeGold .. (inv.safeGold or 0))
-    curY = curY + 21
-
     nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
     nvgText(vg, contentX, curY, GameText.hud.parts .. (inv.parts or 0))
-    curY = curY + 21
-
-    nvgFillColor(vg, nvgRGBA(150, 230, 190, 255))    nvgText(vg, contentX, curY, "回收包: " .. (inv.carriedItemCount or 0) .. " 件 / 估值 " .. (inv.carriedItemValue or 0))
     curY = curY + 21
 
     local consumables = inv.consumables or {}
@@ -258,9 +251,15 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         curY = curY + 21
     end
 
+    -- 已锁定 / 回收物 / 已探索 一行显示
+    nvgFontSize(vg, 14)
+    local rowText = "已锁定:" .. (inv.safeGold or 0)
+        .. "  回收:" .. (inv.carriedItemCount or 0) .. "件"
+        .. "  探索:" .. (context.exploredCount or 0) .. "格"
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
-    nvgText(vg, contentX, curY, "已探索: " .. (context.exploredCount or 0) .. " 格")
-    curY = curY + 26
+    nvgText(vg, contentX, curY, rowText)
+    nvgFontSize(vg, 16)
+    curY = curY + 24
 
     -- 分隔线
     nvgBeginPath(vg)
