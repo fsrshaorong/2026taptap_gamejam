@@ -134,8 +134,9 @@ local imgBattlePlayer = -1
 local imgBattleEnemy = -1
 
 -- 菜单子页面状态
-local menuPage = "main"  -- "main" | "equip" | "talent" | "warehouse"
+local menuPage = "main"  -- "main" | "equip" | "talent" | "warehouse" | "requisition" | "loadout" | "recovery"
 local warehouseSelectedIndex = 1
+local warehouseFilter = "all"
 
 local JUDGE_DEMO_MAP = {
     width = 15,
@@ -330,6 +331,9 @@ function ShowMenuPage(page)
     setVisible("menuPage_equip", page == "equip")
     setVisible("menuPage_talent", page == "talent")
     setVisible("menuPage_warehouse", page == "warehouse")
+    setVisible("menuPage_requisition", page == "requisition")
+    setVisible("menuPage_loadout", page == "loadout")
+    setVisible("menuPage_recovery", page == "recovery")
     setVisible("menuPage_gm", page == "gm")
 
     if page == "main" then
@@ -340,9 +344,19 @@ function ShowMenuPage(page)
         RefreshTalentPage()
     elseif page == "warehouse" then
         RefreshWarehousePage()
+    elseif page == "requisition" then
+        RefreshRequisitionPage()
+    elseif page == "loadout" then
+        RefreshLoadoutPage()
+    elseif page == "recovery" then
+        RefreshRecoveryPage()
     elseif page == "gm" then
         RefreshGMPanel()
     end
+end
+
+local function RefreshCurrentMenuPage()
+    ShowMenuPage(menuPage)
 end
 
 --- 刷新主菜单数据
@@ -395,6 +409,30 @@ function RefreshMainMenu()
     if warehouseLabel then
         warehouseLabel:SetText("后勤仓库: " .. warehouse.totalItems .. " 件 | 可售估值 " .. warehouse.totalValue)
     end
+
+    local loadout = MetaProgress.GetLoadoutSummary()
+    local loadoutLabel = uiRoot_ and uiRoot_:FindById("menuLoadoutLabel")
+    if loadoutLabel then
+        loadoutLabel:SetText("出勤配置: " .. loadout.equipmentText .. " | " .. loadout.consumableText)
+    end
+end
+
+local function DisplayIconText(item)
+    local iconText = item and item.icon or ""
+    if string.find(iconText, "/", 1, true) or string.find(iconText, "\\", 1, true) then
+        iconText = ""
+    end
+    return iconText
+end
+
+local function SetTerminalSummaryLabels(prefix)
+    local summary = MetaProgress.GetTerminalSummary()
+    local goldLabel = uiRoot_ and uiRoot_:FindById(prefix .. "GoldLabel")
+    if goldLabel then goldLabel:SetText("金币 " .. summary.inventory.gold) end
+    local loadoutLabel = uiRoot_ and uiRoot_:FindById(prefix .. "LoadoutLabel")
+    if loadoutLabel then
+        loadoutLabel:SetText("装备 " .. summary.loadout.equipmentText .. " | 带入 " .. summary.loadout.consumableText)
+    end
 end
 
 --- 刷新装备商店页
@@ -403,14 +441,15 @@ function RefreshEquipPage()
     if goldLabel then
         goldLabel:SetText("金币 " .. MetaProgress.GetGold())
     end
+    SetTerminalSummaryLabels("equip")
 
     local listPanel = uiRoot_ and uiRoot_:FindById("equipItemList")
     if not listPanel then return end
     listPanel:RemoveAllChildren()
 
-    for _, item in ipairs(MetaProgress.ITEMS) do
-        local owned = MetaProgress.OwnsItem(item.id)
-        local equipped = MetaProgress.IsEquipped(item.id)
+    for _, item in ipairs(MetaProgress.GetShopDisplayList({ type = "equipment" })) do
+        local owned = item.owned
+        local equipped = item.isEquipped
 
         local statusText = ""
         local btnText = ""
@@ -444,12 +483,12 @@ function RefreshEquipPage()
                     gap = 2,
                     children = {
                         UI.Label {
-                            text = item.icon .. " " .. item.name,
+                            text = DisplayIconText(item) .. " " .. item.name,
                             fontSize = 13,
                             fontColor = { 230, 235, 245, 255 },
                         },
                         UI.Label {
-                            text = item.desc,
+                            text = item.effectText or item.description,
                             fontSize = 11,
                             fontColor = { 150, 160, 180, 200 },
                         },
@@ -555,6 +594,7 @@ function RefreshWarehousePage()
     if goldLabel then
         goldLabel:SetText("金币 " .. MetaProgress.GetGold())
     end
+    SetTerminalSummaryLabels("warehouse")
 
     local summary = MetaProgress.GetWarehouseSummary()
     local summaryLabel = uiRoot_ and uiRoot_:FindById("warehouseSummaryLabel")
@@ -562,14 +602,20 @@ function RefreshWarehousePage()
         summaryLabel:SetText("库存 " .. summary.totalItems .. " 件 | 可售估值 " .. summary.totalValue)
     end
 
+    local filterLabel = uiRoot_ and uiRoot_:FindById("warehouseFilterLabel")
+    if filterLabel then
+        local names = { all = "全部", recovered = "异常回收物", consumable = "消耗品", equipment = "装备" }
+        filterLabel:SetText("分类: " .. (names[warehouseFilter] or warehouseFilter))
+    end
+
     local listPanel = uiRoot_ and uiRoot_:FindById("warehouseItemList")
     if not listPanel then return end
     listPanel:RemoveAllChildren()
 
-    local items = MetaProgress.GetWarehouseDisplayList()
+    local items = MetaProgress.GetWarehouseDisplayList({ category = warehouseFilter })
     if #items == 0 then
         listPanel:AddChild(UI.Label {
-            text = "后勤仓库暂无登记回收物。",
+            text = "当前分类暂无登记物品。",
             fontSize = 12,
             fontColor = { 160, 170, 190, 220 },
         })
@@ -606,7 +652,7 @@ function RefreshWarehousePage()
                             fontColor = { 230, 235, 245, 255 },
                         },
                         UI.Label {
-                            text = item.typeName .. " / " .. item.rarityName .. " | 单价 " .. item.value .. " | 总值 " .. item.totalValue,
+                            text = item.typeName .. " / " .. item.rarityName .. " | 价值 " .. item.value .. " | 价格 " .. item.price .. " | 带入 " .. item.loadoutCount,
                             fontSize = 11,
                             fontColor = { 150, 170, 190, 210 },
                         },
@@ -667,7 +713,8 @@ function OnEquipItemClick(itemId)
             print("[Menu] BuyItem failed: " .. err)
         end
     end
-    RefreshEquipPage()
+    RefreshCurrentMenuPage()
+    RefreshMainMenu()
 end
 
 --- 天赋点击处理
@@ -677,6 +724,7 @@ function OnTalentClick(talentId)
         print("[Menu] UnlockTalent failed: " .. err)
     end
     RefreshTalentPage()
+    RefreshMainMenu()
 end
 
 function OnSellWarehouseItem(itemId, count)
@@ -688,6 +736,206 @@ function OnSellWarehouseItem(itemId, count)
         print("[Warehouse] Sell failed: " .. tostring(result))
     end
     RefreshWarehousePage()
+    RefreshMainMenu()
+end
+
+function OnSetWarehouseFilter(filter)
+    warehouseFilter = filter
+    warehouseSelectedIndex = 1
+    RefreshWarehousePage()
+end
+
+function RefreshRequisitionPage()
+    SetTerminalSummaryLabels("requisition")
+    local listPanel = uiRoot_ and uiRoot_:FindById("requisitionItemList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    for _, item in ipairs(MetaProgress.GetShopDisplayList({ type = "all" })) do
+        local itemId = item.id
+        local isEquipment = item.type == "equipment"
+        local statusText = ""
+        local buttonText = ""
+        if isEquipment then
+            statusText = item.isEquipped and "[已装备]" or (item.owned and "已拥有" or (item.price .. "g"))
+            buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
+        else
+            statusText = "库存 " .. item.count .. " | 带入 " .. item.loadoutCount .. " | " .. item.price .. "g"
+            buttonText = "买1"
+        end
+
+        listPanel:AddChild(UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = DisplayIconText(item) .. " " .. item.name,
+                            fontSize = 13,
+                            fontColor = { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = item.typeName .. " | " .. (item.effectText or item.description or ""),
+                            fontSize = 11,
+                            fontColor = { 150, 170, 190, 210 },
+                        },
+                    },
+                },
+                UI.Panel {
+                    alignItems = "flex-end",
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = { 200, 200, 210, 210 },
+                        },
+                        UI.Button {
+                            text = buttonText,
+                            variant = "primary",
+                            width = 64,
+                            height = 28,
+                            onClick = function()
+                                if isEquipment then
+                                    OnEquipItemClick(itemId)
+                                else
+                                    OnBuyConsumable(itemId, 1)
+                                end
+                            end,
+                        },
+                    },
+                },
+            },
+        })
+    end
+end
+
+function RefreshLoadoutPage()
+    SetTerminalSummaryLabels("loadout")
+    local listPanel = uiRoot_ and uiRoot_:FindById("loadoutItemList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    for _, item in ipairs(MetaProgress.GetLoadoutDisplayList()) do
+        local itemId = item.id
+        local isConsumable = item.type == "consumable"
+        local statusText = isConsumable
+            and ("库存 " .. item.count .. " | 带入 " .. item.loadoutCount)
+            or (item.isEquipped and "[已装备]" or (item.owned and "已拥有" or "未申领"))
+
+        listPanel:AddChild(UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = item.isEquipped and { 30, 60, 80, 120 } or { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = DisplayIconText(item) .. " " .. item.name,
+                            fontSize = 13,
+                            fontColor = { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = item.typeName .. " | " .. (item.effectText or item.description or ""),
+                            fontSize = 11,
+                            fontColor = { 150, 170, 190, 210 },
+                        },
+                    },
+                },
+                UI.Panel {
+                    flexDirection = "row",
+                    gap = 6,
+                    children = isConsumable and {
+                        UI.Button {
+                            text = "-",
+                            width = 32,
+                            height = 28,
+                            onClick = function()
+                                OnSetLoadoutConsumable(itemId, item.loadoutCount - 1)
+                            end,
+                        },
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = { 200, 200, 210, 210 },
+                        },
+                        UI.Button {
+                            text = "+",
+                            width = 32,
+                            height = 28,
+                            onClick = function()
+                                OnSetLoadoutConsumable(itemId, item.loadoutCount + 1)
+                            end,
+                        },
+                    } or {
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = { 200, 200, 210, 210 },
+                        },
+                        UI.Button {
+                            text = item.isEquipped and "卸下" or "装备",
+                            width = 60,
+                            height = 28,
+                            onClick = function()
+                                OnEquipItemClick(itemId)
+                            end,
+                        },
+                    },
+                },
+            },
+        })
+    end
+end
+
+function RefreshRecoveryPage()
+    local summary = MetaProgress.GetTerminalSummary()
+    local label = uiRoot_ and uiRoot_:FindById("recoverySummaryLabel")
+    if label then
+        label:SetText("累计带回 " .. summary.recovery.totalItems .. " 件 | 历史估值 " .. summary.recovery.totalValue)
+    end
+    local recent = uiRoot_ and uiRoot_:FindById("recoveryRecentLabel")
+    if recent then
+        recent:SetText(summary.recentText)
+    end
+end
+
+function OnBuyConsumable(itemId, count)
+    local ok, result = MetaProgress.BuyConsumable(itemId, count)
+    if ok then
+        ShowMessage("后勤申领成功: " .. itemId .. " x" .. result.count)
+    else
+        ShowMessage("申领失败: " .. tostring(result))
+    end
+    RefreshCurrentMenuPage()
+end
+
+function OnSetLoadoutConsumable(itemId, count)
+    local ok, result = MetaProgress.SetLoadoutConsumable(itemId, count)
+    if ok then
+        if result.clamped then
+            ShowMessage("库存不足, 已调整带入数量。")
+        else
+            ShowMessage("出勤配置已更新。")
+        end
+    else
+        ShowMessage("配置失败: " .. tostring(result))
+    end
+    RefreshLoadoutPage()
     RefreshMainMenu()
 end
 
@@ -786,6 +1034,14 @@ function StartNewGame(override)
         moveRequiresRevealed = false,
     }, override)
 
+    local loadoutReceipt = { consumables = {} }
+    if not config.skipLoadout then
+        local ok, receipt = MetaProgress.ConsumeLoadoutForRun()
+        if ok and receipt then
+            loadoutReceipt = receipt
+        end
+    end
+
     run = ExtractionRun.New(config)
     minefield = run.minefield
 
@@ -795,6 +1051,7 @@ function StartNewGame(override)
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
     minefield:Explore(spawn.x, spawn.y)
     RunInventory.Reset()
+    RunInventory.SetConsumables(loadoutReceipt.consumables)
     Combat.Reset()
     Protocol.Reset()
     DungeonRoom.ResetPlayer()
@@ -851,7 +1108,9 @@ function StartNewGame(override)
     -- 计算小地图布局
     MiniMap.ComputeLayout(minefield.width, minefield.height)
 
-    ShowMessage("左上角看扫雷数字避雷;WASD 走门, F 搜索, M 地图, E 撤离." .. compassHint)
+    local runConsumables = RunInventory.GetConsumables()
+    local consumableHint = (runConsumables.emergency_bandage or 0) > 0 and (" 带入止血贴 x" .. runConsumables.emergency_bandage) or ""
+    ShowMessage("左上角看扫雷数字避雷;WASD 走门, F 搜索, Q 止血贴, M 地图, E 撤离." .. compassHint .. consumableHint)
     UpdateHUD()
 
     -- 隐藏菜单
@@ -876,7 +1135,9 @@ end
 --- 启动新手教程
 function StartTutorial()
     Tutorial.Reset()
-    StartNewGame(Tutorial.GetMapConfig())
+    local config = Tutorial.GetMapConfig()
+    config.skipLoadout = true
+    StartNewGame(config)
     Tutorial.Start()
     ShowMessage("")  -- 清除默认提示,教程对话框接管
 end
@@ -1708,6 +1969,26 @@ function ShowMessage(text)
     messageDuration = 3.0
 end
 
+local function UseEmergencyBandage()
+    local ok, result = RunInventory.UseConsumable("emergency_bandage", {
+        hp = Combat.hp,
+        maxHp = Combat.maxHp,
+        applyHpDelta = function(delta)
+            return Combat.ApplyHpDelta(delta)
+        end,
+    })
+    if ok then
+        ShowMessage("使用应急止血贴, 生命 +" .. result.heal .. "。剩余 " .. result.count .. "。")
+        UpdateHUD()
+    elseif result == "hp_full" then
+        ShowMessage("生命已满, 暂不需要止血贴。")
+    elseif result == "not_enough" then
+        ShowMessage("没有可用的应急止血贴。")
+    else
+        ShowMessage("当前无法使用止血贴。")
+    end
+end
+
 function CountVisitedCells()
     if minefield then
         return minefield:GetExploredCount()
@@ -2262,6 +2543,7 @@ function HandleNanoVGRender(eventType, eventData)
             parts = invTotals.parts,
             carriedItemCount = invTotals.carriedItemCount,
             carriedItemValue = invTotals.carriedItemValue,
+            consumables = invTotals.consumables,
         }
 
         -- 中央游戏区(带偏移和裁剪)
@@ -2339,6 +2621,7 @@ function HandleNanoVGRender(eventType, eventData)
             interactHint = interactHint,
             exitDistance = exitDist,
             exitDirection = exitDir,
+            consumables = invTotals.consumables,
         })
 
         -- VS 战斗演出叠加层
@@ -2389,6 +2672,33 @@ function CreateUI()
         alignItems = "center",
         backgroundColor = { 5, 8, 15, 230 },
         children = {
+            UI.Panel {
+                id = "terminalNav",
+                position = "absolute",
+                left = 18,
+                top = 18,
+                width = 150,
+                gap = 8,
+                padding = 12,
+                backgroundColor = { 10, 18, 28, 225 },
+                borderRadius = 10,
+                borderWidth = 1,
+                borderColor = { 100, 180, 220, 120 },
+                children = {
+                    UI.Button {
+                        text = "接受工单",
+                        variant = "primary",
+                        height = 38,
+                        onClick = function() StartNewGame() end,
+                    },
+                    UI.Button { text = "展示工单", height = 30, onClick = function() ShowMenuPage("main") end },
+                    UI.Button { text = "后勤仓库", height = 30, onClick = function() ShowMenuPage("warehouse") end },
+                    UI.Button { text = "后勤申领", height = 30, onClick = function() ShowMenuPage("requisition") end },
+                    UI.Button { text = "出勤配置", height = 30, onClick = function() ShowMenuPage("loadout") end },
+                    UI.Button { text = "回收资历", height = 30, onClick = function() ShowMenuPage("recovery") end },
+                    UI.Button { text = "调整终端", height = 30, onClick = function() ShowMenuPage("gm") end },
+                },
+            },
             -- === 主菜单页 ===
             UI.Panel {
                 id = "menuPage_main",
@@ -2475,11 +2785,17 @@ function CreateUI()
                                 fontSize = 11,
                                 fontColor = { 150, 170, 190, 190 },
                             },
+            UI.Label {
+                id = "menuWarehouseLabel",
+                text = "后勤仓库: 0 件 | 可售估值 0",
+                fontSize = 11,
+                fontColor = { 170, 205, 240, 210 },
+            },
                             UI.Label {
-                                id = "menuWarehouseLabel",
-                                text = "后勤仓库: 0 件 | 可售估值 0",
+                                id = "menuLoadoutLabel",
+                                text = "出勤配置: 无",
                                 fontSize = 11,
-                                fontColor = { 170, 205, 240, 210 },
+                                fontColor = { 190, 210, 230, 210 },
                             },
                             UI.Panel {
                                 flexDirection = "row",
@@ -2786,6 +3102,78 @@ function CreateUI()
             },
             -- === 后勤仓库页 ===
             UI.Panel {
+                id = "menuPage_requisition",
+                visible = false,
+                width = "92%",
+                maxWidth = 620,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 20, 25, 40, 240 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 80, 140, 190, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label { text = "后勤申领", fontSize = 18, fontColor = { 170, 220, 255, 255 } },
+                            UI.Label { id = "requisitionGoldLabel", text = "金币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
+                        },
+                    },
+                    UI.Label { id = "requisitionLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                    UI.Panel { id = "requisitionItemList", gap = 6, width = "100%", marginTop = 4, children = {} },
+                    UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() ShowMenuPage("main") end },
+                },
+            },
+            UI.Panel {
+                id = "menuPage_loadout",
+                visible = false,
+                width = "92%",
+                maxWidth = 620,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 18, 28, 34, 242 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 90, 180, 150, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label { text = "出勤配置", fontSize = 18, fontColor = { 180, 235, 210, 255 } },
+                            UI.Label { id = "loadoutGoldLabel", text = "金币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
+                        },
+                    },
+                    UI.Label { id = "loadoutLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                    UI.Panel { id = "loadoutItemList", gap = 6, width = "100%", marginTop = 4, children = {} },
+                    UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() ShowMenuPage("main") end },
+                },
+            },
+            UI.Panel {
+                id = "menuPage_recovery",
+                visible = false,
+                width = "90%",
+                maxWidth = 460,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 24, 28, 36, 242 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 130, 170, 120, 120 },
+                children = {
+                    UI.Label { text = "回收资历", fontSize = 18, fontColor = { 210, 235, 170, 255 } },
+                    UI.Label { id = "recoverySummaryLabel", text = "累计带回 0 件 | 历史估值 0", fontSize = 13, fontColor = { 200, 220, 210, 230 } },
+                    UI.Label { id = "recoveryRecentLabel", text = "最近带回: 无", fontSize = 12, fontColor = { 170, 185, 200, 220 } },
+                    UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() ShowMenuPage("main") end },
+                },
+            },
+            UI.Panel {
                 id = "menuPage_warehouse",
                 visible = false,
                 width = "92%",
@@ -2823,6 +3211,18 @@ function CreateUI()
                         fontColor = { 150, 170, 190, 210 },
                     },
                     UI.Panel {
+                        flexDirection = "row",
+                        gap = 6,
+                        children = {
+                            UI.Label { id = "warehouseFilterLabel", text = "分类: 全部", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                            UI.Button { text = "全部", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("all") end },
+                            UI.Button { text = "回收", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("recovered") end },
+                            UI.Button { text = "消耗", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("consumable") end },
+                            UI.Button { text = "装备", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("equipment") end },
+                        },
+                    },
+                    UI.Label { id = "warehouseLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                    UI.Panel {
                         id = "warehouseItemList",
                         gap = 6,
                         width = "100%",
@@ -2857,6 +3257,28 @@ function CreateUI()
                             },
                         },
                     },
+                },
+            },
+            UI.Panel {
+                id = "terminalNavOverlay",
+                position = "absolute",
+                left = 18,
+                top = 18,
+                width = 150,
+                gap = 8,
+                padding = 12,
+                backgroundColor = { 10, 18, 28, 225 },
+                borderRadius = 10,
+                borderWidth = 1,
+                borderColor = { 100, 180, 220, 120 },
+                children = {
+                    UI.Button { text = "接受工单", variant = "primary", height = 38, onClick = function() StartNewGame() end },
+                    UI.Button { text = "展示工单", height = 30, onClick = function() ShowMenuPage("main") end },
+                    UI.Button { text = "后勤仓库", height = 30, onClick = function() ShowMenuPage("warehouse") end },
+                    UI.Button { text = "后勤申领", height = 30, onClick = function() ShowMenuPage("requisition") end },
+                    UI.Button { text = "出勤配置", height = 30, onClick = function() ShowMenuPage("loadout") end },
+                    UI.Button { text = "回收资历", height = 30, onClick = function() ShowMenuPage("recovery") end },
+                    UI.Button { text = "调整终端", height = 30, onClick = function() ShowMenuPage("gm") end },
                 },
             },
         }
@@ -3293,6 +3715,13 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
+    if phase == PHASE.MENU then
+        if key == KEY_ESCAPE and menuPage ~= "main" then
+            ShowMenuPage("main")
+        end
+        return
+    end
+
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
@@ -3327,6 +3756,8 @@ function HandleKeyDown(eventType, eventData)
         else
             SearchCurrentRoom()
         end
+    elseif key == KEY_Q then
+        UseEmergencyBandage()
     elseif key == KEY_T then
         DoTrade()
     elseif key == KEY_M then

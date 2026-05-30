@@ -775,6 +775,110 @@ local function testDisplayAdaptersProtectEquipmentAndConsumables()
     end)
 end
 
+local function testMetaProgressLoadConsumableAndLoadoutDefaults()
+    withMetaProgressMock({
+        gold = 25,
+        unlockedTalents = {},
+        ownedItems = {},
+        equippedItems = {},
+        stats = {},
+        recovery = nil,
+        warehouse = nil,
+    }, function()
+        MetaProgress.Load()
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "old save should default consumable stock")
+        assertEq(MetaProgress.GetLoadoutSummary().consumableCount, 0, "old save should default loadout")
+        assertEq(MetaProgress.GetTerminalSummary().inventory.gold, 25, "terminal summary should read old save gold")
+    end)
+end
+
+local function testUnifiedDisplayAndWarehouseCategories()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(100)
+        local bought = MetaProgress.BuyConsumable("emergency_bandage", 2)
+        assertTrue(bought, "should buy consumables")
+        MetaProgress.RecordExtractionReward({
+            totalGold = 0,
+            directGold = 0,
+            loosePartsGold = 0,
+            carriedItemCount = 1,
+            carriedItemValue = 16,
+            carriedItems = {
+                { itemId = "static_lens", count = 1, def = RunInventory.GetItemDef("static_lens") },
+            },
+        }, nil)
+        MetaProgress.BuyItem("armor")
+        local recovered = MetaProgress.GetUnifiedItemDisplayData("static_lens", "warehouse")
+        local equipment = MetaProgress.GetUnifiedItemDisplayData("armor", "equipment")
+        local consumable = MetaProgress.GetUnifiedItemDisplayData("emergency_bandage", "consumable")
+        assertEq(recovered.source, "recovered", "recovered display source mismatch")
+        assertEq(equipment.type, "equipment", "equipment display type mismatch")
+        assertEq(consumable.type, "consumable", "consumable display type mismatch")
+        assertEq(consumable.count, 2, "consumable display should show stock")
+
+        local equipmentList = MetaProgress.GetWarehouseDisplayList({ category = "equipment" })
+        assertTrue(#equipmentList >= 1, "equipment category should show old equipment")
+        for _, item in ipairs(equipmentList) do
+            assertTrue(not item.canSell, "equipment category should not be sellable")
+        end
+        local consumableList = MetaProgress.GetWarehouseDisplayList({ category = "consumable" })
+        assertTrue(#consumableList >= 1, "consumable category should show consumables")
+        for _, item in ipairs(consumableList) do
+            assertTrue(not item.canSell, "consumable category should not be sellable")
+        end
+    end)
+end
+
+local function testConsumablePurchaseLoadoutAndRunUse()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(100)
+        local bought, receipt = MetaProgress.BuyConsumable("emergency_bandage", 3)
+        assertTrue(bought, "consumable purchase should succeed")
+        assertEq(receipt.total, 3, "consumable stock should stack")
+
+        local configured, loadoutReceipt = MetaProgress.SetLoadoutConsumable("emergency_bandage", 2)
+        assertTrue(configured, "loadout set should succeed")
+        assertEq(loadoutReceipt.count, 2, "loadout should store selected count")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 3, "setting loadout should not consume stock")
+
+        local clampedOk, clamped = MetaProgress.SetLoadoutConsumable("emergency_bandage", 99)
+        assertTrue(clampedOk, "oversized loadout should be safely handled")
+        assertEq(clamped.count, 3, "oversized loadout should clamp to stock")
+
+        local consumedOk, runLoadout = MetaProgress.ConsumeLoadoutForRun()
+        assertTrue(consumedOk, "consume loadout should succeed")
+        assertEq(runLoadout.consumables.emergency_bandage, 3, "run loadout should receive consumables")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "starting run should consume stock")
+
+        RunInventory.Reset()
+        RunInventory.SetConsumables(runLoadout.consumables)
+        local hp = 50
+        local maxHp = 100
+        local used, useReceipt = RunInventory.UseConsumable("emergency_bandage", {
+            hp = hp,
+            maxHp = maxHp,
+            applyHpDelta = function(delta)
+                hp = math.min(maxHp, hp + delta)
+                return { hp = hp, delta = delta }
+            end,
+        })
+        assertTrue(used, "bandage should be usable in run")
+        assertEq(useReceipt.heal, 25, "bandage should heal configured minimum")
+        assertEq(RunInventory.GetConsumableCount("emergency_bandage"), 2, "using should reduce run count")
+
+        local fullUse, fullReason = RunInventory.UseConsumable("emergency_bandage", { hp = 100, maxHp = 100 })
+        assertTrue(not fullUse, "full hp use should fail")
+        assertEq(fullReason, "hp_full", "full hp should return hp_full")
+
+        RunInventory.SetConsumables({})
+        local emptyUse, emptyReason = RunInventory.UseConsumable("emergency_bandage", { hp = 50, maxHp = 100 })
+        assertTrue(not emptyUse, "empty use should fail")
+        assertEq(emptyReason, "not_enough", "empty use should return not_enough")
+    end)
+end
+
 local function testMetaProgressGrowthEffectsStillApply()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
@@ -1350,6 +1454,9 @@ local tests = {
     { name = "meta progress warehouse sell and protection", fn = testMetaProgressWarehouseSellAndProtection },
     { name = "meta progress failure does not record warehouse", fn = testMetaProgressFailureDoesNotRecordWarehouse },
     { name = "display adapters protect equipment and consumables", fn = testDisplayAdaptersProtectEquipmentAndConsumables },
+    { name = "meta progress load consumable and loadout defaults", fn = testMetaProgressLoadConsumableAndLoadoutDefaults },
+    { name = "unified display and warehouse categories", fn = testUnifiedDisplayAndWarehouseCategories },
+    { name = "consumable purchase loadout and run use", fn = testConsumablePurchaseLoadoutAndRunUse },
     { name = "meta progress growth effects still apply", fn = testMetaProgressGrowthEffectsStillApply },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },

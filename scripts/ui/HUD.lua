@@ -248,6 +248,14 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, "回收包: " .. (inv.carriedItemCount or 0) .. " 件 / 估值 " .. (inv.carriedItemValue or 0))
     curY = curY + 21
 
+    local consumables = inv.consumables or {}
+    local bandageCount = consumables.emergency_bandage or 0
+    if bandageCount > 0 then
+        nvgFillColor(vg, nvgRGBA(170, 230, 210, 255))
+        nvgText(vg, contentX, curY, "止血贴: x" .. bandageCount)
+        curY = curY + 21
+    end
+
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
     nvgText(vg, contentX, curY, "已探索: " .. (context.exploredCount or 0) .. " 格")
     curY = curY + 26
@@ -422,7 +430,11 @@ function HUD.DrawBottomBar(vg, layout, context)
     -- 底部次要操作
     nvgFontSize(vg, 10)
     nvgFillColor(vg, nvgRGBA(140, 150, 170, 180))
-    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/攻击  E:撤离  T:事件")
+    local useText = ""
+    if context.consumables and (context.consumables.emergency_bandage or 0) > 0 then
+        useText = "  Q:止血贴"
+    end
+    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/攻击  E:撤离  T:事件" .. useText)
 
     -- 右侧: 撤离距离
     if context.exitDistance then

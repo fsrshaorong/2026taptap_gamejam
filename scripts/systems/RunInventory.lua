@@ -9,6 +9,7 @@ RunInventory.gold = 0
 RunInventory.parts = 0
 RunInventory.searchedRooms = {}
 RunInventory.carriedItems = {}
+RunInventory.consumables = {}
 RunInventory.failureSalvage = nil
 RunInventory.searchBonus = 0  -- 搜索奖励加成百分比(装备效果)
 RunInventory.stats = {}
@@ -131,6 +132,7 @@ function RunInventory.Reset()
     RunInventory.parts = 0
     RunInventory.searchedRooms = {}
     RunInventory.carriedItems = {}
+    RunInventory.consumables = {}
     RunInventory.failureSalvage = nil
     RunInventory.searchBonus = 0
     RunInventory.stats = newStats()
@@ -142,6 +144,17 @@ end
 
 function RunInventory.GetItemDef(itemId)
     return ITEM_DEF_LOOKUP[itemId]
+end
+
+local function copyConsumables(consumables)
+    local copied = {}
+    for itemId, count in pairs(consumables or {}) do
+        count = math.floor(tonumber(count) or 0)
+        if count > 0 then
+            copied[itemId] = count
+        end
+    end
+    return copied
 end
 
 function RunInventory.GetItemDisplayData(itemId)
@@ -160,6 +173,59 @@ function RunInventory.GetItemDisplayData(itemId)
         source = "recovered",
         unique = def.unique == true,
     }
+end
+
+function RunInventory.SetConsumables(consumables)
+    RunInventory.consumables = copyConsumables(consumables)
+end
+
+function RunInventory.AddConsumable(itemId, count)
+    local def = RunInventory.GetItemDef(itemId)
+    if not def then return false, "unknown_item" end
+    if def.type ~= "consumable" then return false, "not_consumable" end
+    count = math.floor(tonumber(count) or 1)
+    if count < 1 then return false, "invalid_count" end
+    RunInventory.consumables[itemId] = (RunInventory.consumables[itemId] or 0) + count
+    return true, { itemId = itemId, count = count, total = RunInventory.consumables[itemId] }
+end
+
+function RunInventory.GetConsumableCount(itemId)
+    return RunInventory.consumables[itemId] or 0
+end
+
+function RunInventory.GetConsumables()
+    return copyConsumables(RunInventory.consumables)
+end
+
+function RunInventory.UseConsumable(itemId, context)
+    context = context or {}
+    local def = RunInventory.GetItemDef(itemId)
+    if not def or def.type ~= "consumable" then return false, "not_consumable" end
+    local count = RunInventory.GetConsumableCount(itemId)
+    if count <= 0 then return false, "not_enough" end
+
+    if itemId == "emergency_bandage" then
+        local hp = context.hp or 0
+        local maxHp = context.maxHp or hp
+        if hp >= maxHp then return false, "hp_full" end
+        local heal = math.min(25, maxHp - hp)
+        local result = nil
+        if context.applyHpDelta then
+            result = context.applyHpDelta(heal)
+        end
+        RunInventory.consumables[itemId] = count - 1
+        if RunInventory.consumables[itemId] <= 0 then
+            RunInventory.consumables[itemId] = nil
+        end
+        return true, {
+            itemId = itemId,
+            heal = heal,
+            count = RunInventory.GetConsumableCount(itemId),
+            result = result,
+        }
+    end
+
+    return false, "not_implemented"
 end
 
 function RunInventory.GetAllItemDefs()
@@ -485,6 +551,7 @@ function RunInventory.GetTotals()
         carriedItemCount = RunInventory.GetCarriedItemCount(),
         carriedItemValue = RunInventory.GetCarriedItemValue(),
         carriedItems = RunInventory.GetCarriedItems(),
+        consumables = RunInventory.GetConsumables(),
         searchedRooms = RunInventory.GetSearchedCount(),
         failureSalvage = RunInventory.failureSalvage,
     }

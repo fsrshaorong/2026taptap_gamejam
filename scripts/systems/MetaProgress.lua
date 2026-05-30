@@ -60,6 +60,25 @@ MetaProgress.ITEMS = {
     },
 }
 
+MetaProgress.CONSUMABLES = {
+    {
+        id = "emergency_bandage",
+        name = "应急止血贴",
+        desc = "局内使用: 恢复 25 生命",
+        price = 12,
+        type = "consumable",
+        typeName = "作业消耗品",
+        rarity = "common",
+        rarityName = "一般",
+        icon = "[BND]",
+        value = 10,
+        effectText = "恢复 25 生命。本轮未使用不返还。",
+        description = "后勤部标准急救贴, 适合在撤离前多撑一口气。",
+        maxCarry = 3,
+        effects = { heal = 25 },
+    },
+}
+
 -- ============================================================================
 -- 天赋定义
 -- ============================================================================
@@ -132,6 +151,16 @@ local function newWarehouse()
     }
 end
 
+local function newConsumables()
+    return {}
+end
+
+local function newLoadout()
+    return {
+        consumables = {},
+    }
+end
+
 -- 运行时数据
 local data = {
     gold = 0,
@@ -145,12 +174,32 @@ local data = {
     },
     recovery = newRecovery(),
     warehouse = newWarehouse(),
+    consumables = newConsumables(),
+    loadout = newLoadout(),
 }
 
 local function toNonNegativeNumber(value)
     value = tonumber(value) or 0
     if value < 0 then value = 0 end
     return math.floor(value)
+end
+
+local function getConsumableDef(itemId)
+    for _, item in ipairs(MetaProgress.CONSUMABLES) do
+        if item.id == itemId then return item end
+    end
+    return nil
+end
+
+local function copyCountMap(map)
+    local copied = {}
+    for id, count in pairs(map or {}) do
+        count = toNonNegativeNumber(count)
+        if count > 0 then
+            copied[id] = count
+        end
+    end
+    return copied
 end
 
 local function copyRecoveryItem(item)
@@ -174,11 +223,19 @@ local function copyDisplayData(item)
         rarityName = item.rarityName or "一般",
         icon = item.icon or "",
         value = toNonNegativeNumber(item.value),
+        price = toNonNegativeNumber(item.price),
         effectText = item.effectText,
         description = item.description or item.desc or "",
         source = item.source or "unknown",
         unique = item.unique == true,
         count = item.count,
+        canSell = item.canSell == true,
+        canBuy = item.canBuy == true,
+        canEquip = item.canEquip == true,
+        canUse = item.canUse == true,
+        isEquipped = item.isEquipped == true,
+        loadoutCount = toNonNegativeNumber(item.loadoutCount),
+        owned = item.owned == true,
     }
 end
 
@@ -193,10 +250,30 @@ local function displayFromMetaItem(item)
         rarityName = item.rarityName or "后勤",
         icon = item.icon or "[EQP]",
         value = item.value or item.price or 0,
+        price = item.price or item.value or 0,
         effectText = item.effectText or item.desc,
         description = item.description or item.desc,
         source = item.source or "equipment",
         unique = item.unique ~= false,
+    })
+end
+
+local function displayFromConsumable(item)
+    if not item then return nil end
+    return copyDisplayData({
+        id = item.id,
+        name = item.name,
+        type = "consumable",
+        typeName = item.typeName or "作业消耗品",
+        rarity = item.rarity or "common",
+        rarityName = item.rarityName or "一般",
+        icon = item.icon or "[USE]",
+        value = item.value or 0,
+        price = item.price or item.value or 0,
+        effectText = item.effectText or item.desc,
+        description = item.description or item.desc,
+        source = item.source or "consumable",
+        unique = false,
     })
 end
 
@@ -212,6 +289,7 @@ local function displayFromStack(stack, source)
         rarityName = def.rarityName or stack.rarityName or "一般",
         icon = def.icon or stack.icon or "",
         value = def.value or stack.value or 0,
+        price = def.price or stack.price or 0,
         effectText = def.effectText or stack.effectText,
         description = def.description or stack.description or "",
         source = source or stack.source or "recovered",
@@ -250,6 +328,26 @@ local function normalizeWarehouse(savedWarehouse)
         if normalizedItem then
             normalizedItem.id = normalizedItem.id ~= "" and normalizedItem.id or id
             normalized.items[normalizedItem.id] = normalizedItem
+        end
+    end
+    return normalized
+end
+
+local function normalizeConsumables(savedConsumables)
+    return copyCountMap(savedConsumables)
+end
+
+local function normalizeLoadout(savedLoadout)
+    local normalized = newLoadout()
+    savedLoadout = savedLoadout or {}
+    normalized.consumables = copyCountMap(savedLoadout.consumables)
+    for itemId, count in pairs(normalized.consumables) do
+        local stock = data.consumables and data.consumables[itemId] or count
+        if count > stock then
+            normalized.consumables[itemId] = stock
+        end
+        if not getConsumableDef(itemId) or normalized.consumables[itemId] <= 0 then
+            normalized.consumables[itemId] = nil
         end
     end
     return normalized
@@ -328,6 +426,8 @@ function MetaProgress.Load()
                 end
                 data.recovery = normalizeRecovery(saved.recovery)
                 data.warehouse = normalizeWarehouse(saved.warehouse)
+                data.consumables = normalizeConsumables(saved.consumables)
+                data.loadout = normalizeLoadout(saved.loadout)
                 print("[MetaProgress] Loaded: gold=" .. data.gold)
             end
         end
@@ -356,6 +456,8 @@ function MetaProgress.Save()
         stats = data.stats,
         recovery = data.recovery,
         warehouse = data.warehouse,
+        consumables = data.consumables,
+        loadout = data.loadout,
     }
 
     local file = File(SAVE_FILE, FILE_WRITE)
@@ -481,26 +583,82 @@ function MetaProgress.GetItemDef(itemId)
     return nil
 end
 
+function MetaProgress.GetConsumableDef(itemId)
+    return getConsumableDef(itemId)
+end
+
 function MetaProgress.GetItemDisplayData(itemId)
-    local metaItem = MetaProgress.GetItemDef(itemId)
-    if metaItem then
-        return displayFromMetaItem(metaItem)
-    end
-    local warehouseItem = data.warehouse and data.warehouse.items and data.warehouse.items[itemId]
-    if warehouseItem then
-        return copyDisplayData(warehouseItem)
-    end
-    return copyDisplayData({
-        id = itemId,
-        name = tostring(itemId or "未知物品"),
-        type = "unknown",
-        typeName = "未知",
-        source = "unknown",
-    })
+    return MetaProgress.GetUnifiedItemDisplayData(itemId)
 end
 
 function MetaProgress.GetShopItemDisplayData(itemId)
-    return displayFromMetaItem(MetaProgress.GetItemDef(itemId))
+    return MetaProgress.GetUnifiedItemDisplayData(itemId, "shop")
+end
+
+function MetaProgress.GetOwnedCount(itemId, source)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    data.consumables = normalizeConsumables(data.consumables)
+    if source == "warehouse" or source == "recovered" then
+        return MetaProgress.GetWarehouseItemCount(itemId)
+    end
+    if source == "consumable" then
+        return data.consumables[itemId] or 0
+    end
+    if source == "equipment" then
+        return MetaProgress.OwnsItem(itemId) and 1 or 0
+    end
+    return (data.consumables[itemId] or 0) + MetaProgress.GetWarehouseItemCount(itemId) + (MetaProgress.OwnsItem(itemId) and 1 or 0)
+end
+
+function MetaProgress.GetUnifiedItemDisplayData(itemId, source)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    data.consumables = normalizeConsumables(data.consumables)
+    data.loadout = normalizeLoadout(data.loadout)
+
+    local display = nil
+    local warehouseItem = data.warehouse.items[itemId]
+    if source == "equipment" then
+        display = displayFromMetaItem(MetaProgress.GetItemDef(itemId))
+    elseif source == "consumable" then
+        display = displayFromConsumable(getConsumableDef(itemId))
+    elseif source == "warehouse" or source == "recovered" then
+        display = warehouseItem and copyDisplayData(warehouseItem) or nil
+    elseif source == "shop" then
+        display = displayFromMetaItem(MetaProgress.GetItemDef(itemId)) or displayFromConsumable(getConsumableDef(itemId))
+    else
+        display = (warehouseItem and copyDisplayData(warehouseItem))
+            or displayFromMetaItem(MetaProgress.GetItemDef(itemId))
+            or displayFromConsumable(getConsumableDef(itemId))
+    end
+
+    if not display then
+        display = copyDisplayData({
+            id = itemId,
+            name = tostring(itemId or "未知物品"),
+            type = "unknown",
+            typeName = "未知",
+            source = source or "unknown",
+        })
+    end
+
+    display.count = MetaProgress.GetOwnedCount(display.id, display.source)
+    if display.source == "warehouse" or display.source == "recovered" then
+        display.count = MetaProgress.GetWarehouseItemCount(display.id)
+    elseif display.type == "consumable" then
+        display.count = data.consumables[display.id] or 0
+    elseif display.type == "equipment" then
+        display.count = MetaProgress.OwnsItem(display.id) and 1 or 0
+    end
+    display.totalValue = (display.count or 0) * (display.value or 0)
+    display.isEquipped = MetaProgress.IsEquipped(display.id)
+    display.owned = MetaProgress.OwnsItem(display.id) or (display.type == "consumable" and (data.consumables[display.id] or 0) > 0)
+    display.loadoutCount = data.loadout.consumables[display.id] or 0
+    display.canSell = MetaProgress.CanSellItem(display.id)
+    display.canEquip = display.type == "equipment" and MetaProgress.OwnsItem(display.id)
+    display.canBuy = (display.type == "equipment" and not MetaProgress.OwnsItem(display.id))
+        or (display.type == "consumable" and getConsumableDef(display.id) ~= nil)
+    display.canUse = display.type == "consumable" and (display.count or 0) > 0
+    return display
 end
 
 function MetaProgress.CanSellItem(itemId)
@@ -523,9 +681,10 @@ function MetaProgress.CanEquipItem(itemId)
 end
 
 function MetaProgress.CanUseItem(itemId)
-    local display = MetaProgress.GetItemDisplayData(itemId)
+    local display = MetaProgress.GetUnifiedItemDisplayData(itemId)
     if display.type ~= "consumable" then return false, "not_consumable" end
-    return false, "not_implemented"
+    if (display.count or 0) <= 0 then return false, "not_owned" end
+    return true, nil
 end
 
 function MetaProgress.GetUsableItems()
@@ -534,6 +693,111 @@ end
 
 function MetaProgress.UseItem(itemId)
     return false, "not_implemented"
+end
+
+function MetaProgress.GetConsumableCount(itemId)
+    data.consumables = normalizeConsumables(data.consumables)
+    return data.consumables[itemId] or 0
+end
+
+function MetaProgress.AddConsumable(itemId, count)
+    local def = getConsumableDef(itemId)
+    if not def then return false, "unknown_consumable" end
+    count = toNonNegativeNumber(count or 1)
+    if count <= 0 then return false, "invalid_count" end
+    data.consumables = normalizeConsumables(data.consumables)
+    data.consumables[itemId] = (data.consumables[itemId] or 0) + count
+    MetaProgress.Save()
+    return true, { itemId = itemId, count = count, total = data.consumables[itemId] }
+end
+
+function MetaProgress.RemoveConsumable(itemId, count)
+    count = toNonNegativeNumber(count or 1)
+    if count <= 0 then return false, "invalid_count" end
+    data.consumables = normalizeConsumables(data.consumables)
+    local current = data.consumables[itemId] or 0
+    if current < count then return false, "not_enough" end
+    data.consumables[itemId] = current - count
+    if data.consumables[itemId] <= 0 then
+        data.consumables[itemId] = nil
+    end
+    if data.loadout and data.loadout.consumables then
+        local loadoutCount = data.loadout.consumables[itemId] or 0
+        if loadoutCount > (data.consumables[itemId] or 0) then
+            data.loadout.consumables[itemId] = data.consumables[itemId]
+        end
+    end
+    MetaProgress.Save()
+    return true, { itemId = itemId, count = count, total = data.consumables[itemId] or 0 }
+end
+
+function MetaProgress.BuyConsumable(itemId, count)
+    local def = getConsumableDef(itemId)
+    if not def then return false, "unknown_consumable" end
+    count = toNonNegativeNumber(count or 1)
+    if count <= 0 then return false, "invalid_count" end
+    local price = toNonNegativeNumber(def.price) * count
+    if data.gold < price then return false, "金币不足" end
+    data.gold = data.gold - price
+    data.consumables = normalizeConsumables(data.consumables)
+    data.consumables[itemId] = (data.consumables[itemId] or 0) + count
+    MetaProgress.Save()
+    return true, { itemId = itemId, count = count, total = data.consumables[itemId], cost = price }
+end
+
+function MetaProgress.SetLoadoutConsumable(itemId, count)
+    local def = getConsumableDef(itemId)
+    if not def then return false, "unknown_consumable" end
+    data.consumables = normalizeConsumables(data.consumables)
+    data.loadout = normalizeLoadout(data.loadout)
+    count = toNonNegativeNumber(count)
+    local stock = data.consumables[itemId] or 0
+    local maxCarry = toNonNegativeNumber(def.maxCarry)
+    if maxCarry > 0 and count > maxCarry then count = maxCarry end
+    local clamped = false
+    if count > stock then
+        count = stock
+        clamped = true
+    end
+    if count <= 0 then
+        data.loadout.consumables[itemId] = nil
+    else
+        data.loadout.consumables[itemId] = count
+    end
+    MetaProgress.Save()
+    return true, { itemId = itemId, count = count, stock = stock, clamped = clamped }
+end
+
+function MetaProgress.GetLoadout()
+    data.loadout = normalizeLoadout(data.loadout)
+    return {
+        consumables = copyCountMap(data.loadout.consumables),
+    }
+end
+
+function MetaProgress.ValidateLoadout()
+    data.loadout = normalizeLoadout(data.loadout)
+    return true, MetaProgress.GetLoadout()
+end
+
+function MetaProgress.ConsumeLoadoutForRun()
+    data.consumables = normalizeConsumables(data.consumables)
+    data.loadout = normalizeLoadout(data.loadout)
+    local runLoadout = { consumables = {} }
+    for itemId, count in pairs(data.loadout.consumables) do
+        local stock = data.consumables[itemId] or 0
+        local take = math.min(count, stock)
+        if take > 0 then
+            runLoadout.consumables[itemId] = take
+            data.consumables[itemId] = stock - take
+            if data.consumables[itemId] <= 0 then
+                data.consumables[itemId] = nil
+            end
+        end
+    end
+    data.loadout = normalizeLoadout(data.loadout)
+    MetaProgress.Save()
+    return true, runLoadout
 end
 
 function MetaProgress.GetWarehouseItemDisplayData(itemId)
@@ -677,7 +941,33 @@ function MetaProgress.GetWarehouseItems(filter)
 end
 
 function MetaProgress.GetWarehouseDisplayList(filter)
-    return MetaProgress.GetWarehouseItems(filter)
+    if not filter or not filter.category then
+        return MetaProgress.GetWarehouseItems(filter)
+    end
+
+    local category = filter.category
+    local list = {}
+    if category == "all" or category == "recovered" then
+        for _, item in ipairs(MetaProgress.GetWarehouseItems()) do
+            if category == "all" or item.source == "recovered" then
+                table.insert(list, item)
+            end
+        end
+    end
+    if category == "all" or category == "consumable" then
+        for _, def in ipairs(MetaProgress.CONSUMABLES) do
+            table.insert(list, MetaProgress.GetUnifiedItemDisplayData(def.id, "consumable"))
+        end
+    end
+    if category == "all" or category == "equipment" then
+        for _, def in ipairs(MetaProgress.ITEMS) do
+            table.insert(list, MetaProgress.GetUnifiedItemDisplayData(def.id, "equipment"))
+        end
+    end
+    table.sort(list, function(a, b)
+        return (a.type or "") .. (a.name or a.id) < (b.type or "") .. (b.name or b.id)
+    end)
+    return list
 end
 
 function MetaProgress.GetWarehouseItemCount(itemId)
@@ -728,6 +1018,83 @@ function MetaProgress.GetWarehouseSummary()
         end
     end
     return { totalStacks = totalStacks, totalItems = totalItems, totalValue = totalValue }
+end
+
+function MetaProgress.GetShopDisplayList(filter)
+    filter = filter or {}
+    local list = {}
+    if not filter.type or filter.type == "equipment" or filter.type == "all" then
+        for _, item in ipairs(MetaProgress.ITEMS) do
+            table.insert(list, MetaProgress.GetUnifiedItemDisplayData(item.id, "equipment"))
+        end
+    end
+    if not filter.type or filter.type == "consumable" or filter.type == "all" then
+        for _, item in ipairs(MetaProgress.CONSUMABLES) do
+            table.insert(list, MetaProgress.GetUnifiedItemDisplayData(item.id, "consumable"))
+        end
+    end
+    return list
+end
+
+function MetaProgress.GetLoadoutDisplayList()
+    local list = {}
+    for _, item in ipairs(MetaProgress.ITEMS) do
+        table.insert(list, MetaProgress.GetUnifiedItemDisplayData(item.id, "equipment"))
+    end
+    for _, item in ipairs(MetaProgress.CONSUMABLES) do
+        table.insert(list, MetaProgress.GetUnifiedItemDisplayData(item.id, "consumable"))
+    end
+    return list
+end
+
+function MetaProgress.GetInventorySummary()
+    local consumableCount = 0
+    for _, count in pairs(normalizeConsumables(data.consumables)) do
+        consumableCount = consumableCount + count
+    end
+    local ownedEquipment = 0
+    for _, item in ipairs(MetaProgress.ITEMS) do
+        if MetaProgress.OwnsItem(item.id) then ownedEquipment = ownedEquipment + 1 end
+    end
+    local warehouse = MetaProgress.GetWarehouseSummary()
+    return {
+        gold = data.gold,
+        warehouseItems = warehouse.totalItems,
+        warehouseValue = warehouse.totalValue,
+        consumables = consumableCount,
+        ownedEquipment = ownedEquipment,
+        equipped = #data.equippedItems,
+    }
+end
+
+function MetaProgress.GetLoadoutSummary()
+    data.loadout = normalizeLoadout(data.loadout)
+    local names = {}
+    for _, itemId in ipairs(data.equippedItems) do
+        local display = MetaProgress.GetUnifiedItemDisplayData(itemId, "equipment")
+        table.insert(names, display.name)
+    end
+    local consumableNames = {}
+    local totalConsumables = 0
+    for itemId, count in pairs(data.loadout.consumables) do
+        local display = MetaProgress.GetUnifiedItemDisplayData(itemId, "consumable")
+        totalConsumables = totalConsumables + count
+        table.insert(consumableNames, display.name .. " x" .. count)
+    end
+    return {
+        equipmentText = #names > 0 and table.concat(names, " / ") or "无",
+        consumableText = #consumableNames > 0 and table.concat(consumableNames, " / ") or "无",
+        consumableCount = totalConsumables,
+    }
+end
+
+function MetaProgress.GetTerminalSummary()
+    return {
+        inventory = MetaProgress.GetInventorySummary(),
+        loadout = MetaProgress.GetLoadoutSummary(),
+        recovery = MetaProgress.GetRecoverySummary(),
+        recentText = MetaProgress.GetRecoverySummaryText(4),
+    }
 end
 
 function MetaProgress.RecordExtractionReward(reward, runStats)
@@ -876,6 +1243,8 @@ function MetaProgress.GMReset()
     data.stats = { totalRuns = 0, totalExtractions = 0, totalGoldEarned = 0 }
     data.recovery = newRecovery()
     data.warehouse = newWarehouse()
+    data.consumables = newConsumables()
+    data.loadout = newLoadout()
     MetaProgress.Save()
 end
 
