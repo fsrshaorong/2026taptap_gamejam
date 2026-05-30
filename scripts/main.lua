@@ -14,6 +14,7 @@ local MapOverlay = require("ui.MapOverlay")
 local HUD = require("ui.HUD")
 local DungeonRoom = require("scenes.DungeonRoom")
 local EventSystem = require("systems.EventSystem")
+local Tutorial = require("systems.Tutorial")
 
 -- ============================================================================
 -- 全局状态
@@ -129,7 +130,7 @@ local MENU_HOTSPOTS = {
     {
         x = 1095, y = 395, w = 430, h = 130,
         action = function()
-            StartJudgeDemo()
+            StartTutorial()
         end,
     },
     {
@@ -674,6 +675,14 @@ function StartJudgeDemo()
     })
 end
 
+--- 启动新手教程
+function StartTutorial()
+    Tutorial.Reset()
+    StartNewGame(Tutorial.GetMapConfig())
+    Tutorial.Start()
+    ShowMessage("")  -- 清除默认提示,教程对话框接管
+end
+
 function ShowFailurePanel(reason)
     phase = PHASE.GAME_OVER
 
@@ -1005,6 +1014,9 @@ function MovePlayer(dx, dy)
         local cpW, cpH = GetCenterAreaPhysSize()
         DungeonRoom.PlacePlayerFromEntry(dx, dy, cpW, cpH, dpr)
 
+        -- 教程:通知移动完成
+        Tutorial.NotifyAction("move")
+
         if monsterFleeActive then
             monsterFleeActive = false
             monsterFleeTimer = 0
@@ -1160,6 +1172,10 @@ function SearchCurrentRoom()
 
     local reward = result.reward
     DungeonRoom.TriggerChestOpen(reward)
+
+    -- 教程:通知搜索完成
+    Tutorial.NotifyAction("search")
+
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
@@ -1681,6 +1697,12 @@ function HandleNanoVGRender(eventType, eventData)
         MapOverlay.Draw(nvgScene, w, h)
     end
 
+    -- 教程对话框(绘制在游戏内容上层)
+    if Tutorial.IsActive() then
+        local step = Tutorial.GetCurrentStep()
+        HUD.DrawTutorialDialog(nvgScene, w, h, step)
+    end
+
     -- 居中播报(始终绘制在最上层)
     HUD.DrawCenterToast(nvgScene, { screenW = w, screenH = h }, message, messageTimer, messageDuration)
 
@@ -1733,7 +1755,7 @@ function CreateUI()
                                 text = "新手教程",
                                 height = 40,
                                 onClick = function()
-                                    StartJudgeDemo()
+                                    StartTutorial()
                                 end,
                             },
                             UI.Button {
@@ -2439,6 +2461,8 @@ function HandleKeyDown(eventType, eventData)
         phase = PHASE.MAP_OPEN
         MapOverlay.visible = true
         RefreshMapData()
+        -- 教程:通知打开地图
+        Tutorial.NotifyAction("open_map")
         local w = screenW / dpr
         local h = screenH / dpr
         MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
@@ -2451,6 +2475,18 @@ function HandleMouseDown(eventType, eventData)
     local button = eventData["Button"]:GetInt()
     local mx = eventData["X"]:GetInt() / dpr
     local my = eventData["Y"]:GetInt() / dpr
+
+    -- 教程对话框点击(优先消耗)
+    if button == MOUSEB_LEFT and Tutorial.IsActive() then
+        if Tutorial.HandleClick() then
+            -- 教程完成后回到菜单
+            if not Tutorial.IsActive() then
+                ReturnToMenu()
+                ShowMessage("教程完成! 可以开始正式探索了.")
+            end
+            return
+        end
+    end
 
     -- 放大地图交互
     if phase == PHASE.MAP_OPEN then
@@ -2484,6 +2520,7 @@ function HandleMouseDown(eventType, eventData)
         phase = PHASE.MAP_OPEN
         MapOverlay.visible = true
         RefreshMapData()
+        Tutorial.NotifyAction("open_map")
         MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
         return
     end

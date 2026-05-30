@@ -517,6 +517,77 @@ function HUD.CalcExitDistance(playerX, playerY, exits)
 end
 
 -- ============================================================================
+-- 教程对话框
+-- ============================================================================
+
+--- 绘制教程对话框(底部半透明面板)
+---@param vg userdata
+---@param screenW number
+---@param screenH number
+---@param step table { text, subtext, type }
+function HUD.DrawTutorialDialog(vg, screenW, screenH, step)
+    if not step then return end
+
+    -- 底部对话框区域
+    local panelH = 90
+    local panelW = math.min(screenW * 0.8, 520)
+    local px = (screenW - panelW) / 2
+    local py = screenH - panelH - 30
+
+    -- 背景
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, px, py, panelW, panelH, 10)
+    nvgFillColor(vg, nvgRGBA(15, 20, 30, 220))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(100, 180, 220, 180))
+    nvgStrokeWidth(vg, 1.5)
+    nvgStroke(vg)
+
+    -- 左侧小图标(对话气泡)
+    local iconX = px + 24
+    local iconY = py + panelH / 2
+    nvgBeginPath(vg)
+    nvgCircle(vg, iconX, iconY, 14)
+    nvgFillColor(vg, nvgRGBA(60, 160, 200, 200))
+    nvgFill(vg)
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 16)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(255, 255, 255, 240))
+    nvgText(vg, iconX, iconY, "?")
+
+    -- 主文本
+    local textX = px + 52
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 15)
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(240, 245, 255, 255))
+    nvgText(vg, textX, py + panelH * 0.4, step.text or "")
+
+    -- 副文本/提示
+    if step.subtext and step.subtext ~= "" then
+        nvgFontSize(vg, 12)
+        nvgFillColor(vg, nvgRGBA(160, 200, 230, 200))
+        nvgText(vg, textX, py + panelH * 0.7, step.subtext)
+    end
+
+    -- 步骤指示器(右下角)
+    -- 由调用方在外部传入 stepIndex/totalSteps 更好, 这里用简单脉冲提示可点击
+    if step.type == "dialog" then
+        local pulse = (math.sin(os.clock() * 4) + 1) * 0.5
+        local triX = px + panelW - 24
+        local triY = py + panelH - 20
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, triX - 5, triY - 4)
+        nvgLineTo(vg, triX + 5, triY)
+        nvgLineTo(vg, triX - 5, triY + 4)
+        nvgClosePath(vg)
+        nvgFillColor(vg, nvgRGBA(200, 230, 255, math.floor(120 + 135 * pulse)))
+        nvgFill(vg)
+    end
+end
+
+-- ============================================================================
 -- 居中播报(Toast)
 -- ============================================================================
 
