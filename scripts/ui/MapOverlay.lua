@@ -1,6 +1,6 @@
 -- ============================================================================
--- MapOverlay.lua — 放大地图界面（UI 组件 + NanoVG 绘制）
--- 支持查看、插旗/取消、回传已探索安全格
+-- MapOverlay.lua — 放大地图界面(UI 组件 + NanoVG 绘制)
+-- 支持查看,插旗/取消,回传已探索安全格
 -- ============================================================================
 
 local UI = require("urhox-libs/UI")
@@ -32,7 +32,7 @@ MapOverlay.onClose = nil       -- function()
 MapOverlay.onFlag = nil        -- function(x, y)
 MapOverlay.onTeleport = nil    -- function(x, y)
 
--- 地图数据引用（外部每帧刷新）
+-- 地图数据引用(外部每帧刷新)
 MapOverlay.visibleMap = nil
 MapOverlay.playerX = 0
 MapOverlay.playerY = 0
@@ -47,7 +47,7 @@ function MapOverlay.ComputeLayout(fieldWidth, fieldHeight, screenW, screenH)
     MapOverlay.fieldWidth = fieldWidth
     MapOverlay.fieldHeight = fieldHeight
 
-    -- 计算最佳格子大小（占屏幕 85%）
+    -- 计算最佳格子大小(占屏幕 85%)
     local maxW = screenW * 0.85
     local maxH = screenH * 0.75
     local csW = math.floor(maxW / fieldWidth)
@@ -76,7 +76,7 @@ function MapOverlay.Hide()
     end
 end
 
---- 绘制放大地图（在 NanoVGRender 中调用）
+--- 绘制放大地图(在 NanoVGRender 中调用)
 ---@param vg userdata
 ---@param screenW number
 ---@param screenH number
@@ -179,7 +179,7 @@ function MapOverlay.Draw(vg, screenW, screenH)
                 nvgText(vg, cx + cs / 2, cy + cs / 2, "*")
             end
 
-            -- 已访问标记（可传送）
+            -- 已访问标记(可传送)
             local key = tostring(x) .. "," .. tostring(y)
             if MapOverlay.visitedCells and MapOverlay.visitedCells[key]
                and cell.state ~= "hidden" and cell.state ~= "flagged"
@@ -239,7 +239,7 @@ function MapOverlay.HandleClick(mx, my, button)
     local gy = math.floor((my - oy) / cs) + 1
 
     if gx < 1 or gx > MapOverlay.fieldWidth or gy < 1 or gy > MapOverlay.fieldHeight then
-        -- 点击地图外，关闭
+        -- 点击地图外, 关闭
         MapOverlay.Hide()
         return true
     end
@@ -250,7 +250,7 @@ function MapOverlay.HandleClick(mx, my, button)
     local cell = row[gx]
     if not cell then return true end
 
-    -- 逻辑：
+    -- 逻辑:
     -- 1) 隐藏格 → 插旗
     -- 2) 已插旗 → 取消旗
     -- 3) 已探索安全格 + 已访问 → 传送

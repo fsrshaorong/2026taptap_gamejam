@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 扫雷搜打撤 — 2026 TapTap GameJam
--- 架构：NanoVG context 绘制场景/地图 + UI 系统做 HUD 叠层
+-- 架构:NanoVG context 绘制场景/地图 + UI 系统做 HUD 叠层
 -- ============================================================================
 
 local UI = require("urhox-libs/UI")
@@ -29,7 +29,7 @@ local dpr = 1
 ---@type table
 local run = nil          -- ExtractionRun 实例
 ---@type table
-local minefield = nil    -- Minefield 引用（run.minefield）
+local minefield = nil    -- Minefield 引用(run.minefield)
 
 -- 玩家已访问的格子 { ["x,y"] = true }
 local visitedCells = {}
@@ -50,13 +50,13 @@ local message = ""
 local messageTimer = 0
 local blockedWallHintTimer = 0
 
--- 事件房交易记录（key = "x,y"）
+-- 事件房交易记录(key = "x,y")
 local tradedRooms = {}
 
--- 威压天赋：怪物逃跑窗口
-local monsterFleeTimer = 0       -- 逃跑倒计时（秒）
+-- 威压天赋:怪物逃跑窗口
+local monsterFleeTimer = 0       -- 逃跑倒计时(秒)
 local monsterFleeActive = false  -- 是否处于逃跑窗口中
-local MONSTER_FLEE_BASE = 3.0    -- 基础逃跑时间（秒）
+local MONSTER_FLEE_BASE = 3.0    -- 基础逃跑时间(秒)
 
 -- VS 战斗演出
 local battleState = {
@@ -64,7 +64,7 @@ local battleState = {
     phase = "none",       -- "vs" | "result"
     timer = 0,            -- 当前阶段计时
     enemy = nil,          -- 敌人信息 { name, power }
-    result = nil,         -- 战斗结果（FightEnemy 返回值）
+    result = nil,         -- 战斗结果(FightEnemy 返回值)
     cellX = 0,            -- 战斗发生的格子
     cellY = 0,
 }
@@ -158,7 +158,7 @@ end
 -- 菜单页面管理
 -- ============================================================================
 
---- 返回主菜单（从游戏结束/撤离成功面板）
+--- 返回主菜单(从游戏结束/撤离成功面板)
 function ReturnToMenu()
     phase = PHASE.MENU
     setVisible("gameOverPanel", false)
@@ -217,7 +217,7 @@ function RefreshMainMenu()
         if stats.totalRuns > 0 then
             statsLabel:SetText("出击 " .. stats.totalRuns .. " 次 | 撤离 " .. stats.totalExtractions .. " 次")
         else
-            statsLabel:SetText("首次探索，祝你好运！")
+            statsLabel:SetText("首次探索, 祝你好运!")
         end
     end
 end
@@ -337,7 +337,7 @@ function RefreshTalentPage()
                     gap = 2,
                     children = {
                         UI.Label {
-                            text = talent.name .. "（" .. talent.direction .. "）",
+                            text = talent.name .. "(" .. talent.direction .. ")",
                             fontSize = 13,
                             fontColor = unlocked and { 200, 240, 150, 255 } or { 230, 235, 245, 255 },
                         },
@@ -448,7 +448,7 @@ function GMUnlockAllTalents()
 end
 
 function GMEquipAll()
-    -- 先解锁全部，再装备全部（忽略上限）
+    -- 先解锁全部, 再装备全部(忽略上限)
     GMUnlockAllItems()
     MetaProgress.GMEquipAll()
 end
@@ -515,7 +515,7 @@ function StartNewGame()
 
     phase = PHASE.PLAYING
 
-    -- 罗盘效果：显示撤离点象限提示
+    -- 罗盘效果:显示撤离点象限提示
     local compassHint = ""
     if equipBonus.showExitHint then
         local exits = minefield:GetExits()
@@ -529,14 +529,14 @@ function StartNewGame()
                 if exit.x < centerX then dir = dir .. "西" else dir = dir .. "东" end
                 table.insert(hints, dir)
             end
-            compassHint = " 🧭罗盘提示：撤离点在" .. table.concat(hints, "、") .. "方向"
+            compassHint = " 🧭罗盘提示:撤离点在" .. table.concat(hints, ",") .. "方向"
         end
     end
 
     -- 计算小地图布局
     MiniMap.ComputeLayout(minefield.width, minefield.height)
 
-    ShowMessage("左上角看扫雷数字避雷；WASD 走门，F 搜索，M 地图，E 撤离。" .. compassHint)
+    ShowMessage("左上角看扫雷数字避雷;WASD 走门, F 搜索, M 地图, E 撤离." .. compassHint)
     UpdateHUD()
 
     -- 隐藏菜单
@@ -560,25 +560,25 @@ function ShowFailurePanel(reason)
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
         local text = reason ..
-            "\n金币 " .. totals.gold .. "（已安全保留）"
+            "\n金币 " .. totals.gold .. "(已安全保留)"
         if totals.parts > 0 then
-            text = text .. "\n零件 " .. totals.parts .. "（将丢失）"
+            text = text .. "\n零件 " .. totals.parts .. "(将丢失)"
         end
-        text = text .. "\n协议等级：" .. protocol.level .. " / " .. protocol.description
+        text = text .. "\n协议等级:" .. protocol.level .. " / " .. protocol.description
         goInfo:SetText(text)
     end
 
-    -- 如果有零件可以抢救，显示选择面板；否则直接结算并显示重开按钮
+    -- 如果有零件可以抢救, 显示选择面板;否则直接结算并显示重开按钮
     if options.canSalvagePart then
         setVisible("failureChoicePanel", true)
         local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
         if salvageInfo then
-            salvageInfo:SetText("可抢救 1 个零件（转为 " .. options.salvageBonus .. " 金币）")
+            salvageInfo:SetText("可抢救 1 个零件(转为 " .. options.salvageBonus .. " 金币)")
         end
     else
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
-        -- 无零件可抢救，直接结算金币
+        -- 无零件可抢救, 直接结算金币
         local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
         local finalGold = totals.gold + talentBonus
         if finalGold > 0 then
@@ -586,7 +586,7 @@ function ShowFailurePanel(reason)
         end
         local goInfo2 = uiRoot_:FindById("gameOverInfo")
         if goInfo2 then
-            local settleText = reason .. "\n保留金币：+" .. finalGold .. "（总计 " .. MetaProgress.GetGold() .. "）"
+            local settleText = reason .. "\n保留金币:+" .. finalGold .. "(总计 " .. MetaProgress.GetGold() .. ")"
             if talentBonus > 0 then
                 settleText = settleText .. "\n天赋保险金 +" .. talentBonus
             end
@@ -610,7 +610,7 @@ function ApplyFailureSalvage(choice)
         MetaProgress.AddGold(finalGold)
     end
 
-    local text = "保留金币：+" .. finalGold .. "（总计 " .. MetaProgress.GetGold() .. "）"
+    local text = "保留金币:+" .. finalGold .. "(总计 " .. MetaProgress.GetGold() .. ")"
     if salvage.bonus > 0 then
         text = text .. "\n含抢救零件 +" .. salvage.bonus
     end
@@ -620,13 +620,13 @@ function ApplyFailureSalvage(choice)
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
-        goInfo:SetText(text .. "\n零件已全部丢失。")
+        goInfo:SetText(text .. "\n零件已全部丢失.")
     end
 
     ShowMessage(text)
 end
 
---- 启动 VS 战斗演出（替代直接结算）
+--- 启动 VS 战斗演出(替代直接结算)
 ---@param enemy table 敌人信息
 ---@param cx number 格子 x
 ---@param cy number 格子 y
@@ -640,7 +640,7 @@ function StartBattle(enemy, cx, cy)
     battleState.cellY = cy
 end
 
---- VS 演出阶段结束，执行实际战斗结算
+--- VS 演出阶段结束, 执行实际战斗结算
 function ResolveBattle()
     local fightResult = Combat.FightEnemy(battleState.cellX, battleState.cellY)
     battleState.result = fightResult
@@ -648,7 +648,7 @@ function ResolveBattle()
     battleState.timer = BATTLE_RESULT_DURATION
 end
 
---- 战斗演出完全结束，处理后续
+--- 战斗演出完全结束, 处理后续
 function FinishBattle()
     local result = battleState.result
     local enemy = battleState.enemy
@@ -658,16 +658,16 @@ function FinishBattle()
     if not result or not result.fought then return end
 
     if result.dead then
-        ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败！")
+        ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败!")
     elseif result.playerWin then
-        ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")！你毫发无损。")
+        ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")!你毫发无损.")
     else
         ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. result.damage .. " HP (剩余 " .. Combat.hp .. ")")
     end
     UpdateHUD()
 end
 
---- 威压天赋：逃跑时间到或玩家主动战斗
+--- 威压天赋:逃跑时间到或玩家主动战斗
 function ForceFightCurrentEnemy()
     if not run then return end
     local p = run:GetPlayer()
@@ -679,7 +679,7 @@ function ForceFightCurrentEnemy()
     StartBattle(enemy, p.x, p.y)
 end
 
---- 移动当前房间里的角色；走到门口后才进入相邻扫雷格。
+--- 移动当前房间里的角色;走到门口后才进入相邻扫雷格.
 ---@param dx number
 ---@param dy number
 function MoveScenePlayer(dx, dy, dt)
@@ -690,7 +690,7 @@ function MoveScenePlayer(dx, dy, dt)
     if result.action == "enter" then
         MovePlayer(result.dx, result.dy)
     elseif result.action == "blocked_wall" and blockedWallHintTimer <= 0 then
-        ShowMessage("走到门口才能离开房间。")
+        ShowMessage("走到门口才能离开房间.")
         blockedWallHintTimer = 0.8
     end
 end
@@ -707,18 +707,18 @@ function MovePlayer(dx, dy)
     if result.ok then
         DungeonRoom.PlacePlayerFromEntry(dx, dy, screenW, screenH, dpr)
 
-        -- 威压逃跑：成功离开房间即视为逃跑成功
+        -- 威压逃跑:成功离开房间即视为逃跑成功
         if monsterFleeActive then
             monsterFleeActive = false
             monsterFleeTimer = 0
-            ShowMessage("成功逃离怪物！")
+            ShowMessage("成功逃离怪物!")
         end
 
         -- 标记为已访问
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
 
-        -- 邻域感知天赋：高亮 8 邻域
+        -- 邻域感知天赋:高亮 8 邻域
         local talentEffects = MetaProgress.GetTalentEffects()
         if talentEffects.mapHighlight then
             local neighbors = {}
@@ -739,16 +739,16 @@ function MovePlayer(dx, dy)
             local mineResult = Combat.TakeMineHit()
             DungeonRoom.TriggerMineFlash()
             if mineResult.dead then
-                ShowFailurePanel("踩雷！受到 " .. mineResult.damage .. " 伤害，血量归零！")
+                ShowFailurePanel("踩雷!受到 " .. mineResult.damage .. " 伤害, 血量归零!")
             elseif mineResult.immuneUsed then
-                ShowMessage("💊 急救包发动！踩雷免疫一次伤害！")
+                ShowMessage("💊 急救包发动!踩雷免疫一次伤害!")
             else
-                ShowMessage("踩雷！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，该雷房已触发。")
+                ShowMessage("踩雷!-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. "), 该雷房已触发.")
             end
         elseif result.status == "entered_triggered_mine" then
-            ShowMessage("穿过已触发的雷房，不再触发。")
+            ShowMessage("穿过已触发的雷房, 不再触发.")
         else
-            -- 0格自动展开：如果 Reveal 触发了 BFS 展开，高亮展开区域
+            -- 0格自动展开:如果 Reveal 触发了 BFS 展开, 高亮展开区域
             local didExpand = false
             if result.reveal and result.reveal.status == "expanded" and result.reveal.cells then
                 local expandedCells = {}
@@ -769,14 +769,14 @@ function MovePlayer(dx, dy)
             -- 检查是否有敌人
             local enemy = Combat.GetEnemy(p.x, p.y)
             if enemy then
-                -- 威压天赋：给予逃跑窗口
+                -- 威压天赋:给予逃跑窗口
                 local fleeBonus = talentEffects.monsterFleeBonus
                 if fleeBonus > 0 then
-                    -- 启动逃跑倒计时，玩家可在窗口内离开房间
+                    -- 启动逃跑倒计时, 玩家可在窗口内离开房间
                     monsterFleeActive = true
                     monsterFleeTimer = MONSTER_FLEE_BASE + fleeBonus
-                    ShowMessage("⚠️ 遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")！" ..
-                        math.floor(monsterFleeTimer) .. "秒内可逃跑，或按 F 战斗")
+                    ShowMessage("⚠️ 遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")!" ..
+                        math.floor(monsterFleeTimer) .. "秒内可逃跑, 或按 F 战斗")
                 else
                     -- 无天赋直接进入 VS 演出
                     StartBattle(enemy, p.x, p.y)
@@ -784,9 +784,9 @@ function MovePlayer(dx, dy)
             elseif result.status == "at_exit" then
                 local cell = minefield:GetCellView(p.x, p.y)
                 if cell and cell.exitId and string.find(cell.exitId, "random") then
-                    ShowMessage("发现隐藏撤离点！按 E 撤离。")
+                    ShowMessage("发现隐藏撤离点!按 E 撤离.")
                 else
-                    ShowMessage("你到达了撤离点！按 E 撤离。")
+                    ShowMessage("你到达了撤离点!按 E 撤离.")
                 end
             else
                 -- 根据房型显示不同提示
@@ -795,34 +795,34 @@ function MovePlayer(dx, dy)
                 if cell and cell.roomType == "event" then
                     local ekey = tostring(p.x) .. "," .. tostring(p.y)
                     if tradedRooms[ekey] then
-                        ShowMessage("旅商已交易完毕。")
+                        ShowMessage("旅商已交易完毕.")
                     else
-                        ShowMessage("遇到旅商！按 T 用零件换金币。")
+                        ShowMessage("遇到旅商!按 T 用零件换金币.")
                     end
                 elseif searchState.isChest then
-                    ShowMessage("发现宝箱房！按 F 开启宝箱，奖励丰厚！")
+                    ShowMessage("发现宝箱房!按 F 开启宝箱, 奖励丰厚!")
                 elseif searchState.canSearch then
                     if didExpand then
-                        ShowMessage("安全区域展开！自动揭示了周围格子。按 F 搜索物资。")
+                        ShowMessage("安全区域展开!自动揭示了周围格子.按 F 搜索物资.")
                     else
-                        ShowMessage("安全房间。按 F 或点击箱子搜索物资。")
+                        ShowMessage("安全房间.按 F 或点击箱子搜索物资.")
                     end
                 elseif didExpand then
-                    ShowMessage("安全区域展开！自动揭示了周围格子。")
+                    ShowMessage("安全区域展开!自动揭示了周围格子.")
                 elseif cell and cell.adjacent and cell.adjacent > 0 then
-                    ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间。")
+                    ShowMessage("附近有 " .. cell.adjacent .. " 个危险房间.")
                 else
-                    ShowMessage("安全区域。继续前进或查看地图。")
+                    ShowMessage("安全区域.继续前进或查看地图.")
                 end
             end
         end
     else
         if result.status == "hit_mine" then
-            ShowMessage("踩雷，撤离失败。")
+            ShowMessage("踩雷, 撤离失败.")
         elseif result.status == "out_of_bounds" then
-            ShowMessage("无法移动，已到达地图边界。")
+            ShowMessage("无法移动, 已到达地图边界.")
         elseif result.status == "blocked_flagged" then
-            ShowMessage("该格已插旗，先取消旗标才能进入。")
+            ShowMessage("该格已插旗, 先取消旗标才能进入.")
         end
     end
 
@@ -845,13 +845,13 @@ function SearchCurrentRoom()
     local result = RunInventory.SearchCurrentRoom(minefield, run)
     if not result.ok then
         if result.status == "searched" then
-            ShowMessage("这个房间已经搜过了。")
+            ShowMessage("这个房间已经搜过了.")
         elseif result.status == "spawn" then
-            ShowMessage("出生点没有可带走的物资。")
+            ShowMessage("出生点没有可带走的物资.")
         elseif result.status == "exit" then
-            ShowMessage("这里是撤离点，准备好就按 E 撤离。")
+            ShowMessage("这里是撤离点, 准备好就按 E 撤离.")
         else
-            ShowMessage("当前房间无法搜索。")
+            ShowMessage("当前房间无法搜索.")
         end
         return
     end
@@ -864,14 +864,14 @@ function SearchCurrentRoom()
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
 
-    local msg = "搜索完成：金币 +" .. reward.gold
+    local msg = "搜索完成:金币 +" .. reward.gold
     if reward.parts > 0 then
-        msg = msg .. "，零件 +" .. reward.parts
+        msg = msg .. ", 零件 +" .. reward.parts
     end
     if powerUp > 0 then
-        msg = msg .. "，战斗力 +" .. powerUp
+        msg = msg .. ", 战斗力 +" .. powerUp
     end
-    ShowMessage(msg .. "。")
+    ShowMessage(msg .. ".")
 
     UpdateHUD()
 end
@@ -881,7 +881,7 @@ function TeleportTo(x, y)
     if not run then return end
     local key = tostring(x) .. "," .. tostring(y)
     if not visitedCells[key] then
-        ShowMessage("只能传送到已访问的安全房间。")
+        ShowMessage("只能传送到已访问的安全房间.")
         return
     end
 
@@ -891,9 +891,9 @@ function TeleportTo(x, y)
     DungeonRoom.ResetPlayer()
 
     if CanSearchCurrentRoom() then
-        ShowMessage("传送成功。这个房间还有物资可搜。")
+        ShowMessage("传送成功.这个房间还有物资可搜.")
     else
-        ShowMessage("传送成功！")
+        ShowMessage("传送成功!")
     end
     MapOverlay.Hide()
     phase = PHASE.PLAYING
@@ -905,7 +905,7 @@ end
 function DoExtract()
     if not run then return end
     if not run:CanExtract() then
-        ShowMessage("当前位置无法撤离。")
+        ShowMessage("当前位置无法撤离.")
         return
     end
     -- 弹出确认面板
@@ -924,10 +924,10 @@ function DoExtract()
             partsLine = "\n零件 " .. totals.parts .. " → 金币 +" .. reward.convertedGold
         end
         info:SetText(
-            "局内金币：" .. totals.gold ..
+            "局内金币:" .. totals.gold ..
             partsLine ..
-            "\n预计带出金币：" .. reward.totalGold ..
-            "\n搜索房间：" .. totals.searchedRooms ..
+            "\n预计带出金币:" .. reward.totalGold ..
+            "\n搜索房间:" .. totals.searchedRooms ..
             "\n" .. riskText
         )
     end
@@ -936,7 +936,7 @@ function DoExtract()
     if panel then panel:Show() end
 end
 
---- 确认撤离（实际执行）
+--- 确认撤离(实际执行)
 function ConfirmExtract()
     if not run then return end
     local result = run:Extract()
@@ -948,18 +948,18 @@ function ConfirmExtract()
         MetaProgress.AddGold(reward.totalGold)
         MetaProgress.RecordExtraction()
 
-        ShowMessage("撤离成功！共获得 " .. reward.totalGold .. " 金币。")
+        ShowMessage("撤离成功!共获得 " .. reward.totalGold .. " 金币.")
         local confirmPanel = uiRoot_:FindById("extractConfirmPanel")
         if confirmPanel then confirmPanel:Hide() end
         local winPanel = uiRoot_:FindById("winPanel")
         if winPanel then winPanel:Show() end
         local winInfo = uiRoot_:FindById("winInfo")
         if winInfo then
-            local text = "获得金币：+" .. reward.totalGold .. "（总计 " .. MetaProgress.GetGold() .. "）"
+            local text = "获得金币:+" .. reward.totalGold .. "(总计 " .. MetaProgress.GetGold() .. ")"
             if reward.parts > 0 then
-                text = text .. "\n（局内金币 " .. reward.directGold .. " + 零件×" .. reward.parts .. " 转换 " .. reward.convertedGold .. "）"
+                text = text .. "\n(局内金币 " .. reward.directGold .. " + 零件×" .. reward.parts .. " 转换 " .. reward.convertedGold .. ")"
             end
-            text = text .. "\n搜索房间：" .. RunInventory.GetSearchedCount() .. " | 回合：" .. result.turn
+            text = text .. "\n搜索房间:" .. RunInventory.GetSearchedCount() .. " | 回合:" .. result.turn
             winInfo:SetText(text)
         end
     end
@@ -978,17 +978,17 @@ function DoTrade()
     local p = run:GetPlayer()
     local cell = minefield:GetCellView(p.x, p.y)
     if not cell or cell.roomType ~= "event" then
-        ShowMessage("这里没有可交易的 NPC。")
+        ShowMessage("这里没有可交易的 NPC.")
         return
     end
     local key = tostring(p.x) .. "," .. tostring(p.y)
     if tradedRooms[key] then
-        ShowMessage("这个旅商已经交易过了。")
+        ShowMessage("这个旅商已经交易过了.")
         return
     end
     local totals = RunInventory.GetTotals()
     if totals.parts < 1 then
-        ShowMessage("没有零件可以交易。")
+        ShowMessage("没有零件可以交易.")
         return
     end
     local tradePrice = MetaProgress.GetTalentEffects().tradePrice
@@ -996,7 +996,7 @@ function DoTrade()
     RunInventory.gold = RunInventory.gold + tradePrice
     tradedRooms[key] = true
     DungeonRoom.TriggerTradePulse()
-    ShowMessage("交易成功！用 1 零件换了 " .. tradePrice .. " 金币。")
+    ShowMessage("交易成功!用 1 零件换了 " .. tradePrice .. " 金币.")
     UpdateHUD()
 end
 
@@ -1073,11 +1073,11 @@ function DrawBattleOverlay(vg, w, h)
     local cy = h / 2
 
     if battleState.phase == "vs" then
-        -- === VS 阶段：展示双方 ===
+        -- === VS 阶段:展示双方 ===
         local progress = 1.0 - (battleState.timer / BATTLE_VS_DURATION)
         local slideIn = math.min(1.0, progress * 3.0) -- 快速滑入
 
-        -- 玩家侧（左）
+        -- 玩家侧(左)
         local playerX = cx - 120 * slideIn
         nvgFontFace(vg, "sans")
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
@@ -1103,13 +1103,13 @@ function DrawBattleOverlay(vg, w, h)
         nvgFillColor(vg, nvgRGBA(255, 140, 140, 230))
         nvgText(vg, playerX, cy + 46, "HP " .. combat.hp .. "/" .. combat.maxHp)
 
-        -- VS 文字（中间脉冲）
+        -- VS 文字(中间脉冲)
         local pulse = math.abs(math.sin(progress * math.pi * 3)) * 0.3 + 0.7
         nvgFontSize(vg, 42 * pulse)
         nvgFillColor(vg, nvgRGBA(255, 60, 60, math.floor(255 * pulse)))
         nvgText(vg, cx, cy - 10, "VS")
 
-        -- 敌人侧（右）
+        -- 敌人侧(右)
         local enemyX = cx + 120 * slideIn
 
         -- 敌人圆形头像背景
@@ -1152,7 +1152,7 @@ function DrawBattleOverlay(vg, w, h)
             nvgFontFace(vg, "sans")
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
             nvgFillColor(vg, nvgRGBA(80, 255, 120, 255))
-            nvgText(vg, cx, cy - 20, "胜利！")
+            nvgText(vg, cx, cy - 20, "胜利!")
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(200, 255, 200, 220))
@@ -1167,7 +1167,7 @@ function DrawBattleOverlay(vg, w, h)
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(255, 150, 150, 220))
-            nvgText(vg, cx, cy + 20, "受到 " .. result.damage .. " 伤害，血量归零")
+            nvgText(vg, cx, cy + 20, "受到 " .. result.damage .. " 伤害, 血量归零")
         else
             -- 惨胜
             nvgFontSize(vg, 36 * scaleIn)
@@ -1238,7 +1238,7 @@ end
 -- ============================================================================
 
 function CreateUI()
-    -- 右上角状态面板（竖排）
+    -- 右上角状态面板(竖排)
     local statusPanel = UI.Panel {
         id = "statusPanel",
         position = "absolute",
@@ -1356,7 +1356,7 @@ function CreateUI()
         }
     }
 
-    -- 开始菜单（三屏结构：主菜单 / 装备商店 / 天赋面板）
+    -- 开始菜单(三屏结构:主菜单 / 装备商店 / 天赋面板)
     local menuOverlay = UI.Panel {
         id = "menuOverlay",
         position = "absolute",
@@ -1629,7 +1629,7 @@ function CreateUI()
                         }
                     },
                     UI.Label {
-                        text = "选择携带进入地牢的装备（最多 2 件）",
+                        text = "选择携带进入地牢的装备(最多 2 件)",
                         fontSize = 11,
                         fontColor = { 140, 150, 170, 180 },
                     },
@@ -1683,7 +1683,7 @@ function CreateUI()
                         }
                     },
                     UI.Label {
-                        text = "永久解锁，机制型增强",
+                        text = "永久解锁, 机制型增强",
                         fontSize = 11,
                         fontColor = { 140, 150, 170, 180 },
                     },
@@ -1807,7 +1807,7 @@ function CreateUI()
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        text = "确认撤离？",
+                        text = "确认撤离?",
                         fontSize = 20,
                         fontColor = { 100, 220, 255, 255 },
                     },
@@ -1867,7 +1867,7 @@ function CreateUI()
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        text = "撤离成功！",
+                        text = "撤离成功!",
                         fontSize = 22,
                         fontColor = { 80, 255, 120, 255 },
                     },
@@ -1932,7 +1932,7 @@ function HandleUpdate(eventType, eventData)
         battleState.timer = battleState.timer - dt
         if battleState.timer <= 0 then
             if battleState.phase == "vs" then
-                -- VS 展示结束，执行结算
+                -- VS 展示结束, 执行结算
                 ResolveBattle()
             elseif battleState.phase == "result" then
                 -- 结果展示结束
@@ -1945,7 +1945,7 @@ function HandleUpdate(eventType, eventData)
     if monsterFleeActive and monsterFleeTimer > 0 then
         monsterFleeTimer = monsterFleeTimer - dt
         if monsterFleeTimer <= 0 then
-            -- 时间到，强制战斗
+            -- 时间到, 强制战斗
             monsterFleeActive = false
             monsterFleeTimer = 0
             ForceFightCurrentEnemy()
@@ -1961,7 +1961,7 @@ function HandleUpdate(eventType, eventData)
         end
     end
 
-    -- 连续移动：按住方向键时按帧平滑移动角色（战斗演出中禁止）
+    -- 连续移动:按住方向键时按帧平滑移动角色(战斗演出中禁止)
     if phase == PHASE.PLAYING and run and not battleState.active then
         local dx, dy = 0, 0
         if input:GetKeyDown(KEY_W) or input:GetKeyDown(KEY_UP) then dy = -1
@@ -2003,7 +2003,7 @@ function HandleKeyDown(eventType, eventData)
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
-    -- 战斗演出中：任意键可跳过当前阶段
+    -- 战斗演出中:任意键可跳过当前阶段
     if battleState.active then
         if battleState.phase == "vs" then
             ResolveBattle()
@@ -2013,14 +2013,14 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
-    -- 功能键（移动已改为 Update 中连续检测）
+    -- 功能键(移动已改为 Update 中连续检测)
     if key == KEY_W or key == KEY_UP or key == KEY_S or key == KEY_DOWN
        or key == KEY_A or key == KEY_LEFT or key == KEY_D or key == KEY_RIGHT then
         return
     elseif key == KEY_E then
         DoExtract()
     elseif key == KEY_F then
-        -- 威压逃跑窗口中：F 键主动战斗
+        -- 威压逃跑窗口中:F 键主动战斗
         if monsterFleeActive then
             monsterFleeActive = false
             monsterFleeTimer = 0
@@ -2056,7 +2056,7 @@ function HandleMouseDown(eventType, eventData)
 
     if phase ~= PHASE.PLAYING then return end
 
-    -- 战斗演出中：点击跳过
+    -- 战斗演出中:点击跳过
     if battleState.active then
         if battleState.phase == "vs" then
             ResolveBattle()

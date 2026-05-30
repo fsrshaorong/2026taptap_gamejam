@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Combat.lua
--- 血量 + 战斗力系统，处理踩雷扣血、敌人生成与战斗判定
+-- 血量 + 战斗力系统, 处理踩雷扣血,敌人生成与战斗判定
 -- ============================================================================
 
 local Combat = {}
@@ -27,14 +27,14 @@ local function cellKey(x, y)
     return tostring(x) .. "," .. tostring(y)
 end
 
---- 重置战斗状态（新游戏时调用）
+--- 重置战斗状态(新游戏时调用)
 function Combat.Reset()
     Combat.maxHp = 100
     Combat.hp = Combat.maxHp
     Combat.power = 10
     Combat.enemies = {}
-    Combat.mineImmunity = false    -- 首次踩雷免疫（装备效果）
-    Combat.mineDmgReduce = 0       -- 雷伤减免（天赋效果）
+    Combat.mineImmunity = false    -- 首次踩雷免疫(装备效果)
+    Combat.mineDmgReduce = 0       -- 雷伤减免(天赋效果)
 end
 
 --- 获取玩家是否存活
@@ -42,10 +42,10 @@ function Combat.IsAlive()
     return Combat.hp > 0
 end
 
---- 踩雷伤害：扣血，返回是否死亡
+--- 踩雷伤害:扣血, 返回是否死亡
 ---@return table { damage: number, hp: number, dead: boolean, immuneUsed: boolean }
 function Combat.TakeMineHit()
-    -- 急救包免疫：首次踩雷不受伤害
+    -- 急救包免疫:首次踩雷不受伤害
     if Combat.mineImmunity then
         Combat.mineImmunity = false
         return {
@@ -67,14 +67,14 @@ function Combat.TakeMineHit()
 end
 
 --- 为指定格子生成敌人
---- 怪物房（roomType="monster"）必定生成，普通房不再随机生成
+--- 怪物房(roomType="monster")必定生成, 普通房不再随机生成
 ---@param minefield table
 ---@param x number
 ---@param y number
 function Combat.TrySpawnEnemy(minefield, x, y)
     local key = cellKey(x, y)
 
-    -- 已有敌人记录（无论死活），不重复生成
+    -- 已有敌人记录(无论死活), 不重复生成
     if Combat.enemies[key] then return end
 
     local cell = minefield:GetCellView(x, y)
@@ -89,7 +89,7 @@ function Combat.TrySpawnEnemy(minefield, x, y)
     local seed = minefield.seed or 1
     local hash = (x * 131 + y * 97 + seed * 41) % 1000
 
-    -- 生成敌人，战斗力与位置/邻接相关
+    -- 生成敌人, 战斗力与位置/邻接相关
     local adjPower = (cell.adjacent or 0) * 2
     local basePower = CONFIG.enemyPowerMin + (hash % (CONFIG.enemyPowerMax - CONFIG.enemyPowerMin + 1))
     local enemyPower = basePower + adjPower
@@ -104,7 +104,7 @@ function Combat.TrySpawnEnemy(minefield, x, y)
     }
 end
 
---- 获取指定格子的敌人（如果有且活着）
+--- 获取指定格子的敌人(如果有且活着)
 ---@param x number
 ---@param y number
 ---@return table|nil  { name, power, alive }
@@ -117,7 +117,7 @@ function Combat.GetEnemy(x, y)
     return nil
 end
 
---- 获取指定格子的敌人（无论死活，用于渲染）
+--- 获取指定格子的敌人(无论死活, 用于渲染)
 ---@param x number
 ---@param y number
 ---@return table|nil  { name, power, alive }
@@ -126,9 +126,9 @@ function Combat.GetEnemyAny(x, y)
     return Combat.enemies[key]
 end
 
---- 战斗判定：玩家 vs 敌人
---- 如果玩家战斗力 >= 敌人，敌人死亡，玩家不受伤
---- 如果玩家战斗力 < 敌人，扣除差值血量，敌人仍死亡（战斗完成后通过）
+--- 战斗判定:玩家 vs 敌人
+--- 如果玩家战斗力 >= 敌人, 敌人死亡, 玩家不受伤
+--- 如果玩家战斗力 < 敌人, 扣除差值血量, 敌人仍死亡(战斗完成后通过)
 ---@param x number
 ---@param y number
 ---@return table { fought, enemy, damage, hp, dead, playerWin }
@@ -164,7 +164,7 @@ end
 ---@param minefield table
 ---@param x number
 ---@param y number
----@return number  获得的战斗力加成（0 表示没获得）
+---@return number  获得的战斗力加成(0 表示没获得)
 function Combat.TryPowerUp(minefield, x, y)
     local seed = minefield.seed or 1
     local hash = (x * 67 + y * 113 + seed * 23) % 100
@@ -176,7 +176,7 @@ function Combat.TryPowerUp(minefield, x, y)
     return 0
 end
 
---- 获取战斗系统状态摘要（用于 HUD 显示）
+--- 获取战斗系统状态摘要(用于 HUD 显示)
 function Combat.GetStatus()
     return {
         hp = Combat.hp,

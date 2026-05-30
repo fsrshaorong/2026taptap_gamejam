@@ -1,13 +1,13 @@
 -- ============================================================================
--- Lighthouse.lua — 灯塔场景绘制（NanoVG 像素风）
--- 绘制灯塔、水车、电缆、电池、村庄、海面等组件
+-- Lighthouse.lua — 灯塔场景绘制(NanoVG 像素风)
+-- 绘制灯塔,水车,电缆,电池,村庄,海面等组件
 -- ============================================================================
 
 local GameState = require("systems.GameState")
 
 local Lighthouse = {}
 
--- 场景组件位置布局（相对于画布，百分比）
+-- 场景组件位置布局(相对于画布, 百分比)
 local LAYOUT = {
     lighthouse = { x = 0.5, y = 0.25, w = 0.12, h = 0.35 },
     waterwheel = { x = 0.25, y = 0.55, w = 0.12, h = 0.12 },
@@ -29,7 +29,7 @@ local COMP_NAMES = {
 
 -- 当前高亮的组件
 Lighthouse.hoveredComponent = nil
--- 当前选中的按钮（等待选择目标组件）
+-- 当前选中的按钮(等待选择目标组件)
 Lighthouse.selectedButton = nil
 
 --- 初始化场景
@@ -45,7 +45,7 @@ end
 ---@param sceneW number 场景区域宽度
 ---@param sceneH number 场景区域高度
 function Lighthouse.Draw(vg, sceneX, sceneY, sceneW, sceneH)
-    -- 绘制天空背景（根据天数变化）
+    -- 绘制天空背景(根据天数变化)
     Lighthouse.DrawSky(vg, sceneX, sceneY, sceneW, sceneH)
 
     -- 绘制各组件
@@ -101,7 +101,7 @@ function Lighthouse.DrawLighthouse(vg, sx, sy, sw, sh)
     local w = sw * l.w
     local h = sh * l.h
 
-    -- 灯塔主体（梯形）
+    -- 灯塔主体(梯形)
     nvgBeginPath(vg)
     nvgMoveTo(vg, cx - w * 0.4, cy + h * 0.5)
     nvgLineTo(vg, cx - w * 0.25, cy - h * 0.3)
@@ -114,7 +114,7 @@ function Lighthouse.DrawLighthouse(vg, sx, sy, sw, sh)
     nvgStrokeWidth(vg, 2)
     nvgStroke(vg)
 
-    -- 灯塔顶部（灯室）
+    -- 灯塔顶部(灯室)
     local topY = cy - h * 0.3
     nvgBeginPath(vg)
     nvgRect(vg, cx - w * 0.3, topY - h * 0.15, w * 0.6, h * 0.15)
@@ -135,7 +135,7 @@ function Lighthouse.DrawLighthouse(vg, sx, sy, sw, sh)
         nvgFillColor(vg, nvgRGBA(255, 240, 100, 60))
         nvgFill(vg)
     elseif state == "overload" then
-        -- 过载闪烁（红色）
+        -- 过载闪烁(红色)
         nvgBeginPath(vg)
         nvgCircle(vg, cx, topY - h * 0.07, w * 0.25)
         nvgFillColor(vg, nvgRGBA(255, 60, 60, 200))
@@ -299,7 +299,7 @@ function Lighthouse.DrawVillage(vg, sx, sy, sw, sh)
     nvgFillColor(vg, nvgRGBA(60, 100, 40, 255))
     nvgFill(vg)
 
-    -- 房屋（3个小方块）
+    -- 房屋(3个小方块)
     for i = 0, 2 do
         local hx = x + w * 0.15 + i * w * 0.3
         local hy = y + h * 0.3
@@ -437,8 +437,8 @@ function Lighthouse.DrawHighlight(vg, sx, sy, sw, sh, compId)
 end
 
 --- 根据屏幕坐标判断点击了哪个组件
----@param mx number 鼠标 X（相对场景区域）
----@param my number 鼠标 Y（相对场景区域）
+---@param mx number 鼠标 X(相对场景区域)
+---@param my number 鼠标 Y(相对场景区域)
 ---@param sceneW number 场景宽
 ---@param sceneH number 场景高
 ---@return string|nil 组件 ID

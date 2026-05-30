@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MetaProgress.lua — 局外持久化进度管理
--- 管理：全局金币、已解锁天赋、已购买/装备的带入物品、统计数据
+-- 管理:全局金币,已解锁天赋,已购买/装备的带入物品,统计数据
 -- ============================================================================
 
 local MetaProgress = {}
@@ -218,7 +218,7 @@ function MetaProgress.GetGold()
     return data.gold
 end
 
---- 增加金币（局结算时调用）
+--- 增加金币(局结算时调用)
 ---@param amount number
 function MetaProgress.AddGold(amount)
     if amount <= 0 then return end
@@ -227,7 +227,7 @@ function MetaProgress.AddGold(amount)
     MetaProgress.Save()
 end
 
---- 消费金币（购买物品/天赋时调用）
+--- 消费金币(购买物品/天赋时调用)
 ---@param amount number
 ---@return boolean 是否成功
 function MetaProgress.SpendGold(amount)
@@ -286,7 +286,7 @@ function MetaProgress.ToggleEquip(itemId)
             return true, nil
         end
     end
-    -- 未装备，尝试装备
+    -- 未装备, 尝试装备
     if #data.equippedItems >= MAX_EQUIPPED then
         return false, "最多装备 " .. MAX_EQUIPPED .. " 件"
     end
@@ -385,7 +385,7 @@ function MetaProgress.GetStats()
 end
 
 -- ============================================================================
--- 局内效果查询（StartNewGame 时调用）
+-- 局内效果查询(StartNewGame 时调用)
 -- ============================================================================
 
 --- 获取装备带来的属性加成
@@ -443,22 +443,22 @@ function MetaProgress.GetTalentEffects()
 end
 
 -- ============================================================================
--- GM 调试方法（免费获取，不扣金币）
+-- GM 调试方法(免费获取, 不扣金币)
 -- ============================================================================
 
---- GM：免费给予物品
+--- GM:免费给予物品
 function MetaProgress.GMGrantItem(itemId)
     data.ownedItems[itemId] = true
     MetaProgress.Save()
 end
 
---- GM：免费解锁天赋
+--- GM:免费解锁天赋
 function MetaProgress.GMGrantTalent(talentId)
     data.unlockedTalents[talentId] = true
     MetaProgress.Save()
 end
 
---- GM：装备全部已拥有物品（无视上限）
+--- GM:装备全部已拥有物品(无视上限)
 function MetaProgress.GMEquipAll()
     data.equippedItems = {}
     for _, item in ipairs(MetaProgress.ITEMS) do
@@ -469,13 +469,13 @@ function MetaProgress.GMEquipAll()
     MetaProgress.Save()
 end
 
---- GM：清空装备
+--- GM:清空装备
 function MetaProgress.GMUnequipAll()
     data.equippedItems = {}
     MetaProgress.Save()
 end
 
---- GM：重置全部存档
+--- GM:重置全部存档
 function MetaProgress.GMReset()
     data.gold = 0
     data.unlockedTalents = {}
@@ -489,7 +489,7 @@ end
 -- 初始化
 -- ============================================================================
 
---- 初始化（游戏启动时调用一次）
+--- 初始化(游戏启动时调用一次)
 function MetaProgress.Init()
     MetaProgress.Load()
 end

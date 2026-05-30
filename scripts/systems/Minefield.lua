@@ -283,14 +283,14 @@ function Minefield:_PlaceMines()
     self.safeCellCount = self.width * self.height - self.mineCount
 end
 
---- 在安全格中分配特殊房型（怪物房、宝箱房）
---- 怪物房不计入雷数邻接，所以要在 _ComputeAdjacency 之前调用
+--- 在安全格中分配特殊房型(怪物房,宝箱房)
+--- 怪物房不计入雷数邻接, 所以要在 _ComputeAdjacency 之前调用
 function Minefield:_AssignSpecialRooms()
     local safeCandidates = {}
     for y = 1, self.height do
         for x = 1, self.width do
             local cell = self.grid[y][x]
-            -- 只选择普通安全格（非雷、非出生、非撤离、非保留路径）
+            -- 只选择普通安全格(非雷,非出生,非撤离,非保留路径)
             if not cell.mine and not cell.spawn and not cell.exitId
                and cell.roomType == "normal" and not cell.reserved then
                 table.insert(safeCandidates, cell)
@@ -300,12 +300,12 @@ function Minefield:_AssignSpecialRooms()
 
     self.rng:Shuffle(safeCandidates)
 
-    -- 怪物房数量：约 10% 的安全非保留格
+    -- 怪物房数量:约 10% 的安全非保留格
     local monsterCount = math.floor(#safeCandidates * 0.10 + 0.5)
     if monsterCount < 2 then monsterCount = 2 end
     if monsterCount > #safeCandidates then monsterCount = #safeCandidates end
 
-    -- 宝箱房数量：约 8% 的安全非保留格
+    -- 宝箱房数量:约 8% 的安全非保留格
     local chestCount = math.floor(#safeCandidates * 0.08 + 0.5)
     if chestCount < 2 then chestCount = 2 end
     if chestCount > (#safeCandidates - monsterCount) then
@@ -324,7 +324,7 @@ function Minefield:_AssignSpecialRooms()
         idx = idx + 1
     end
 
-    -- 事件房数量：约 5% 的安全非保留格，至少 1 个
+    -- 事件房数量:约 5% 的安全非保留格, 至少 1 个
     local eventCount = math.floor(#safeCandidates * 0.05 + 0.5)
     if eventCount < 1 then eventCount = 1 end
     if eventCount > (#safeCandidates - idx + 1) then
@@ -336,7 +336,7 @@ function Minefield:_AssignSpecialRooms()
         idx = idx + 1
     end
 
-    -- 随机撤离房：1-2个，从剩余候选中选取
+    -- 随机撤离房:1-2个, 从剩余候选中选取
     local remainCount = #safeCandidates - idx + 1
     local randomExitCount = 2
     if remainCount < 2 then randomExitCount = math.max(0, remainCount) end
@@ -347,7 +347,7 @@ function Minefield:_AssignSpecialRooms()
         local eid = "random_" .. i
         cell.roomType = "exit"
         cell.exitId = eid
-        cell.randomExit = true  -- 标记为随机撤离房（区别于四角固定撤离）
+        cell.randomExit = true  -- 标记为随机撤离房(区别于四角固定撤离)
         self.exitLookup[eid] = { x = cell.x, y = cell.y }
         idx = idx + 1
     end
@@ -365,7 +365,7 @@ function Minefield:_ComputeAdjacency()
 
             for _, dir in ipairs(DIR8) do
                 local neighbor = self:GetCell(x + dir.x, y + dir.y)
-                -- 只统计真正的地雷（怪物房不计入雷数）
+                -- 只统计真正的地雷(怪物房不计入雷数)
                 if neighbor and neighbor.mine then
                     count = count + 1
                 end
@@ -425,7 +425,7 @@ function Minefield:_PublicCell(cell, revealMines)
         state = cell.adjacent == 0 and "empty" or "number"
     end
 
-    -- 随机撤离房只在揭开后才显示 exitId（四角固定撤离点始终可见）
+    -- 随机撤离房只在揭开后才显示 exitId(四角固定撤离点始终可见)
     local visibleExitId = cell.exitId
     if cell.randomExit and not cell.revealed then
         visibleExitId = nil

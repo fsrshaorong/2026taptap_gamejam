@@ -54,7 +54,7 @@ function DungeonRoom.TriggerExitPulse()
     exitPulseTimer = EXIT_PULSE_DURATION
 end
 
---- 更新红闪计时器（在 HandleUpdate 中调用）
+--- 更新红闪计时器(在 HandleUpdate 中调用)
 function DungeonRoom.Update(dt)
     roomTime = roomTime + dt
     if mineFlashTimer > 0 then
@@ -345,22 +345,22 @@ function DungeonRoom.Draw(vg, w, h, context)
     local roomFillR, roomFillG, roomFillB = 25, 30, 45
 
     if roomType == "mine" then
-        -- 已触发雷房：暗红色调
+        -- 已触发雷房:暗红色调
         bgR, bgG, bgB = 40, 15, 15
         roomFillR, roomFillG, roomFillB = 45, 20, 20
         roomStrokeR, roomStrokeG, roomStrokeB = 160, 60, 50
     elseif roomType == "chest" then
-        -- 宝箱房：暖金色调
+        -- 宝箱房:暖金色调
         bgR, bgG, bgB = 30, 25, 12
         roomFillR, roomFillG, roomFillB = 35, 30, 18
         roomStrokeR, roomStrokeG, roomStrokeB = 180, 150, 60
     elseif roomType == "monster" then
-        -- 怪物房：暗紫色调
+        -- 怪物房:暗紫色调
         bgR, bgG, bgB = 28, 15, 30
         roomFillR, roomFillG, roomFillB = 32, 20, 38
         roomStrokeR, roomStrokeG, roomStrokeB = 140, 60, 150
     elseif roomType == "event" then
-        -- 事件房：暗蓝绿色调
+        -- 事件房:暗蓝绿色调
         bgR, bgG, bgB = 12, 25, 30
         roomFillR, roomFillG, roomFillB = 18, 32, 40
         roomStrokeR, roomStrokeG, roomStrokeB = 60, 160, 180
@@ -417,7 +417,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     drawSearchPoint(vg, layout, context.searchState)
     drawExitDevice(vg, layout, cell)
 
-    -- 绘制敌人（活着=红色威胁，死了=灰色倒地）
+    -- 绘制敌人(活着=红色威胁, 死了=灰色倒地)
     local enemy = context.enemy
     if enemy then
         local enemyX = layout.x + layout.w * 0.35
@@ -432,7 +432,7 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFillColor(vg, nvgRGBA(210, 30, 40, fleeAlpha))
             nvgFill(vg)
 
-            -- 活着的敌人：红色大圆 + 角 + 眼睛
+            -- 活着的敌人:红色大圆 + 角 + 眼睛
             nvgBeginPath(vg)
             nvgCircle(vg, enemyX, enemyY, er)
             nvgFillColor(vg, nvgRGBA(180, 35, 35, 240))
@@ -455,7 +455,7 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgFillColor(vg, nvgRGBA(255, 100, 50, 255))
             nvgFill(vg)
 
-            -- 眼睛（红色发光）
+            -- 眼睛(红色发光)
             nvgBeginPath(vg)
             nvgCircle(vg, enemyX - 7, enemyY - 3, 4)
             nvgCircle(vg, enemyX + 7, enemyY - 3, 4)
@@ -490,7 +490,7 @@ function DungeonRoom.Draw(vg, w, h, context)
                 nvgText(vg, enemyX, enemyY + er + 42, "逃跑窗口: " .. remain .. "s")
             end
         else
-            -- 已击败的敌人：灰色 + X 标记
+            -- 已击败的敌人:灰色 + X 标记
             nvgBeginPath(vg)
             nvgCircle(vg, enemyX, enemyY, er * 0.8)
             nvgFillColor(vg, nvgRGBA(60, 55, 55, 160))
@@ -553,7 +553,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgText(vg, playerCX, layout.y + layout.h - 10, "出生点")
     end
 
-    -- 绘制血量条（玩家头顶）
+    -- 绘制血量条(玩家头顶)
     local combat = context.combat
     if combat then
         local barW = 50
@@ -584,7 +584,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgStroke(vg)
     end
 
-    -- 已触发雷房：中央显示地雷标志 + 提示
+    -- 已触发雷房:中央显示地雷标志 + 提示
     if roomType == "mine" then
         local cx = layout.x + layout.w / 2
         local cy = layout.y + layout.h * 0.38
@@ -601,7 +601,7 @@ function DungeonRoom.Draw(vg, w, h, context)
             end
         end
 
-        -- 地雷图标（大圆 + 刺）
+        -- 地雷图标(大圆 + 刺)
         nvgBeginPath(vg)
         nvgCircle(vg, cx, cy, 20)
         nvgFillColor(vg, nvgRGBA(60, 30, 30, 200))
@@ -688,7 +688,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgStrokeWidth(vg, 1.5)
         nvgStroke(vg)
 
-        -- NPC 身体（蓝绿色圆形）
+        -- NPC 身体(蓝绿色圆形)
         nvgBeginPath(vg)
         nvgCircle(vg, npcX, npcY, 18)
         nvgFillColor(vg, traded and nvgRGBA(50, 60, 60, 160) or nvgRGBA(40, 140, 150, 230))
@@ -737,7 +737,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         end
     end
 
-    -- 踩雷红闪叠层（渐消）
+    -- 踩雷红闪叠层(渐消)
     if mineFlashTimer > 0 then
         local alpha = math.floor(180 * (mineFlashTimer / MINE_FLASH_DURATION))
         nvgBeginPath(vg)

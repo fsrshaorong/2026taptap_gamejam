@@ -9,7 +9,7 @@ RunInventory.gold = 0
 RunInventory.parts = 0
 RunInventory.searchedRooms = {}
 RunInventory.failureSalvage = nil
-RunInventory.searchBonus = 0  -- 搜索奖励加成百分比（装备效果）
+RunInventory.searchBonus = 0  -- 搜索奖励加成百分比(装备效果)
 
 local function cellKey(x, y)
     return tostring(x) .. "," .. tostring(y)
@@ -38,13 +38,13 @@ function RunInventory.GetReward(minefield, x, y)
     if roll % 5 == 0 then parts = parts + 1 end
     if adjacent >= 3 then parts = parts + 1 end
 
-    -- 宝箱房奖励加成：金币翻倍，必给零件
+    -- 宝箱房奖励加成:金币翻倍, 必给零件
     if cell and cell.roomType == "chest" then
         gold = gold * 2 + 10
         parts = parts + 1
     end
 
-    -- 搜索奖励加成（大背包装备效果）
+    -- 搜索奖励加成(大背包装备效果)
     if RunInventory.searchBonus > 0 then
         gold = math.floor(gold * (1 + RunInventory.searchBonus / 100))
     end
@@ -71,7 +71,7 @@ function RunInventory.GetSearchState(minefield, run)
     if cell.exitId then
         return { canSearch = false, searched = searched, reason = "exit" }
     end
-    -- 怪物房不可搜索（只能战斗）
+    -- 怪物房不可搜索(只能战斗)
     if cell.roomType == "monster" then
         return { canSearch = false, searched = searched, reason = "monster" }
     end
@@ -135,8 +135,8 @@ function RunInventory.GetTotals()
     }
 end
 
---- 撤离成功时的结算：零件按比例转金币
----@param partsToGoldRate? number 每个零件转换的金币数（默认10）
+--- 撤离成功时的结算:零件按比例转金币
+---@param partsToGoldRate? number 每个零件转换的金币数(默认10)
 ---@return table { totalGold: number, convertedGold: number, directGold: number, parts: number }
 function RunInventory.GetExtractionReward(partsToGoldRate)
     partsToGoldRate = partsToGoldRate or 10
@@ -150,8 +150,8 @@ function RunInventory.GetExtractionReward(partsToGoldRate)
 end
 
 --- 失败保底选项
---- 新机制：金币自动保留（安全资产），零件全部丢失（风险资产）
---- 保底选择：是否用1个零件换取额外金币（10g）
+--- 新机制:金币自动保留(安全资产), 零件全部丢失(风险资产)
+--- 保底选择:是否用1个零件换取额外金币(10g)
 function RunInventory.GetFailureSalvageOptions()
     local PARTS_SALVAGE_RATE = 10  -- 保底抢救1零件=10金币
     local canSalvagePart = RunInventory.parts >= 1

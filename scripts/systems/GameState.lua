@@ -1,17 +1,17 @@
 -- ============================================================================
 -- GameState.lua — 全局游戏状态管理
--- 管理天数、按钮、场景组件状态、玩家选择记录
+-- 管理天数,按钮,场景组件状态,玩家选择记录
 -- ============================================================================
 
 local GameState = {}
 
 -- 五个按钮定义
 GameState.BUTTONS = {
-    { id = "stop",    name = "停", desc = "停止机器、水流、灯光旋转、过载状态", color = {220, 60, 60} },
-    { id = "reverse", name = "反", desc = "反转水流方向、灯光方向、机械方向", color = {60, 180, 220} },
-    { id = "connect", name = "连", desc = "连接电缆、管道、控制节点", color = {60, 220, 100} },
-    { id = "cut",     name = "切", desc = "切断线路、隔离危险、断开系统", color = {220, 180, 60} },
-    { id = "swap",    name = "换", desc = "交换电池、组件位置、资源归属", color = {180, 100, 220} },
+    { id = "stop",    name = "停", desc = "停止机器,水流,灯光旋转,过载状态", color = {220, 60, 60} },
+    { id = "reverse", name = "反", desc = "反转水流方向,灯光方向,机械方向", color = {60, 180, 220} },
+    { id = "connect", name = "连", desc = "连接电缆,管道,控制节点", color = {60, 220, 100} },
+    { id = "cut",     name = "切", desc = "切断线路,隔离危险,断开系统", color = {220, 180, 60} },
+    { id = "swap",    name = "换", desc = "交换电池,组件位置,资源归属", color = {180, 100, 220} },
 }
 
 -- 场景组件状态枚举
@@ -37,7 +37,7 @@ function GameState.Init()
     GameState.phase = GameState.PHASE.MENU
     GameState.maxDay = 5
 
-    -- 当前可用按钮（true=可用, false=已删除）
+    -- 当前可用按钮(true=可用, false=已删除)
     GameState.availableButtons = {
         stop = true,
         reverse = true,
@@ -46,7 +46,7 @@ function GameState.Init()
         swap = true,
     }
 
-    -- 已删除按钮记录（按顺序）
+    -- 已删除按钮记录(按顺序)
     GameState.deletedButtons = {}
 
     -- 场景组件状态
@@ -62,13 +62,13 @@ function GameState.Init()
     -- 每天的主要解法记录
     GameState.dayActions = {}
 
-    -- 当天已执行的操作记录（用于当天重置）
+    -- 当天已执行的操作记录(用于当天重置)
     GameState.currentDayActions = {}
 
-    -- 当天开始时的组件快照（用于当天重置）
+    -- 当天开始时的组件快照(用于当天重置)
     GameState.dayStartSnapshot = nil
 
-    -- Day 1 胜利条件：灯塔亮起
+    -- Day 1 胜利条件:灯塔亮起
     GameState.dayObjective = "点亮灯塔"
     GameState.dayObjectiveComplete = false
 
@@ -102,7 +102,7 @@ function GameState.DeleteButton(buttonId)
     return false
 end
 
---- 保存当天开始状态（用于重置）
+--- 保存当天开始状态(用于重置)
 function GameState.SaveDaySnapshot()
     GameState.dayStartSnapshot = {}
     for k, v in pairs(GameState.components) do
@@ -121,7 +121,7 @@ function GameState.ResetCurrentDay()
     end
     GameState.currentDayActions = {}
     GameState.dayObjectiveComplete = false
-    GameState.AddMessage("已重置当天状态。")
+    GameState.AddMessage("已重置当天状态.")
 end
 
 --- 记录一次操作
@@ -149,7 +149,7 @@ end
 --- 检查 Day 1 目标是否完成
 function GameState.CheckObjective()
     if GameState.day == 1 then
-        -- Day 1 目标：灯塔亮起
+        -- Day 1 目标:灯塔亮起
         if GameState.components.lighthouse == GameState.LIGHTHOUSE_STATE.ON then
             GameState.dayObjectiveComplete = true
         end

@@ -1,6 +1,6 @@
 -- ============================================================================
--- MiniMap.lua — 左上角扫雷小地图（NanoVG 绘制）
--- 显示格子状态、玩家位置、撤离点
+-- MiniMap.lua — 左上角扫雷小地图(NanoVG 绘制)
+-- 显示格子状态,玩家位置,撤离点
 -- ============================================================================
 
 local MiniMap = {}
@@ -26,7 +26,7 @@ MiniMap.padding = 4
 
 -- 邻域感知高亮状态
 MiniMap.highlightCells = {}   -- { ["x,y"] = true }
-MiniMap.highlightTimer = 0    -- 倒计时（秒）
+MiniMap.highlightTimer = 0    -- 倒计时(秒)
 local HIGHLIGHT_DURATION = 3.0
 
 --- 设置需要高亮的格子列表
@@ -118,7 +118,7 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
             end
             nvgFill(vg)
 
-            -- 撤离点标记（始终可见）
+            -- 撤离点标记(始终可见)
             if cell.exitId then
                 nvgBeginPath(vg)
                 nvgRect(vg, cx, cy, cs - 1, cs - 1)
@@ -127,18 +127,18 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 nvgStroke(vg)
             end
 
-            -- 特殊房型图标（揭示后才显示）
+            -- 特殊房型图标(揭示后才显示)
             local drawnIcon = false
             if cell.revealed and cell.roomType and cs >= 6 then
                 if cell.roomType == "chest" then
-                    -- 宝箱图标：金色方块
+                    -- 宝箱图标:金色方块
                     nvgBeginPath(vg)
                     nvgRect(vg, cx + cs * 0.2, cy + cs * 0.25, cs * 0.6, cs * 0.5)
                     nvgFillColor(vg, nvgRGBA(255, 200, 50, 240))
                     nvgFill(vg)
                     drawnIcon = true
                 elseif cell.roomType == "monster" then
-                    -- 怪物图标：红色菱形
+                    -- 怪物图标:红色菱形
                     local mcx = cx + cs / 2
                     local mcy = cy + cs / 2
                     local mr = cs * 0.3
@@ -152,7 +152,7 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                     nvgFill(vg)
                     drawnIcon = true
                 elseif cell.roomType == "mine" and cell.state == "mine" then
-                    -- 已触发雷：橙色三角警示
+                    -- 已触发雷:橙色三角警示
                     local tcx = cx + cs / 2
                     local tcy = cy + cs * 0.3
                     nvgBeginPath(vg)
@@ -164,7 +164,7 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                     nvgFill(vg)
                     drawnIcon = true
                 elseif cell.roomType == "event" then
-                    -- 事件房：蓝绿色圆点（旅商）
+                    -- 事件房:蓝绿色圆点(旅商)
                     nvgBeginPath(vg)
                     nvgCircle(vg, cx + cs / 2, cy + cs / 2, cs * 0.3)
                     nvgFillColor(vg, nvgRGBA(60, 200, 210, 240))
@@ -173,7 +173,7 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 end
             end
 
-            -- 数字（如果格子够大且没有图标覆盖）
+            -- 数字(如果格子够大且没有图标覆盖)
             if not drawnIcon and cell.state == "number" and cell.adjacent and cs >= 8 then
                 local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
                 nvgFontFace(vg, "sans")

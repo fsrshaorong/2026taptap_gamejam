@@ -18,16 +18,16 @@ ACTIONS.stop = {
     lighthouse = function(state)
         if state.components.lighthouse == "overload" then
             return {
-                result = "停止灯塔过载，灯塔将熄灭。",
-                risk = "灯塔熄灭后需要重新启动。",
+                result = "停止灯塔过载, 灯塔将熄灭.",
+                risk = "灯塔熄灭后需要重新启动.",
                 apply = function()
                     state.components.lighthouse = "off"
                 end,
             }
         elseif state.components.lighthouse == "on" then
             return {
-                result = "关闭灯塔。",
-                risk = "海面船只可能失去方向。",
+                result = "关闭灯塔.",
+                risk = "海面船只可能失去方向.",
                 apply = function()
                     state.components.lighthouse = "off"
                 end,
@@ -39,8 +39,8 @@ ACTIONS.stop = {
     waterwheel = function(state)
         if state.components.waterwheel ~= "stopped" then
             return {
-                result = "停止水车运转。",
-                risk = "水车停止后灯塔将失去持续供电。",
+                result = "停止水车运转.",
+                risk = "水车停止后灯塔将失去持续供电.",
                 apply = function()
                     state.components.waterwheel = "stopped"
                 end,
@@ -57,24 +57,24 @@ ACTIONS.reverse = {
     waterwheel = function(state)
         if state.components.waterwheel == "forward" then
             return {
-                result = "反转水车方向，切换供电线路。",
-                risk = "反转可能导致备用线路过载。",
+                result = "反转水车方向, 切换供电线路.",
+                risk = "反转可能导致备用线路过载.",
                 apply = function()
                     state.components.waterwheel = "reverse"
                 end,
             }
         elseif state.components.waterwheel == "reverse" then
             return {
-                result = "将水车恢复正转。",
-                risk = "无明显风险。",
+                result = "将水车恢复正转.",
+                risk = "无明显风险.",
                 apply = function()
                     state.components.waterwheel = "forward"
                 end,
             }
         elseif state.components.waterwheel == "stopped" then
             return {
-                result = "反向启动水车。",
-                risk = "反向启动可能导致水流改道。",
+                result = "反向启动水车.",
+                risk = "反向启动可能导致水流改道.",
                 apply = function()
                     state.components.waterwheel = "reverse"
                 end,
@@ -85,8 +85,8 @@ ACTIONS.reverse = {
     lighthouse = function(state)
         if state.components.lighthouse == "on" then
             return {
-                result = "反转灯光照射方向（海面↔村庄）。",
-                risk = "改变照射方向将影响被照亮的区域。",
+                result = "反转灯光照射方向(海面↔村庄).",
+                risk = "改变照射方向将影响被照亮的区域.",
                 apply = function()
                     -- 反转灯光方向的效果会在 Day 转换时体现
                     state._lightDirection = (state._lightDirection == "sea") and "village" or "sea"
@@ -104,11 +104,11 @@ ACTIONS.connect = {
     cable = function(state)
         if state.components.cable == "disconnected" then
             return {
-                result = "接通主电缆，为灯塔供电。",
-                risk = "主电缆当前不稳定，可能留下过载隐患。",
+                result = "接通主电缆, 为灯塔供电.",
+                risk = "主电缆当前不稳定, 可能留下过载隐患.",
                 apply = function()
                     state.components.cable = "main"
-                    -- 如果水车在运转，灯塔亮起
+                    -- 如果水车在运转, 灯塔亮起
                     if state.components.waterwheel ~= "stopped" then
                         state.components.lighthouse = "on"
                     end
@@ -116,8 +116,8 @@ ACTIONS.connect = {
             }
         elseif state.components.cable == "broken" then
             return {
-                result = "修复并连接电缆。",
-                risk = "修复后的电缆强度降低。",
+                result = "修复并连接电缆.",
+                risk = "修复后的电缆强度降低.",
                 apply = function()
                     state.components.cable = "main"
                     if state.components.waterwheel ~= "stopped" then
@@ -131,11 +131,11 @@ ACTIONS.connect = {
     waterwheel = function(state)
         if state.components.waterwheel == "stopped" then
             return {
-                result = "连接水车并正向启动。",
-                risk = "无明显风险。",
+                result = "连接水车并正向启动.",
+                risk = "无明显风险.",
                 apply = function()
                     state.components.waterwheel = "forward"
-                    -- 如果电缆已连接，灯塔亮起
+                    -- 如果电缆已连接, 灯塔亮起
                     if state.components.cable == "main" or state.components.cable == "backup" then
                         state.components.lighthouse = "on"
                     end
@@ -153,8 +153,8 @@ ACTIONS.cut = {
     cable = function(state)
         if state.components.cable == "main" or state.components.cable == "backup" then
             return {
-                result = "切断当前电缆线路。",
-                risk = "切断后灯塔将断电，村庄可能断电。",
+                result = "切断当前电缆线路.",
+                risk = "切断后灯塔将断电, 村庄可能断电.",
                 apply = function()
                     state.components.cable = "disconnected"
                     state.components.lighthouse = "off"
@@ -166,8 +166,8 @@ ACTIONS.cut = {
     lighthouse = function(state)
         if state.components.lighthouse == "overload" then
             return {
-                result = "切断灯塔过载线路，隔离危险。",
-                risk = "灯塔熄灭，但可避免爆炸。",
+                result = "切断灯塔过载线路, 隔离危险.",
+                risk = "灯塔熄灭, 但可避免爆炸.",
                 apply = function()
                     state.components.lighthouse = "off"
                     state.components.cable = "broken"
@@ -185,11 +185,11 @@ ACTIONS.swap = {
     battery = function(state)
         if state.components.battery == "empty" or state.components.battery == "broken" then
             return {
-                result = "更换为备用电池。",
-                risk = "备用电池容量有限，只能维持短时间。",
+                result = "更换为备用电池.",
+                risk = "备用电池容量有限, 只能维持短时间.",
                 apply = function()
                     state.components.battery = "full"
-                    -- 如果电缆断开但电池满，可以临时点亮灯塔
+                    -- 如果电缆断开但电池满, 可以临时点亮灯塔
                     if state.components.cable == "disconnected" or state.components.cable == "broken" then
                         state.components.lighthouse = "on"
                     end
@@ -197,8 +197,8 @@ ACTIONS.swap = {
             }
         elseif state.components.battery == "full" then
             return {
-                result = "取出当前电池作为备件。",
-                risk = "若主电缆也断开，灯塔将完全断电。",
+                result = "取出当前电池作为备件.",
+                risk = "若主电缆也断开, 灯塔将完全断电.",
                 apply = function()
                     state.components.battery = "empty"
                     if state.components.cable == "disconnected" or state.components.cable == "broken" then
@@ -212,16 +212,16 @@ ACTIONS.swap = {
     cable = function(state)
         if state.components.cable == "main" then
             return {
-                result = "切换到备用电缆。",
-                risk = "备用线路经过村庄，可能影响村庄供电。",
+                result = "切换到备用电缆.",
+                risk = "备用线路经过村庄, 可能影响村庄供电.",
                 apply = function()
                     state.components.cable = "backup"
                 end,
             }
         elseif state.components.cable == "backup" then
             return {
-                result = "切换回主电缆。",
-                risk = "主电缆可能仍有隐患。",
+                result = "切换回主电缆.",
+                risk = "主电缆可能仍有隐患.",
                 apply = function()
                     state.components.cable = "main"
                 end,
@@ -284,7 +284,7 @@ end
 function ButtonSystem.Execute(buttonId, componentId)
     local action = ButtonSystem.GetAction(buttonId, componentId)
     if not action then
-        GameState.AddMessage("当前无法对该组件执行此操作。")
+        GameState.AddMessage("当前无法对该组件执行此操作.")
         return false
     end
 
@@ -322,7 +322,7 @@ function ButtonSystem.GetDeleteForecast(buttonId)
         end
     end
 
-    table.insert(forecast.warnings, "明天新增的故障不会被预报。")
+    table.insert(forecast.warnings, "明天新增的故障不会被预报.")
     return forecast
 end
 
