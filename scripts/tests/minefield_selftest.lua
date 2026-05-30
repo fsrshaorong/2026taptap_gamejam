@@ -538,8 +538,9 @@ local function testCarriedItemsExtractionNoDuplicateParts()
     assertTrue(searched.ok, "chest search should succeed")
     local reward = RunInventory.GetExtractionReward()
     assertEq(reward.carriedItemCount, RunInventory.parts, "seeded chest should have only item-backed parts")
-    assertEq(reward.convertedGold, reward.carriedItemValue, "item-backed parts should not be counted twice")
-    assertEq(reward.totalGold, RunInventory.gold + reward.carriedItemValue, "total extraction reward mismatch")
+    assertEq(reward.looseParts, 0, "item-backed parts should not be loose")
+    assertEq(reward.convertedGold, 0, "carried items should not auto-convert to gold")
+    assertEq(reward.totalGold, RunInventory.gold, "total extraction reward should only include direct gold and loose parts")
 end
 
 local function testFailureSalvageWithCarriedItems()
@@ -596,10 +597,12 @@ local function testMetaProgressLoadRecoveryDefaults()
     }, function()
         MetaProgress.Load()
         local recovery = MetaProgress.GetRecoverySummary()
+        local warehouse = MetaProgress.GetWarehouseSummary()
         assertEq(MetaProgress.GetGold(), 7, "old save should keep gold")
         assertEq(recovery.totalItems, 0, "old save should default recovery totalItems")
         assertEq(recovery.totalValue, 0, "old save should default recovery totalValue")
         assertEq(#recovery.recentItems, 0, "old save should default empty recent items")
+        assertEq(warehouse.totalItems, 0, "old save should default empty warehouse")
     end)
 end
 
@@ -607,7 +610,9 @@ local function testMetaProgressRecordExtractionRecovery()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
         local reward = {
-            totalGold = 45,
+            totalGold = 15,
+            directGold = 11,
+            loosePartsGold = 4,
             carriedItemCount = 2,
             carriedItemValue = 34,
             carriedItems = {
@@ -624,19 +629,24 @@ local function testMetaProgressRecordExtractionRecovery()
             },
         }
         local receipt = MetaProgress.RecordExtractionReward(reward, { searchedRooms = 2 })
-        assertEq(receipt.goldAdded, 45, "receipt should record added gold")
-        assertEq(MetaProgress.GetGold(), 45, "extraction reward should add meta gold")
+        assertEq(receipt.goldAdded, 15, "receipt should record only direct gold and loose parts gold")
+        assertEq(receipt.directGold, 11, "receipt should keep direct gold")
+        assertEq(receipt.loosePartsGold, 4, "receipt should keep loose parts gold")
+        assertEq(MetaProgress.GetGold(), 15, "carried items should not auto-add meta gold")
         local stats = MetaProgress.GetStats()
         assertEq(stats.totalExtractions, 1, "extraction reward should count extraction")
-        assertEq(stats.totalGoldEarned, 45, "extraction reward should count earned gold")
+        assertEq(stats.totalGoldEarned, 15, "extraction reward should count earned gold")
         local recovery = MetaProgress.GetRecoverySummary()
         assertEq(recovery.totalItems, 2, "recovery should count carried items")
         assertEq(recovery.totalValue, 34, "recovery should count carried value")
         assertEq(recovery.totalExtractionsWithItems, 1, "recovery should count item extraction")
         assertEq(#recovery.recentItems, 2, "recovery should keep recent item summaries")
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 1, "successful extraction should store carried item")
+        assertEq(MetaProgress.GetWarehouseItemCount("blackbox_tag"), 1, "successful extraction should store all carried items")
 
         MetaProgress.RecordExtractionReward(reward, nil)
-        assertEq(MetaProgress.GetGold(), 45, "same reward table should not double-record")
+        assertEq(MetaProgress.GetGold(), 15, "same reward table should not double-record")
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 1, "same reward table should not double-store carried items")
     end)
 end
 
@@ -644,7 +654,9 @@ local function testMetaProgressRecentRecoveryTrim()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
         local reward = {
-            totalGold = 100,
+            totalGold = 0,
+            directGold = 0,
+            loosePartsGold = 0,
             carriedItemCount = 6,
             carriedItemValue = 60,
             carriedItems = {
@@ -669,6 +681,97 @@ local function testMetaProgressFailureDoesNotRecordRecovery()
         assertEq(recovery.totalItems, 0, "failure gold should not register carried items")
         assertEq(recovery.totalValue, 0, "failure gold should not register carried value")
         assertEq(#recovery.recentItems, 0, "failure gold should not update recent items")
+    end)
+end
+
+local function testMetaProgressWarehouseSellAndProtection()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        local reward = {
+            totalGold = 6,
+            directGold = 6,
+            loosePartsGold = 0,
+            carriedItemCount = 3,
+            carriedItemValue = 42,
+            carriedItems = {
+                { itemId = "static_lens", count = 2, def = RunInventory.GetItemDef("static_lens") },
+                { itemId = "dim_capacitor", count = 1, def = RunInventory.GetItemDef("dim_capacitor") },
+            },
+        }
+
+        MetaProgress.RecordExtractionReward(reward, nil)
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 2, "warehouse should stack carried items")
+
+        MetaProgress.RecordExtractionReward({
+            totalGold = 0,
+            directGold = 0,
+            loosePartsGold = 0,
+            carriedItemCount = 1,
+            carriedItemValue = 16,
+            carriedItems = {
+                { itemId = "static_lens", count = 1, def = RunInventory.GetItemDef("static_lens") },
+            },
+        }, nil)
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 3, "warehouse same item should accumulate")
+
+        local recoveryBefore = MetaProgress.GetRecoverySummary()
+        local goldBefore = MetaProgress.GetGold()
+        local sold, receipt = MetaProgress.SellWarehouseItem("static_lens", 1)
+        assertTrue(sold, "SellWarehouseItem should succeed")
+        assertEq(receipt.gold, 16, "selling one item should pay item value")
+        assertEq(MetaProgress.GetGold(), goldBefore + 16, "selling should increase gold")
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 2, "selling should reduce warehouse count")
+
+        local tooMany = MetaProgress.SellWarehouseItem("static_lens", 99)
+        assertTrue(not tooMany, "selling more than owned should fail")
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 2, "failed sale should not reduce count")
+
+        local recoveryAfter = MetaProgress.GetRecoverySummary()
+        assertEq(recoveryAfter.totalItems, recoveryBefore.totalItems, "recovery history should not shrink after sale")
+        assertEq(recoveryAfter.totalValue, recoveryBefore.totalValue, "recovery value history should not shrink after sale")
+
+        MetaProgress.AddWarehouseItems({
+            { id = "unique_badge", name = "Unique Badge", type = "relic", typeName = "Recovered item", value = 99, count = 1, unique = true },
+        }, "recovered")
+        local uniqueSold, uniqueReason = MetaProgress.SellWarehouseItem("unique_badge", 1)
+        assertTrue(not uniqueSold, "unique item should not be directly sellable")
+        assertEq(uniqueReason, "unique", "unique sale should return protection reason")
+    end)
+end
+
+local function testMetaProgressFailureDoesNotRecordWarehouse()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        RunInventory.Reset()
+        RunInventory.gold = 9
+        RunInventory.parts = 1
+        RunInventory.AddCarriedItem("static_lens", 1, "test")
+        local salvage = RunInventory.ApplyFailureSalvage("accept")
+        MetaProgress.AddGold(salvage.gold)
+        assertEq(MetaProgress.GetGold(), 9, "failure direct gold should still enter meta gold")
+        assertEq(MetaProgress.GetWarehouseSummary().totalItems, 0, "failed run should not store carried items")
+    end)
+end
+
+local function testDisplayAdaptersProtectEquipmentAndConsumables()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        local consumable = RunInventory.GetItemDisplayData("emergency_bandage")
+        assertEq(consumable.type, "consumable", "run display adapter should expose consumable type")
+        assertEq(consumable.source, "recovered", "run display adapter should expose recovered source")
+
+        local equipment = MetaProgress.GetItemDisplayData("armor")
+        assertEq(equipment.type, "equipment", "meta display adapter should expose equipment fallback")
+        assertTrue(equipment.unique, "equipment display fallback should be unique/protected")
+
+        MetaProgress.AddWarehouseItems({
+            { itemId = "emergency_bandage", count = 1, def = RunInventory.GetItemDef("emergency_bandage") },
+            { id = "legacy_armor", name = "Legacy Armor", type = "equipment", typeName = "Equipment", value = 50, count = 1, source = "equipment", unique = true },
+        }, nil)
+        local bandage = MetaProgress.GetWarehouseItemDisplayData("emergency_bandage")
+        local armor = MetaProgress.GetWarehouseItemDisplayData("legacy_armor")
+        assertTrue(bandage ~= nil and not bandage.canSell, "consumables should display but not sell as recovery loot")
+        assertTrue(armor ~= nil and not armor.canSell, "equipment fallback should display but not sell as recovery loot")
     end)
 end
 
@@ -1244,6 +1347,9 @@ local tests = {
     { name = "meta progress record extraction recovery", fn = testMetaProgressRecordExtractionRecovery },
     { name = "meta progress recent recovery trim", fn = testMetaProgressRecentRecoveryTrim },
     { name = "meta progress failure does not record recovery", fn = testMetaProgressFailureDoesNotRecordRecovery },
+    { name = "meta progress warehouse sell and protection", fn = testMetaProgressWarehouseSellAndProtection },
+    { name = "meta progress failure does not record warehouse", fn = testMetaProgressFailureDoesNotRecordWarehouse },
+    { name = "display adapters protect equipment and consumables", fn = testDisplayAdaptersProtectEquipmentAndConsumables },
     { name = "meta progress growth effects still apply", fn = testMetaProgressGrowthEffectsStillApply },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },

@@ -126,6 +126,12 @@ local function newRecovery()
     }
 end
 
+local function newWarehouse()
+    return {
+        items = {},
+    }
+end
+
 -- 运行时数据
 local data = {
     gold = 0,
@@ -138,6 +144,7 @@ local data = {
         totalGoldEarned = 0,
     },
     recovery = newRecovery(),
+    warehouse = newWarehouse(),
 }
 
 local function toNonNegativeNumber(value)
@@ -156,6 +163,62 @@ local function copyRecoveryItem(item)
     }
 end
 
+local function copyDisplayData(item)
+    item = item or {}
+    return {
+        id = item.id or item.itemId or "",
+        name = item.name or item.id or item.itemId or "",
+        type = item.type or "unknown",
+        typeName = item.typeName or item.category or "物品",
+        rarity = item.rarity or "common",
+        rarityName = item.rarityName or "一般",
+        icon = item.icon or "",
+        value = toNonNegativeNumber(item.value),
+        effectText = item.effectText,
+        description = item.description or item.desc or "",
+        source = item.source or "unknown",
+        unique = item.unique == true,
+        count = item.count,
+    }
+end
+
+local function displayFromMetaItem(item)
+    if not item then return nil end
+    return copyDisplayData({
+        id = item.id,
+        name = item.name,
+        type = item.type or "equipment",
+        typeName = item.typeName or item.category or "作业装备",
+        rarity = item.rarity or "logistics",
+        rarityName = item.rarityName or "后勤",
+        icon = item.icon or "[EQP]",
+        value = item.value or item.price or 0,
+        effectText = item.effectText or item.desc,
+        description = item.description or item.desc,
+        source = item.source or "equipment",
+        unique = item.unique ~= false,
+    })
+end
+
+local function displayFromStack(stack, source)
+    stack = stack or {}
+    local def = stack.def or stack
+    return copyDisplayData({
+        id = stack.itemId or stack.id or def.id,
+        name = def.name or stack.name or stack.itemId or stack.id,
+        type = def.type or stack.type or "relic",
+        typeName = def.typeName or stack.typeName or "异常回收物",
+        rarity = def.rarity or stack.rarity or "common",
+        rarityName = def.rarityName or stack.rarityName or "一般",
+        icon = def.icon or stack.icon or "",
+        value = def.value or stack.value or 0,
+        effectText = def.effectText or stack.effectText,
+        description = def.description or stack.description or "",
+        source = source or stack.source or "recovered",
+        unique = def.unique == true or stack.unique == true,
+    })
+end
+
 local function trimRecentItems(items)
     local trimmed = {}
     if items then
@@ -165,6 +228,31 @@ local function trimRecentItems(items)
         end
     end
     return trimmed
+end
+
+local function normalizeWarehouseItem(item)
+    item = copyDisplayData(item)
+    item.count = toNonNegativeNumber(item.count)
+    if item.count <= 0 then
+        return nil
+    end
+    if item.source == "" or item.source == "unknown" then
+        item.source = "recovered"
+    end
+    return item
+end
+
+local function normalizeWarehouse(savedWarehouse)
+    local normalized = newWarehouse()
+    savedWarehouse = savedWarehouse or {}
+    for id, item in pairs(savedWarehouse.items or {}) do
+        local normalizedItem = normalizeWarehouseItem(item)
+        if normalizedItem then
+            normalizedItem.id = normalizedItem.id ~= "" and normalizedItem.id or id
+            normalized.items[normalizedItem.id] = normalizedItem
+        end
+    end
+    return normalized
 end
 
 local function normalizeRecovery(savedRecovery)
@@ -239,6 +327,7 @@ function MetaProgress.Load()
                     data.stats.totalGoldEarned = toNonNegativeNumber(saved.stats.totalGoldEarned)
                 end
                 data.recovery = normalizeRecovery(saved.recovery)
+                data.warehouse = normalizeWarehouse(saved.warehouse)
                 print("[MetaProgress] Loaded: gold=" .. data.gold)
             end
         end
@@ -266,6 +355,7 @@ function MetaProgress.Save()
         equippedItems = data.equippedItems,
         stats = data.stats,
         recovery = data.recovery,
+        warehouse = data.warehouse,
     }
 
     local file = File(SAVE_FILE, FILE_WRITE)
@@ -391,6 +481,74 @@ function MetaProgress.GetItemDef(itemId)
     return nil
 end
 
+function MetaProgress.GetItemDisplayData(itemId)
+    local metaItem = MetaProgress.GetItemDef(itemId)
+    if metaItem then
+        return displayFromMetaItem(metaItem)
+    end
+    local warehouseItem = data.warehouse and data.warehouse.items and data.warehouse.items[itemId]
+    if warehouseItem then
+        return copyDisplayData(warehouseItem)
+    end
+    return copyDisplayData({
+        id = itemId,
+        name = tostring(itemId or "未知物品"),
+        type = "unknown",
+        typeName = "未知",
+        source = "unknown",
+    })
+end
+
+function MetaProgress.GetShopItemDisplayData(itemId)
+    return displayFromMetaItem(MetaProgress.GetItemDef(itemId))
+end
+
+function MetaProgress.CanSellItem(itemId)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    local item = data.warehouse.items[itemId]
+    if not item or item.count <= 0 then return false, "not_owned" end
+    if item.unique then return false, "unique" end
+    if item.source ~= "recovered" then return false, "not_sellable" end
+    if item.type == "equipment" or item.type == "consumable" then return false, "protected_type" end
+    if MetaProgress.IsEquipped(itemId) then return false, "equipped" end
+    if item.value <= 0 then return false, "no_value" end
+    return true, nil
+end
+
+function MetaProgress.CanEquipItem(itemId)
+    local item = MetaProgress.GetItemDef(itemId)
+    if not item then return false, "not_equipment" end
+    if not MetaProgress.OwnsItem(itemId) then return false, "not_owned" end
+    return true, nil
+end
+
+function MetaProgress.CanUseItem(itemId)
+    local display = MetaProgress.GetItemDisplayData(itemId)
+    if display.type ~= "consumable" then return false, "not_consumable" end
+    return false, "not_implemented"
+end
+
+function MetaProgress.GetUsableItems()
+    return {}
+end
+
+function MetaProgress.UseItem(itemId)
+    return false, "not_implemented"
+end
+
+function MetaProgress.GetWarehouseItemDisplayData(itemId)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    local item = data.warehouse.items[itemId]
+    if not item then return nil end
+    local display = copyDisplayData(item)
+    display.count = item.count
+    display.totalValue = item.count * display.value
+    display.canSell = MetaProgress.CanSellItem(itemId)
+    display.canEquip = MetaProgress.CanEquipItem(itemId)
+    display.canUse = MetaProgress.CanUseItem(itemId)
+    return display
+end
+
 -- ============================================================================
 -- 天赋操作
 -- ============================================================================
@@ -478,6 +636,100 @@ function MetaProgress.GetRecoverySummaryText(maxItems)
     return "最近带回: " .. table.concat(names, " / ")
 end
 
+function MetaProgress.AddWarehouseItems(items, source)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    local addedCount = 0
+    local addedValue = 0
+    for _, stack in ipairs(items or {}) do
+        local count = toNonNegativeNumber(stack.count or 1)
+        if count > 0 then
+            local display = displayFromStack(stack, source or "recovered")
+            local itemId = display.id
+            if itemId and itemId ~= "" then
+                local existing = data.warehouse.items[itemId]
+                if not existing then
+                    existing = copyDisplayData(display)
+                    existing.count = 0
+                    data.warehouse.items[itemId] = existing
+                end
+                existing.count = toNonNegativeNumber(existing.count) + count
+                existing.source = existing.source or display.source
+                addedCount = addedCount + count
+                addedValue = addedValue + display.value * count
+            end
+        end
+    end
+    return { count = addedCount, value = addedValue }
+end
+
+function MetaProgress.GetWarehouseItems(filter)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    local list = {}
+    for _, item in pairs(data.warehouse.items) do
+        if not filter or not filter.source or item.source == filter.source then
+            table.insert(list, MetaProgress.GetWarehouseItemDisplayData(item.id))
+        end
+    end
+    table.sort(list, function(a, b)
+        return (a.name or a.id) < (b.name or b.id)
+    end)
+    return list
+end
+
+function MetaProgress.GetWarehouseDisplayList(filter)
+    return MetaProgress.GetWarehouseItems(filter)
+end
+
+function MetaProgress.GetWarehouseItemCount(itemId)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    local item = data.warehouse.items[itemId]
+    return item and item.count or 0
+end
+
+function MetaProgress.RemoveWarehouseItem(itemId, count)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    count = toNonNegativeNumber(count)
+    if count <= 0 then return false, "invalid_count" end
+    local item = data.warehouse.items[itemId]
+    if not item or item.count < count then return false, "not_enough" end
+    item.count = item.count - count
+    if item.count <= 0 then
+        data.warehouse.items[itemId] = nil
+    end
+    return true, nil
+end
+
+function MetaProgress.SellWarehouseItem(itemId, count)
+    data.warehouse = normalizeWarehouse(data.warehouse)
+    count = toNonNegativeNumber(count)
+    if count <= 0 then return false, "invalid_count" end
+    local canSell, reason = MetaProgress.CanSellItem(itemId)
+    if not canSell then return false, reason or "not_sellable" end
+    local item = data.warehouse.items[itemId]
+    if not item or item.count < count then return false, "not_enough" end
+    local gainedGold = (item.value or 0) * count
+    local ok, removeReason = MetaProgress.RemoveWarehouseItem(itemId, count)
+    if not ok then return false, removeReason end
+    data.gold = data.gold + gainedGold
+    data.stats.totalGoldEarned = data.stats.totalGoldEarned + gainedGold
+    MetaProgress.Save()
+    return true, { gold = gainedGold, itemId = itemId, count = count, name = item.name }
+end
+
+function MetaProgress.GetWarehouseSummary()
+    local totalStacks = 0
+    local totalItems = 0
+    local totalValue = 0
+    for _, item in ipairs(MetaProgress.GetWarehouseItems()) do
+        totalStacks = totalStacks + 1
+        totalItems = totalItems + (item.count or 0)
+        if item.canSell then
+            totalValue = totalValue + (item.totalValue or 0)
+        end
+    end
+    return { totalStacks = totalStacks, totalItems = totalItems, totalValue = totalValue }
+end
+
 function MetaProgress.RecordExtractionReward(reward, runStats)
     if not reward then
         return nil
@@ -488,10 +740,11 @@ function MetaProgress.RecordExtractionReward(reward, runStats)
 
     data.recovery = normalizeRecovery(data.recovery)
 
-    local goldAdded = toNonNegativeNumber(reward.totalGold)
+    local goldAdded = toNonNegativeNumber(reward.directGold) + toNonNegativeNumber(reward.loosePartsGold)
     local itemCount = toNonNegativeNumber(reward.carriedItemCount)
     local itemValue = toNonNegativeNumber(reward.carriedItemValue)
     local goldBefore = data.gold
+    local warehouseAdded = { count = 0, value = 0 }
 
     data.gold = data.gold + goldAdded
     data.stats.totalGoldEarned = data.stats.totalGoldEarned + goldAdded
@@ -502,14 +755,18 @@ function MetaProgress.RecordExtractionReward(reward, runStats)
         data.recovery.totalValue = data.recovery.totalValue + itemValue
         data.recovery.totalExtractionsWithItems = data.recovery.totalExtractionsWithItems + 1
         pushRecentRecoveryItems(reward.carriedItems)
+        warehouseAdded = MetaProgress.AddWarehouseItems(reward.carriedItems, "recovered")
     end
 
     local receipt = {
         goldBefore = goldBefore,
         goldAfter = data.gold,
         goldAdded = goldAdded,
+        directGold = toNonNegativeNumber(reward.directGold),
+        loosePartsGold = toNonNegativeNumber(reward.loosePartsGold),
         itemCount = itemCount,
         itemValue = itemValue,
+        warehouseAdded = warehouseAdded,
         recentItems = trimRecentItems(data.recovery.recentItems),
         stats = runStats,
     }
@@ -618,6 +875,7 @@ function MetaProgress.GMReset()
     data.equippedItems = {}
     data.stats = { totalRuns = 0, totalExtractions = 0, totalGoldEarned = 0 }
     data.recovery = newRecovery()
+    data.warehouse = newWarehouse()
     MetaProgress.Save()
 end
 

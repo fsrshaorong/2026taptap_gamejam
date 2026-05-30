@@ -97,7 +97,8 @@ local imgBattlePlayer = -1
 local imgBattleEnemy = -1
 
 -- 菜单子页面状态
-local menuPage = "main"  -- "main" | "equip" | "talent"
+local menuPage = "main"  -- "main" | "equip" | "talent" | "warehouse"
+local warehouseSelectedIndex = 1
 
 local JUDGE_DEMO_MAP = {
     width = 15,
@@ -291,6 +292,7 @@ function ShowMenuPage(page)
     setVisible("menuPage_main", page == "main")
     setVisible("menuPage_equip", page == "equip")
     setVisible("menuPage_talent", page == "talent")
+    setVisible("menuPage_warehouse", page == "warehouse")
     setVisible("menuPage_gm", page == "gm")
 
     if page == "main" then
@@ -299,6 +301,8 @@ function ShowMenuPage(page)
         RefreshEquipPage()
     elseif page == "talent" then
         RefreshTalentPage()
+    elseif page == "warehouse" then
+        RefreshWarehousePage()
     elseif page == "gm" then
         RefreshGMPanel()
     end
@@ -347,6 +351,12 @@ function RefreshMainMenu()
     local recentLabel = uiRoot_ and uiRoot_:FindById("menuRecentRecoveryLabel")
     if recentLabel then
         recentLabel:SetText(MetaProgress.GetRecoverySummaryText(4))
+    end
+
+    local warehouse = MetaProgress.GetWarehouseSummary()
+    local warehouseLabel = uiRoot_ and uiRoot_:FindById("menuWarehouseLabel")
+    if warehouseLabel then
+        warehouseLabel:SetText("后勤仓库: " .. warehouse.totalItems .. " 件 | 可售估值 " .. warehouse.totalValue)
     end
 end
 
@@ -503,6 +513,108 @@ function RefreshTalentPage()
 end
 
 --- 装备物品点击处理
+function RefreshWarehousePage()
+    local goldLabel = uiRoot_ and uiRoot_:FindById("warehouseGoldLabel")
+    if goldLabel then
+        goldLabel:SetText("金币 " .. MetaProgress.GetGold())
+    end
+
+    local summary = MetaProgress.GetWarehouseSummary()
+    local summaryLabel = uiRoot_ and uiRoot_:FindById("warehouseSummaryLabel")
+    if summaryLabel then
+        summaryLabel:SetText("库存 " .. summary.totalItems .. " 件 | 可售估值 " .. summary.totalValue)
+    end
+
+    local listPanel = uiRoot_ and uiRoot_:FindById("warehouseItemList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    local items = MetaProgress.GetWarehouseDisplayList()
+    if #items == 0 then
+        listPanel:AddChild(UI.Label {
+            text = "后勤仓库暂无登记回收物。",
+            fontSize = 12,
+            fontColor = { 160, 170, 190, 220 },
+        })
+        warehouseSelectedIndex = 1
+        return
+    end
+
+    if warehouseSelectedIndex < 1 then warehouseSelectedIndex = 1 end
+    if warehouseSelectedIndex > #items then warehouseSelectedIndex = #items end
+
+    for index, item in ipairs(items) do
+        local selected = index == warehouseSelectedIndex
+        local itemId = item.id
+        local iconText = item.icon or ""
+        if string.find(iconText, "/", 1, true) or string.find(iconText, "\\", 1, true) then
+            iconText = ""
+        end
+        local row = UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = selected and { 35, 60, 70, 150 } or { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = (iconText ~= "" and (iconText .. " ") or "") .. item.name .. " x" .. item.count,
+                            fontSize = 13,
+                            fontColor = { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = item.typeName .. " / " .. item.rarityName .. " | 单价 " .. item.value .. " | 总值 " .. item.totalValue,
+                            fontSize = 11,
+                            fontColor = { 150, 170, 190, 210 },
+                        },
+                    },
+                },
+                UI.Panel {
+                    flexDirection = "row",
+                    gap = 6,
+                    children = {
+                        UI.Button {
+                            text = "选中",
+                            width = 52,
+                            height = 28,
+                            onClick = function()
+                                warehouseSelectedIndex = index
+                                RefreshWarehousePage()
+                            end,
+                        },
+                        UI.Button {
+                            text = item.canSell and "卖1" or "保护",
+                            variant = item.canSell and "primary" or "default",
+                            width = 48,
+                            height = 28,
+                            onClick = function()
+                                warehouseSelectedIndex = index
+                                OnSellWarehouseItem(itemId, 1)
+                            end,
+                        },
+                        UI.Button {
+                            text = item.canSell and "全卖" or "不可售",
+                            width = 54,
+                            height = 28,
+                            onClick = function()
+                                warehouseSelectedIndex = index
+                                OnSellWarehouseItem(itemId, item.count)
+                            end,
+                        },
+                    },
+                },
+            },
+        }
+        listPanel:AddChild(row)
+    end
+end
+
 function OnEquipItemClick(itemId)
     local owned = MetaProgress.OwnsItem(itemId)
     if owned then
@@ -528,6 +640,18 @@ function OnTalentClick(talentId)
         print("[Menu] UnlockTalent failed: " .. err)
     end
     RefreshTalentPage()
+end
+
+function OnSellWarehouseItem(itemId, count)
+    local ok, result = MetaProgress.SellWarehouseItem(itemId, count)
+    if ok then
+        ShowMessage("出售异常回收物，获得结算币 +" .. result.gold .. "。")
+    else
+        ShowMessage("该物品暂不可出售。")
+        print("[Warehouse] Sell failed: " .. tostring(result))
+    end
+    RefreshWarehousePage()
+    RefreshMainMenu()
 end
 
 -- ============================================================================
@@ -1324,12 +1448,12 @@ function DoExtract()
 
     local partsLine = uiRoot_:FindById("extractPartsLine")
     if partsLine then
-        partsLine:SetText("回收物估值:+" .. reward.carriedItemValue .. " (" .. reward.carriedItemCount .. " 件)")
+        partsLine:SetText("入库回收物估值:+" .. reward.carriedItemValue .. " (" .. reward.carriedItemCount .. " 件)")
     end
 
     local totalLine = uiRoot_:FindById("extractTotalLine")
     if totalLine then
-        totalLine:SetText("预计总收益:+" .. reward.totalGold .. " 金币")
+        totalLine:SetText("预计金币收益:+" .. reward.totalGold .. " 金币")
     end
 
     local searchLine = uiRoot_:FindById("extractSearchLine")
@@ -1377,9 +1501,10 @@ function ConfirmExtract()
         local winConvertLine = uiRoot_:FindById("winConvertLine")
         if winConvertLine then
             if reward.carriedItemCount > 0 then
-                winConvertLine:SetText("后勤已登记: " .. reward.carriedItemCount .. " 件 | 估值 +" .. reward.carriedItemValue .. " | " .. reward.carriedSummary)
-            elseif reward.parts > 0 then
-                winConvertLine:SetText("局内金币 " .. reward.directGold .. " + 零件 " .. reward.parts .. " 个 -> +" .. reward.convertedGold)
+                local looseText = reward.looseParts > 0 and (" | 零散零件折算 +" .. reward.loosePartsGold) or ""
+                winConvertLine:SetText("后勤已登记: " .. reward.carriedItemCount .. " 件 | 估值 +" .. reward.carriedItemValue .. looseText .. " | " .. reward.carriedSummary)
+            elseif reward.looseParts > 0 then
+                winConvertLine:SetText("局内金币 " .. reward.directGold .. " + 零散零件 " .. reward.looseParts .. " 个 -> +" .. reward.convertedGold)
             else
                 winConvertLine:SetText("没有回收物折算")
             end
@@ -2208,6 +2333,35 @@ function CreateUI()
                                 fontSize = 11,
                                 fontColor = { 150, 170, 190, 190 },
                             },
+                            UI.Label {
+                                id = "menuWarehouseLabel",
+                                text = "后勤仓库: 0 件 | 可售估值 0",
+                                fontSize = 11,
+                                fontColor = { 170, 205, 240, 210 },
+                            },
+                            UI.Panel {
+                                flexDirection = "row",
+                                gap = 8,
+                                marginTop = 4,
+                                children = {
+                                    UI.Button {
+                                        text = "仓库",
+                                        width = 68,
+                                        height = 28,
+                                        onClick = function()
+                                            ShowMenuPage("warehouse")
+                                        end,
+                                    },
+                                    UI.Button {
+                                        text = "天赋",
+                                        width = 68,
+                                        height = 28,
+                                        onClick = function()
+                                            ShowMenuPage("talent")
+                                        end,
+                                    },
+                                },
+                            },
                         }
                     },
                 }
@@ -2384,13 +2538,33 @@ function CreateUI()
                         marginTop = 4,
                         children = {}
                     },
-                    UI.Button {
-                        text = "返回",
-                        width = 100,
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 8,
                         marginTop = 8,
-                        onClick = function()
-                            ShowMenuPage("main")
-                        end,
+                        children = {
+                            UI.Button {
+                                text = "天赋",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("talent")
+                                end,
+                            },
+                            UI.Button {
+                                text = "仓库",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("warehouse")
+                                end,
+                            },
+                            UI.Button {
+                                text = "返回",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("main")
+                                end,
+                            },
+                        },
                     },
                 }
             },
@@ -2438,15 +2612,110 @@ function CreateUI()
                         marginTop = 4,
                         children = {}
                     },
-                    UI.Button {
-                        text = "返回",
-                        width = 100,
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 8,
                         marginTop = 8,
-                        onClick = function()
-                            ShowMenuPage("main")
-                        end,
+                        children = {
+                            UI.Button {
+                                text = "装备",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("equip")
+                                end,
+                            },
+                            UI.Button {
+                                text = "仓库",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("warehouse")
+                                end,
+                            },
+                            UI.Button {
+                                text = "返回",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("main")
+                                end,
+                            },
+                        },
                     },
                 }
+            },
+            -- === 后勤仓库页 ===
+            UI.Panel {
+                id = "menuPage_warehouse",
+                visible = false,
+                width = "92%",
+                maxWidth = 560,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 18, 28, 34, 242 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 90, 150, 170, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label {
+                                text = "后勤仓库",
+                                fontSize = 18,
+                                fontColor = { 170, 230, 235, 255 },
+                            },
+                            UI.Label {
+                                id = "warehouseGoldLabel",
+                                text = "金币 0",
+                                fontSize = 13,
+                                fontColor = { 255, 220, 80, 255 },
+                            },
+                        },
+                    },
+                    UI.Label {
+                        id = "warehouseSummaryLabel",
+                        text = "库存 0 件 | 可售估值 0",
+                        fontSize = 11,
+                        fontColor = { 150, 170, 190, 210 },
+                    },
+                    UI.Panel {
+                        id = "warehouseItemList",
+                        gap = 6,
+                        width = "100%",
+                        marginTop = 4,
+                        children = {},
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 8,
+                        marginTop = 8,
+                        children = {
+                            UI.Button {
+                                text = "装备",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("equip")
+                                end,
+                            },
+                            UI.Button {
+                                text = "天赋",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("talent")
+                                end,
+                            },
+                            UI.Button {
+                                text = "返回",
+                                width = 80,
+                                onClick = function()
+                                    ShowMenuPage("main")
+                                end,
+                            },
+                        },
+                    },
+                },
             },
         }
     }

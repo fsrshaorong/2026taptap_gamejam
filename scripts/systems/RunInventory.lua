@@ -144,6 +144,24 @@ function RunInventory.GetItemDef(itemId)
     return ITEM_DEF_LOOKUP[itemId]
 end
 
+function RunInventory.GetItemDisplayData(itemId)
+    local def = RunInventory.GetItemDef(itemId) or {}
+    return {
+        id = itemId,
+        name = def.name or tostring(itemId or "unknown_item"),
+        type = def.type or "relic",
+        typeName = def.typeName or "Recovered item",
+        rarity = def.rarity or "common",
+        rarityName = def.rarityName or "Common",
+        icon = def.icon or "",
+        value = def.value or 0,
+        effectText = def.effectText,
+        description = def.description or "",
+        source = "recovered",
+        unique = def.unique == true,
+    }
+end
+
 function RunInventory.GetAllItemDefs()
     return RunInventory.ITEM_DEFS
 end
@@ -537,9 +555,9 @@ function RunInventory.GetExtractionReward(partsToGoldRate)
     local carriedValue = RunInventory.GetCarriedItemValue()
     local looseParts = RunInventory.GetLooseParts()
     local loosePartsGold = looseParts * partsToGoldRate
-    local convertedGold = carriedValue + loosePartsGold
+    local convertedGold = loosePartsGold
     return {
-        totalGold = RunInventory.gold + convertedGold,
+        totalGold = RunInventory.gold + loosePartsGold,
         convertedGold = convertedGold,
         directGold = RunInventory.gold,
         parts = RunInventory.parts,
