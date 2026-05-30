@@ -194,7 +194,7 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
                 nvgStroke(vg)
             end
 
-            -- 特殊房型图标（揭示后才显示）。特殊房也保留雷数字角标。
+            -- 特殊房型图标(揭示后才显示). 特殊房也保留雷数字角标.
             local drawnIcon = drawRoomIcon(vg, cell, cx, cy, cs)
 
             -- 数字(如果格子够大且没有图标覆盖)

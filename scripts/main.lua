@@ -915,21 +915,21 @@ function DoExtract()
     local protocol = Protocol.GetStatus()
     local reward = RunInventory.GetExtractionReward()
 
-    -- 更新确认面板信息
-    local info = uiRoot_:FindById("extractConfirmInfo")
-    if info then
-        local riskText = "协议等级: " .. protocol.level .. " (" .. protocol.description .. ")"
-        local partsLine = ""
-        if totals.parts > 0 then
-            partsLine = "\n零件折算：+" .. reward.convertedGold .. " 金币（" .. totals.parts .. " 个）"
-        end
-        info:SetText(
-            "安全金币：+" .. totals.gold ..
-            partsLine ..
-            "\n本次撤离预计：+" .. reward.totalGold .. " 金币" ..
-            "\n已搜索房间：" .. totals.searchedRooms ..
-            "\n" .. riskText
-        )
+    -- 更新确认面板信息. 分成多个 Label, 避免像素字体把换行符画成缺字方块.
+    local goldLine = uiRoot_:FindById("extractGoldLine")
+    if goldLine then goldLine:SetText("安全金币:+" .. totals.gold) end
+
+    local partsLine = uiRoot_:FindById("extractPartsLine")
+    if partsLine then
+        partsLine:SetText("零件折算:+" .. reward.convertedGold .. " 金币 (" .. totals.parts .. " 个)")
+    end
+
+    local totalLine = uiRoot_:FindById("extractTotalLine")
+    if totalLine then totalLine:SetText("本次撤离预计:+" .. reward.totalGold .. " 金币") end
+
+    local searchLine = uiRoot_:FindById("extractSearchLine")
+    if searchLine then
+        searchLine:SetText("已搜索房间:" .. totals.searchedRooms .. " | 协议等级:" .. protocol.level .. " (" .. protocol.description .. ")")
     end
 
     local panel = uiRoot_:FindById("extractConfirmPanel")
@@ -1170,7 +1170,7 @@ function DrawBattleOverlay(vg, w, h)
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(200, 255, 200, 220))
-            nvgText(vg, cx, cy + 20, "战力 " .. combat.power .. " >= " .. enemy.power .. "，无伤通过")
+            nvgText(vg, cx, cy + 20, "战力 " .. combat.power .. " >= " .. enemy.power .. ", 无伤通过")
         elseif result.dead then
             -- 死亡
             nvgFontSize(vg, 36 * scaleIn)
@@ -1192,7 +1192,7 @@ function DrawBattleOverlay(vg, w, h)
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(255, 220, 150, 220))
-            nvgText(vg, cx, cy + 20, "击败敌人，损失 -" .. result.damage .. " HP（剩余 " .. result.hp .. "）")
+            nvgText(vg, cx, cy + 20, "击败敌人, 损失 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
         end
 
         -- 底部提示
@@ -1825,13 +1825,40 @@ function CreateUI()
                         fontSize = 20,
                         fontColor = { 100, 220, 255, 255 },
                     },
-                    UI.Label {
+                    UI.Panel {
                         id = "extractConfirmInfo",
-                        text = "",
-                        fontSize = 14,
-                        fontColor = { 200, 210, 220, 220 },
-                        textAlign = "center",
-                        numberOfLines = 5,
+                        gap = 5,
+                        alignItems = "center",
+                        children = {
+                            UI.Label {
+                                id = "extractGoldLine",
+                                text = "安全金币:+0",
+                                fontSize = 13,
+                                fontColor = { 255, 230, 120, 240 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "extractPartsLine",
+                                text = "零件折算:+0 金币 (0 个)",
+                                fontSize = 13,
+                                fontColor = { 170, 220, 255, 230 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "extractTotalLine",
+                                text = "本次撤离预计:+0 金币",
+                                fontSize = 14,
+                                fontColor = { 120, 255, 150, 245 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "extractSearchLine",
+                                text = "已搜索房间:0 | 协议等级:5",
+                                fontSize = 12,
+                                fontColor = { 180, 195, 215, 220 },
+                                textAlign = "center",
+                            },
+                        }
                     },
                     UI.Label {
                         text = "撤离后零件将转换为金币带出",
