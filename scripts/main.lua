@@ -47,6 +47,7 @@ local PHASE = {
     CONFIRM_EXTRACT = "confirm_extract",
     GAME_OVER = "game_over",
     EXTRACTED = "extracted",
+    SETTINGS = "settings",
 }
 local phase = PHASE.MENU
 local extractionSettlementRecorded = false
@@ -80,6 +81,42 @@ local lootPanel = {
 local monsterFleeTimer = 0       -- 逃跑倒计时(秒)
 local monsterFleeActive = false  -- 是否处于逃跑窗口中
 local MONSTER_FLEE_BASE = 3.0    -- 基础逃跑时间(秒)
+
+-- 受击屏幕震动
+local screenShake = {
+    timer = 0,          -- 剩余震动时间
+    duration = 0.3,     -- 总时长
+    intensity = 8,      -- 最大偏移像素
+    offsetX = 0,
+    offsetY = 0,
+}
+
+-- 设置面板
+local settingsPanel = {
+    selected = 1,       -- 当前选中项 (1=继续, 2=重新开始, 3=返回主界面)
+}
+
+local function triggerScreenShake(intensity, duration)
+    screenShake.timer = duration or 0.3
+    screenShake.duration = screenShake.timer
+    screenShake.intensity = intensity or 8
+end
+
+local function updateScreenShake(dt)
+    if screenShake.timer > 0 then
+        screenShake.timer = screenShake.timer - dt
+        if screenShake.timer <= 0 then
+            screenShake.timer = 0
+            screenShake.offsetX = 0
+            screenShake.offsetY = 0
+        else
+            local progress = screenShake.timer / screenShake.duration
+            local strength = screenShake.intensity * progress
+            screenShake.offsetX = (math.random() * 2 - 1) * strength
+            screenShake.offsetY = (math.random() * 2 - 1) * strength
+        end
+    end
+end
 
 -- VS 战斗演出
 local battleState = {
@@ -1125,6 +1162,7 @@ function UpdateCurrentMonsterCombat(dt)
 
     local result = Combat.UpdateEnemy(p.x, p.y, dt, DungeonRoom.GetPlayerPosition())
     if result.playerHit then
+        triggerScreenShake(10, 0.35)
         if result.dead then
             ShowFailurePanel("被异常体攻击击倒! 受到 " .. result.damage .. " 伤害.")
         else
@@ -1236,6 +1274,9 @@ function MovePlayer(dx, dy)
                 RunInventory.RecordMineHit(mineResult.immuneUsed)
             end
             DungeonRoom.TriggerMineFlash()
+            if not mineResult.immuneUsed then
+                triggerScreenShake(12, 0.4)
+            end
             if mineResult.dead then
                 ShowFailurePanel("踩雷!受到 " .. mineResult.damage .. " 伤害, 血量归零!")
             elseif mineResult.immuneUsed then
@@ -1849,6 +1890,104 @@ function DrawBattleOverlay(vg, w, h)
     end
 end
 
+-- ============================================================================
+-- 设置面板
+-- ============================================================================
+
+local SETTINGS_OPTIONS = {
+    { label = "继续游戏",   action = "resume" },
+    { label = "重新开始",   action = "restart" },
+    { label = "返回主界面", action = "menu" },
+}
+
+function DrawSettingsPanel(vg, w, h)
+    local panelW = math.min(340, w - 60)
+    local panelH = 260
+    local x = (w - panelW) / 2
+    local y = (h - panelH) / 2
+
+    -- 半透明遮罩
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(0, 0, 0, 160))
+    nvgFill(vg)
+
+    -- 面板背景
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, x, y, panelW, panelH, 10)
+    nvgFillColor(vg, nvgRGBA(16, 22, 32, 240))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(80, 160, 200, 180))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    -- 标题
+    nvgFontFace(vg, "sans")
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFontSize(vg, 22)
+    nvgFillColor(vg, nvgRGBA(230, 240, 255, 255))
+    nvgText(vg, x + panelW / 2, y + 36, "设置")
+
+    -- 选项按钮
+    local btnW = panelW - 60
+    local btnH = 44
+    local startY = y + 74
+    local gap = 12
+
+    for i, opt in ipairs(SETTINGS_OPTIONS) do
+        local btnX = x + (panelW - btnW) / 2
+        local btnY = startY + (i - 1) * (btnH + gap)
+        local isSelected = (i == settingsPanel.selected)
+
+        -- 按钮背景
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, btnX, btnY, btnW, btnH, 6)
+        if isSelected then
+            nvgFillColor(vg, nvgRGBA(40, 100, 140, 220))
+            nvgStrokeColor(vg, nvgRGBA(100, 200, 240, 255))
+            nvgStrokeWidth(vg, 2)
+        else
+            nvgFillColor(vg, nvgRGBA(30, 40, 55, 180))
+            nvgStrokeColor(vg, nvgRGBA(60, 80, 100, 140))
+            nvgStrokeWidth(vg, 1)
+        end
+        nvgFill(vg)
+        nvgStroke(vg)
+
+        -- 按钮文字
+        nvgFontSize(vg, 17)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        if isSelected then
+            nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
+        else
+            nvgFillColor(vg, nvgRGBA(180, 200, 215, 220))
+        end
+        nvgText(vg, btnX + btnW / 2, btnY + btnH / 2, opt.label)
+    end
+
+    -- 底部提示
+    nvgFontSize(vg, 12)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(140, 160, 180, 160))
+    nvgText(vg, x + panelW / 2, y + panelH - 20, "ESC 关闭  |  ↑↓ 选择  |  Enter 确认")
+end
+
+--- 执行设置面板选项
+local function ExecuteSettingsOption()
+    local opt = SETTINGS_OPTIONS[settingsPanel.selected]
+    if not opt then return end
+
+    if opt.action == "resume" then
+        phase = PHASE.PLAYING
+    elseif opt.action == "restart" then
+        phase = PHASE.PLAYING
+        StartNewGame()
+    elseif opt.action == "menu" then
+        ReturnToMenu()
+    end
+    settingsPanel.selected = 1
+end
+
 function DrawEventPanel(vg, w, h)
     if not eventPanel.active or not eventPanel.data then return end
 
@@ -2097,7 +2236,7 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(nvgScene, screenW, screenH, dpr)
 
-    if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.LOOT_RESULT or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
+    if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.LOOT_RESULT or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED or phase == PHASE.SETTINGS then
         local hudLayout = HUD.ComputeLayout(w, h)
         local p = run:GetPlayer()
         local cell = minefield and minefield:GetCellView(p.x, p.y) or nil
@@ -2129,7 +2268,7 @@ function HandleNanoVGRender(eventType, eventData)
         local c = hudLayout.center
         nvgSave(nvgScene)
         nvgScissor(nvgScene, c.x, c.y, c.w, c.h)
-        nvgTranslate(nvgScene, c.x, c.y)
+        nvgTranslate(nvgScene, c.x + screenShake.offsetX, c.y + screenShake.offsetY)
         DungeonRoom.Draw(nvgScene, c.w, c.h, {
             run = run,
             minefield = minefield,
@@ -2211,6 +2350,9 @@ function HandleNanoVGRender(eventType, eventData)
         end
         if phase == PHASE.LOOT_RESULT then
             DrawLootResultPanel(nvgScene, w, h)
+        end
+        if phase == PHASE.SETTINGS then
+            DrawSettingsPanel(nvgScene, w, h)
         end
     elseif phase == PHASE.MAP_OPEN then
         -- 绘制放大地图
@@ -3032,6 +3174,7 @@ function HandleUpdate(eventType, eventData)
     end
     DungeonRoom.Update(dt)
     MiniMap.Update(dt)
+    updateScreenShake(dt)
     UpdateCurrentMonsterCombat(dt)
 
     -- VS 战斗演出计时
@@ -3133,6 +3276,23 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
+    -- 设置面板
+    if phase == PHASE.SETTINGS then
+        if key == KEY_ESCAPE then
+            phase = PHASE.PLAYING
+            settingsPanel.selected = 1
+        elseif key == KEY_W or key == KEY_UP then
+            settingsPanel.selected = settingsPanel.selected - 1
+            if settingsPanel.selected < 1 then settingsPanel.selected = #SETTINGS_OPTIONS end
+        elseif key == KEY_S or key == KEY_DOWN then
+            settingsPanel.selected = settingsPanel.selected + 1
+            if settingsPanel.selected > #SETTINGS_OPTIONS then settingsPanel.selected = 1 end
+        elseif key == KEY_RETURN then
+            ExecuteSettingsOption()
+        end
+        return
+    end
+
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
@@ -3143,6 +3303,13 @@ function HandleKeyDown(eventType, eventData)
         elseif battleState.phase == "result" then
             FinishBattle()
         end
+        return
+    end
+
+    -- ESC 打开设置面板
+    if key == KEY_ESCAPE then
+        phase = PHASE.SETTINGS
+        settingsPanel.selected = 1
         return
     end
 
@@ -3206,6 +3373,40 @@ function HandleMouseDown(eventType, eventData)
 
     if phase == PHASE.LOOT_RESULT and button == MOUSEB_LEFT then
         CloseLootResultPanel()
+        return
+    end
+
+    -- 设置面板点击
+    if phase == PHASE.SETTINGS and button == MOUSEB_LEFT then
+        local sw = screenW / dpr
+        local sh = screenH / dpr
+        local panelW = math.min(340, sw - 60)
+        local panelH = 260
+        local px = (sw - panelW) / 2
+        local py = (sh - panelH) / 2
+        local btnW = panelW - 60
+        local btnH = 44
+        local startY = py + 74
+        local gap = 12
+        local btnX = px + (panelW - btnW) / 2
+
+        local clicked = false
+        for i = 1, #SETTINGS_OPTIONS do
+            local btnY = startY + (i - 1) * (btnH + gap)
+            if mx >= btnX and mx <= btnX + btnW and my >= btnY and my <= btnY + btnH then
+                settingsPanel.selected = i
+                ExecuteSettingsOption()
+                clicked = true
+                break
+            end
+        end
+        -- 点击面板外区域关闭
+        if not clicked then
+            if mx < px or mx > px + panelW or my < py or my > py + panelH then
+                phase = PHASE.PLAYING
+                settingsPanel.selected = 1
+            end
+        end
         return
     end
 

@@ -5,20 +5,41 @@
     "id": "1840787851"
   },
   "entry": "main.lua",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "taptap_publish": {
-    "title": "<game title, required>",
-    "description": "<game description>",
-    "category": "<game category: rpg, casual, action, strategy, simulation, trivia, arcade, adventure, card, sports, racing, puzzle, educational, music, word, board>",
+    "title": "灰尾公司：格外危险",
+    "description": "一款融合扫雷与地牢探索的策略冒险游戏",
+    "category": "puzzle",
     "screen_orientation": "landscape",
     "collection_type": "sce",
     "trial_note": "<developer's note>",
     "app_platforms": "1,2",
-    "developer_id": 411437
+    "developer_id": 411437,
+    "app_id": 864887,
+    "miniapp_id": "tapmckqdu7bpbbeflr"
   },
   "assets": {
-    "icon": "",
-    "screenshots": [],
-    "promotional_image": ""
+    "icon": "./game_material/ICON_2026-05-30T17-06-08_01.png",
+    "screenshots": [
+      "./game_material/SCREENSHOT_2026-05-30T17-15-57_01.png",
+      "./game_material/SCREENSHOT_2026-05-30T17-15-57_02.png",
+      "./game_material/SCREENSHOT_2026-05-30T17-15-57_03.png"
+    ],
+    "promotional_image": "./game_material/PROMO_2026-05-30T17-15-57_01.jpg",
+    "icon_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/ICON_2026-05-30T17-06-08_01.png",
+    "screenshot_urls": [
+      "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_01.png",
+      "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_02.png",
+      "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_03.png"
+    ],
+    "promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/PROMO_2026-05-30T17-15-57_01.jpg",
+    "cover_horizontal": "./.project/game_material/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+    "cover_horizontal_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+    "cover_vertical": "./.project/game_material/COVER_VERTICAL_2026-05-30T17-16-53_01.png",
+    "cover_vertical_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_VERTICAL_2026-05-30T17-16-53_01.png"
+  },
+  "metadata": {
+    "updated_at": "2026-05-30T17:18:06.345Z",
+    "promo_dependent_hash": "a73da3e20d9b20b1e794aa3364d6eeb2"
   }
 }

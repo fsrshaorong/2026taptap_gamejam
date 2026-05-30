@@ -102,7 +102,12 @@ end
 ---@param fieldHeight number
 function MiniMap.ComputeLayout(fieldWidth, fieldHeight)
     local maxDim = math.max(fieldWidth, fieldHeight)
-    MiniMap.cellSize = math.floor((MiniMap.maxSize - MiniMap.padding * 2) / maxDim)
+    -- 格子少时(教程等小地图)自动放大显示
+    local effectiveMaxSize = MiniMap.maxSize
+    if maxDim <= 6 then
+        effectiveMaxSize = math.max(MiniMap.maxSize, 240)
+    end
+    MiniMap.cellSize = math.floor((effectiveMaxSize - MiniMap.padding * 2) / maxDim)
     if MiniMap.cellSize < 4 then MiniMap.cellSize = 4 end
 
     MiniMap.totalW = MiniMap.cellSize * fieldWidth + MiniMap.padding * 2

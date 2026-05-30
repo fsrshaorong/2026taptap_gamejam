@@ -722,11 +722,8 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     local bgImg = (roomBgImg >= 0) and roomBgImg or imgRoomBase
     if bgImg >= 0 then
-        -- cover: 取 max 使贴图完全覆盖区域
-        local bgSize = math.max(w, h)
-        local bgX = (w - bgSize) / 2
-        local bgY = (h - bgSize) / 2
-        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, bgImg, 1.0)
+        -- 宽度填满, 高度完整显示(允许宽度适当拉伸, 上下门不被裁切)
+        local paint = nvgImagePattern(vg, 0, 0, w, h, 0, bgImg, 1.0)
         nvgBeginPath(vg)
         nvgRect(vg, 0, 0, w, h)
         nvgFillPaint(vg, paint)
@@ -757,7 +754,9 @@ function DungeonRoom.Draw(vg, w, h, context)
         local enemyPos = enemy.monsterPosition or { x = 0.35, y = 0.45 }
         local enemyX = layout.x + layout.w * enemyPos.x
         local enemyY = layout.y + layout.h * enemyPos.y
-        local er = CONFIG.enemyRadius
+        local eScale = math.min(layout.w, layout.h) / 400
+        eScale = math.max(0.6, math.min(eScale, 1.8))
+        local er = CONFIG.enemyRadius * eScale
 
         if enemy.alive then
             local attackRadius = (enemy.attackRadius or 0.20) * math.min(layout.w, layout.h)
@@ -878,8 +877,10 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     local playerCX = layout.x + playerPos.x * layout.w
     local playerCY = layout.y + playerPos.y * layout.h
-    -- 玩家精灵(带方向动画)
-    local playerSize = CONFIG.playerRadius * 2.5
+    -- 玩家精灵(带方向动画) - 根据屏幕大小自适应缩放
+    local layoutScale = math.min(layout.w, layout.h) / 400
+    layoutScale = math.max(0.6, math.min(layoutScale, 1.8))  -- 限制范围避免过大过小
+    local playerSize = CONFIG.playerRadius * 2.5 * layoutScale
     local currentImg = imgPlayer  -- 默认静态帧
     if animFrame > 1 or animMovedThisFrame then
         -- 行走时播放动画帧
@@ -898,7 +899,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     -- 如果图片加载失败, fallback 圆形
     if currentImg < 0 then
         nvgBeginPath(vg)
-        nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius)
+        nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius * layoutScale)
         nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
         nvgFill(vg)
         nvgStrokeColor(vg, nvgRGBA(255, 255, 255, 220))
@@ -909,7 +910,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     if enemy and enemy.playerInvincibleTimer and enemy.playerInvincibleTimer > 0 then
         local pulse = (math.sin(roomTime * 18) + 1) * 0.5
         nvgBeginPath(vg)
-        nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius + 8 + pulse * 4)
+        nvgCircle(vg, playerCX, playerCY, CONFIG.playerRadius * layoutScale + 8 + pulse * 4)
         nvgStrokeColor(vg, nvgRGBA(120, 210, 255, 170))
         nvgStrokeWidth(vg, 3)
         nvgStroke(vg)
