@@ -221,9 +221,9 @@ function Start()
     -- 创建 UI
     CreateUI()
 
-    -- 背景音乐(循环播放)
-    local bgmScene = Scene()
-    local bgmNode = bgmScene:CreateChild("BGM")
+    -- 背景音乐(循环播放, bgmScene_ 保持全局引用防止 GC)
+    bgmScene_ = Scene()
+    local bgmNode = bgmScene_:CreateChild("BGM")
     local bgmSource = bgmNode:CreateComponent("SoundSource")
     bgmSource.soundType = SOUND_MUSIC
     local bgmSound = cache:GetResource("Sound", "audio/Hero Immortal.ogg")
