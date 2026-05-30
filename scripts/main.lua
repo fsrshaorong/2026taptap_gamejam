@@ -350,6 +350,7 @@ function ShowMenuPage(page)
     else
         SetDeployPage(page == "deployOverview" and "overview" or page)
     end
+    setVisible("terminalNavOverlay", page == "main")
     setVisible("menuPage_main", page == "main")
     setVisible("menuPage_deployOverview", page == "deployOverview")
     setVisible("menuPage_equip", page == "equip")
@@ -453,60 +454,8 @@ end
 
 --- 刷新主菜单数据
 function RefreshMainMenu()
-    local goldLabel = uiRoot_ and uiRoot_:FindById("menuGoldLabel")
-    if goldLabel then
-        goldLabel:SetText("金币: " .. MetaProgress.GetGold())
-    end
-
-    -- 装备信息
-    local equipLabel = uiRoot_ and uiRoot_:FindById("menuEquippedLabel")
-    if equipLabel then
-        local equipped = MetaProgress.GetEquippedItems()
-        if #equipped == 0 then
-            equipLabel:SetText("装备: 无")
-        else
-            local names = {}
-            for _, id in ipairs(equipped) do
-                local def = MetaProgress.GetItemDef(id)
-                if def then table.insert(names, def.icon .. def.name) end
-            end
-            equipLabel:SetText("装备: " .. table.concat(names, " "))
-        end
-    end
-
-    -- 统计
-    local statsLabel = uiRoot_ and uiRoot_:FindById("menuStatsLabel")
-    if statsLabel then
-        local stats = MetaProgress.GetStats()
-        if stats.totalRuns > 0 then
-            statsLabel:SetText("出击 " .. stats.totalRuns .. " 次 | 撤离 " .. stats.totalExtractions .. " 次")
-        else
-            statsLabel:SetText("首次探索, 祝你好运!")
-        end
-    end
-
-    local recovery = MetaProgress.GetRecoverySummary()
-    local recoveryLabel = uiRoot_ and uiRoot_:FindById("menuRecoveryLabel")
-    if recoveryLabel then
-        recoveryLabel:SetText("后勤回收: " .. recovery.totalItems .. " 件 | 估值 " .. recovery.totalValue)
-    end
-
-    local recentLabel = uiRoot_ and uiRoot_:FindById("menuRecentRecoveryLabel")
-    if recentLabel then
-        recentLabel:SetText(MetaProgress.GetRecoverySummaryText(4))
-    end
-
-    local warehouse = MetaProgress.GetWarehouseSummary()
-    local warehouseLabel = uiRoot_ and uiRoot_:FindById("menuWarehouseLabel")
-    if warehouseLabel then
-        warehouseLabel:SetText("后勤仓库: " .. warehouse.totalItems .. " 件 | 可售估值 " .. warehouse.totalValue)
-    end
-
-    local loadout = MetaProgress.GetLoadoutSummary()
-    local loadoutLabel = uiRoot_ and uiRoot_:FindById("menuLoadoutLabel")
-    if loadoutLabel then
-        loadoutLabel:SetText("出勤配置: " .. loadout.equipmentText .. " | " .. loadout.consumableText)
-    end
+    -- The first-level menu is deliberately quiet. Deploy summaries live on
+    -- the deploy overview so main does not leak second-level state.
 end
 
 function RefreshDeployOverview()
@@ -2958,29 +2907,6 @@ function CreateUI()
         alignItems = "center",
         backgroundColor = { 5, 8, 15, 230 },
         children = {
-            UI.Panel {
-                id = "terminalNav",
-                position = "absolute",
-                left = 18,
-                top = 18,
-                width = 150,
-                gap = 8,
-                padding = 12,
-                backgroundColor = { 10, 18, 28, 225 },
-                borderRadius = 10,
-                borderWidth = 1,
-                borderColor = { 100, 180, 220, 120 },
-                children = {
-                    UI.Button {
-                        text = "接受工单",
-                        variant = "primary",
-                        height = 38,
-                        onClick = function() OpenDeployTerminal() end,
-                    },
-                    UI.Button { text = "展示工单", height = 30, onClick = function() OpenTutorial() end },
-                    UI.Button { text = "调整终端", height = 30, onClick = function() OpenSettingsTerminal() end },
-                },
-            },
             -- === 主菜单页 ===
             UI.Panel {
                 id = "menuPage_main",
@@ -3020,80 +2946,6 @@ function CreateUI()
                                 onClick = function()
                                     OpenSettingsTerminal()
                                 end,
-                            },
-                        }
-                    },
-                    -- 左下角金币/装备信息
-                    UI.Panel {
-                        position = "absolute",
-                        left = 16,
-                        bottom = 16,
-                        gap = 4,
-                        children = {
-                            UI.Label {
-                                id = "menuGoldLabel",
-                                text = "金币: 0",
-                                fontSize = 13,
-                                fontColor = { 255, 220, 80, 255 },
-                            },
-                            UI.Label {
-                                id = "menuEquippedLabel",
-                                text = "装备: 无",
-                                fontSize = 11,
-                                fontColor = { 160, 200, 255, 200 },
-                            },
-                            UI.Label {
-                                id = "menuStatsLabel",
-                                text = "",
-                                fontSize = 11,
-                                fontColor = { 120, 130, 150, 180 },
-                            },
-                            UI.Label {
-                                id = "menuRecoveryLabel",
-                                text = "后勤回收: 0 件 | 估值 0",
-                                fontSize = 11,
-                                fontColor = { 150, 220, 190, 210 },
-                            },
-                            UI.Label {
-                                id = "menuRecentRecoveryLabel",
-                                text = "最近带回: 无",
-                                fontSize = 11,
-                                fontColor = { 150, 170, 190, 190 },
-                            },
-            UI.Label {
-                id = "menuWarehouseLabel",
-                text = "后勤仓库: 0 件 | 可售估值 0",
-                fontSize = 11,
-                fontColor = { 170, 205, 240, 210 },
-            },
-                            UI.Label {
-                                id = "menuLoadoutLabel",
-                                text = "出勤配置: 无",
-                                fontSize = 11,
-                                fontColor = { 190, 210, 230, 210 },
-                            },
-                            UI.Panel {
-                                flexDirection = "row",
-                                gap = 8,
-                                marginTop = 4,
-                                children = {
-                                    UI.Button {
-                                        text = "出勤",
-                                        width = 68,
-                                        height = 28,
-                                        onClick = function()
-                                            OpenDeployTerminal()
-                                        end,
-                                    },
-                                    UI.Button {
-                                        text = "调整",
-                                        width = 68,
-                                        height = 28,
-                                        onClick = function()
-                                            OpenSettingsTerminal()
-                                        end,
-                                    },
-                                },
                             },
                         }
                     },

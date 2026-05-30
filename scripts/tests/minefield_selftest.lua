@@ -935,12 +935,46 @@ local function testMainEntrySourceContract()
     assertTrue(type(StartTutorialRun) == "function", "tutorial wrapper should exist")
 
     CreateUI()
+    OpenMainMenu()
 
     local directStartCount = 0
+    local capturedStartConfig = nil
     local oldStartNewGame = StartNewGame
     local oldStartTutorial = StartTutorial
-    StartNewGame = function(_) directStartCount = directStartCount + 1 end
+    StartNewGame = function(config)
+        directStartCount = directStartCount + 1
+        capturedStartConfig = config
+    end
     StartTutorial = function() error("UI should not call StartTutorial directly") end
+
+    local function collectVisibleButtons(node, inheritedVisible, out)
+        if not node then return end
+        local visible = inheritedVisible and node.visible ~= false
+        if visible and node.onClick and node.text then
+            out[node.text] = (out[node.text] or 0) + 1
+        end
+        for _, child in ipairs(node.children or {}) do
+            collectVisibleButtons(child, visible, out)
+        end
+    end
+
+    local function visibleButtons()
+        local out = {}
+        collectVisibleButtons(_G.__testUiRoot, true, out)
+        return out
+    end
+
+    local mainButtons = visibleButtons()
+    assertTrue(mainButtons["接受工单"] ~= nil, "main should show accept work order")
+    assertTrue(mainButtons["展示工单"] ~= nil, "main should show tutorial entry")
+    assertTrue(mainButtons["调整终端"] ~= nil, "main should show settings entry")
+    assertTrue(mainButtons["后勤仓库"] == nil, "main should not show warehouse entry")
+    assertTrue(mainButtons["后勤申领"] == nil, "main should not show requisition entry")
+    assertTrue(mainButtons["出勤配置"] == nil, "main should not show loadout entry")
+    assertTrue(mainButtons["回收资历"] == nil, "main should not show recovery entry")
+    assertTrue(_G.__testUiRoot:FindById("menuGoldLabel") == nil, "main should not define gold summary label")
+    assertTrue(_G.__testUiRoot:FindById("menuWarehouseLabel") == nil, "main should not define warehouse summary label")
+    assertTrue(_G.__testUiRoot:FindById("menuLoadoutLabel") == nil, "main should not define loadout summary label")
 
     local acceptButton = nil
     for _, button in ipairs(buttons) do
@@ -953,6 +987,15 @@ local function testMainEntrySourceContract()
     acceptButton.onClick()
     assertEq(directStartCount, 0, "top-level accept should open deploy terminal, not start a run")
 
+    local deployButtons = visibleButtons()
+    assertTrue(deployButtons["后勤仓库"] ~= nil, "deploy should show warehouse entry")
+    assertTrue(deployButtons["后勤申领"] ~= nil, "deploy should show requisition entry")
+    assertTrue(deployButtons["出勤配置"] ~= nil, "deploy should show loadout entry")
+    assertTrue(deployButtons["回收资历"] ~= nil, "deploy should show recovery entry")
+    assertTrue(deployButtons["确认出发"] ~= nil, "deploy should show confirm deploy")
+    assertTrue(deployButtons["返回主界面"] ~= nil, "deploy should show return to main")
+    assertEq(_G.__testUiRoot:FindById("menuPage_deployOverview").visible, true, "accept should open deploy overview")
+
     local tutorialButton = nil
     for _, button in ipairs(buttons) do
         if button.text == "展示工单" then
@@ -963,6 +1006,13 @@ local function testMainEntrySourceContract()
     assertTrue(tutorialButton ~= nil, "tutorial button should exist")
     tutorialButton.onClick()
     assertEq(directStartCount, 1, "tutorial should enter through StartTutorialRun config")
+    assertEq(capturedStartConfig.mode, "tutorial", "tutorial start config should stay tutorial mode")
+    assertEq(capturedStartConfig.useLoadout, false, "tutorial should not use loadout")
+    assertEq(capturedStartConfig.applyMetaProgress, false, "tutorial should not apply meta")
+    assertEq(capturedStartConfig.allowWarehouseRewards, false, "tutorial should not write warehouse rewards")
+    assertEq(capturedStartConfig.allowFailureRewards, false, "tutorial should not write failure rewards")
+    assertEq(capturedStartConfig.skipLoadout, true, "tutorial should skip loadout")
+    assertTrue(capturedStartConfig.manualMap ~= nil, "tutorial should keep fixed manual map")
 
     StartNewGame = oldStartNewGame
     StartTutorial = oldStartTutorial
@@ -1146,10 +1196,18 @@ local function testNormalRunTunedSpecialCounts()
 end
 
 local function testTutorialMapDiagonalLayout()
-    local field = Minefield.New(Tutorial.GetMapConfig())
+    local config = Tutorial.GetMapConfig()
+    assertEq(config.mode, "tutorial", "tutorial config should use tutorial mode")
+    assertEq(config.seed, 777, "tutorial seed mismatch")
+    assertTrue(config.manualMap ~= nil, "tutorial config should include fixed manual map")
+    assertEq(config.manualMap.width, 5, "tutorial manual map width mismatch")
+    assertEq(config.manualMap.height, 5, "tutorial manual map height mismatch")
+
+    local field = Minefield.New(config)
 
     assertEq(field.width, 5, "tutorial width mismatch")
     assertEq(field.height, 5, "tutorial height mismatch")
+    assertEq(field.mode, "tutorial", "tutorial field mode mismatch")
     assertEq(field.mineCount, 4, "tutorial mine count mismatch")
     assertEq(field.eventCount, 4, "tutorial event room count mismatch")
     assertEq(field.monsterCount, 5, "tutorial monster room count mismatch")
@@ -1182,6 +1240,19 @@ local function testTutorialMapDiagonalLayout()
             end
         end
     end
+
+    local normalField = Minefield.New({
+        mode = "normal",
+        width = 10,
+        height = 10,
+        seed = 777,
+        randomExitCount = 2,
+    })
+    assertEq(normalField.width, 10, "normal mode should keep normal width")
+    assertEq(normalField.height, 10, "normal mode should keep normal height")
+    assertTrue(normalField.manualMap == nil, "normal mode should not receive tutorial manual map")
+    assertTrue(#normalField:GetExits() ~= #field:GetExits() or normalField.width ~= field.width,
+        "normal mode should differ from fixed tutorial map")
 end
 
 local function testJudgeModeManualMap()
