@@ -244,6 +244,10 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, "零件: " .. (inv.parts or 0))
     curY = curY + 19
 
+    nvgFillColor(vg, nvgRGBA(150, 230, 190, 255))
+    nvgText(vg, contentX, curY, "回收包: " .. (inv.carriedItemCount or 0) .. " 件 / 估值 " .. (inv.carriedItemValue or 0))
+    curY = curY + 19
+
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
     nvgText(vg, contentX, curY, "已探索: " .. (context.exploredCount or 0) .. " 格")
     curY = curY + 24
@@ -470,13 +474,20 @@ function HUD.GetInteractHint(context)
         end
         return "[T] 查看: 事件已完成"
     end
-    if context.roomType == "chest" and context.searchState == "idle" then
-        return "[F] 搜索物资箱"
+    local searchState = context.searchState or {}
+    if searchState.searched and context.roomType == "chest" then
+        return "物资箱已开启"
     end
-    if context.searchState == "idle" then
-        return "[F] 搜索"
+    if searchState.searched then
+        return "该区域已搜索"
     end
-    if context.searchState == "searching" then
+    if context.roomType == "chest" and searchState.canSearch then
+        return "[F] 开启未登记物资箱"
+    end
+    if searchState.canSearch then
+        return "[F] 搜索可回收物"
+    end
+    if searchState.searching then
         return "搜索中..."
     end
     return ""

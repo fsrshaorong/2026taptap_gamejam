@@ -419,8 +419,100 @@ local function testSearchedChestState()
 
     local searched = RunInventory.SearchCurrentRoom(field, run)
     assertTrue(searched.ok, "chest search failed")
+    assertTrue(searched.reward.parts >= 1, "chest should grant at least one carried item")
+    assertTrue(RunInventory.GetCarriedItemCount() >= 1, "chest search should add carried items")
     local after = RunInventory.GetSearchState(field, run)
     assertTrue(after.searched and after.isChest, "searched chest should keep chest marker")
+end
+
+local function testItemDefinitionsReadable()
+    local defs = RunInventory.GetAllItemDefs()
+    assertTrue(#defs >= 4, "expected several item definitions")
+    local def = RunInventory.GetItemDef("broken_copper_wire")
+    assertTrue(def ~= nil, "broken copper wire definition missing")
+    assertEq(def.name, "断裂铜线", "item display name mismatch")
+    assertEq(RunInventory.GetTradableItemDisplayName("broken_copper_wire"), "断裂铜线", "tradable item display name mismatch")
+    assertTrue(not RunInventory.HasItemIcon("missing_item"), "missing icon fallback should not crash")
+end
+
+local function makeSearchRun(roomType)
+    local manualMap = {
+        spawn = { x = 2, y = 2 },
+    }
+    if roomType == "chest" then
+        manualMap.chests = { { x = 3, y = 2 } }
+    end
+    local field = Minefield.New({
+        mode = "judge",
+        seed = 4,
+        width = 5,
+        height = 5,
+        manualMap = manualMap,
+    })
+    local run = ExtractionRun.New({
+        minefield = field,
+        moveRequiresRevealed = false,
+        revealOnMove = true,
+    })
+    local move = run:Move(1, 0)
+    assertTrue(move.ok, "move to search room failed")
+    return field, run
+end
+
+local function testNormalSearchGeneratesCarriedItem()
+    RunInventory.Reset()
+    local field, run = makeSearchRun("normal")
+    local searched = RunInventory.SearchCurrentRoom(field, run)
+    assertTrue(searched.ok, "normal search should succeed")
+    assertTrue(searched.reward.gold > 0, "normal search should grant gold")
+    assertTrue(#searched.reward.items >= 1, "seeded normal search should grant a concrete item")
+    assertEq(RunInventory.GetCarriedItemCount(), searched.reward.parts, "carried count should match reward parts")
+    assertTrue(RunInventory.GetCarriedItemValue() > 0, "carried items should have value")
+
+    local repeated = RunInventory.SearchCurrentRoom(field, run)
+    assertTrue(not repeated.ok, "searched room should not repeat rewards")
+    assertEq(repeated.status, "searched", "repeat search should report searched")
+    assertEq(RunInventory.GetCarriedItemCount(), searched.reward.parts, "repeat search should not add carried items")
+end
+
+local function testChestRewardBeatsNormalSearch()
+    RunInventory.Reset()
+    local normalField, normalRun = makeSearchRun("normal")
+    local normal = RunInventory.SearchCurrentRoom(normalField, normalRun)
+    local normalValue = normal.reward.gold + normal.reward.itemValue
+
+    RunInventory.Reset()
+    local chestField, chestRun = makeSearchRun("chest")
+    local chest = RunInventory.SearchCurrentRoom(chestField, chestRun)
+    local chestValue = chest.reward.gold + chest.reward.itemValue
+
+    assertTrue(chest.reward.isChest, "chest reward should be marked")
+    assertTrue(chest.reward.parts >= 1, "chest should guarantee carried item")
+    assertTrue(chestValue > normalValue, "chest reward should be stronger than normal search")
+end
+
+local function testCarriedItemsExtractionNoDuplicateParts()
+    RunInventory.Reset()
+    local field, run = makeSearchRun("chest")
+    local searched = RunInventory.SearchCurrentRoom(field, run)
+    assertTrue(searched.ok, "chest search should succeed")
+    local reward = RunInventory.GetExtractionReward()
+    assertEq(reward.carriedItemCount, RunInventory.parts, "seeded chest should have only item-backed parts")
+    assertEq(reward.convertedGold, reward.carriedItemValue, "item-backed parts should not be counted twice")
+    assertEq(reward.totalGold, RunInventory.gold + reward.carriedItemValue, "total extraction reward mismatch")
+end
+
+local function testFailureSalvageWithCarriedItems()
+    RunInventory.Reset()
+    RunInventory.gold = 12
+    RunInventory.parts = 1
+    RunInventory.AddCarriedItem("static_lens", 1, "test")
+    local options = RunInventory.GetFailureSalvageOptions()
+    assertEq(options.safeGold, 12, "failure should keep direct gold")
+    assertEq(options.lostItemCount, 1, "failure should report lost carried item count")
+    assertTrue(options.lostItemValue > 0, "failure should report lost carried value")
+    local salvage = RunInventory.ApplyFailureSalvage("salvage_part")
+    assertEq(salvage.gold, 22, "failure salvage should still support old parts rescue")
 end
 
 local function testEventRoomNotSearchable()
@@ -968,6 +1060,11 @@ local tests = {
     { name = "teleport requires explored", fn = testTeleportRequiresExplored },
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
+    { name = "item definitions readable", fn = testItemDefinitionsReadable },
+    { name = "normal search generates carried item", fn = testNormalSearchGeneratesCarriedItem },
+    { name = "chest reward beats normal search", fn = testChestRewardBeatsNormalSearch },
+    { name = "carried items extraction no duplicate parts", fn = testCarriedItemsExtractionNoDuplicateParts },
+    { name = "failure salvage with carried items", fn = testFailureSalvageWithCarriedItems },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },
     { name = "tutorial map diagonal layout", fn = testTutorialMapDiagonalLayout },

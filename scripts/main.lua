@@ -43,6 +43,7 @@ local PHASE = {
     PLAYING = "playing",
     MAP_OPEN = "map_open",
     EVENT_PANEL = "event_panel",
+    LOOT_RESULT = "loot_result",
     CONFIRM_EXTRACT = "confirm_extract",
     GAME_OVER = "game_over",
     EXTRACTED = "extracted",
@@ -64,6 +65,13 @@ local eventPanel = {
     selected = 1,
     data = nil,
     message = "",
+}
+local lootPanel = {
+    active = false,
+    title = "",
+    subtitle = "",
+    reward = nil,
+    powerUp = 0,
 }
 
 -- 威压天赋:怪物逃跑窗口
@@ -718,7 +726,9 @@ function ShowFailurePanel(reason)
         if goldLine then goldLine:SetText("金币 " .. totals.gold .. " (已安全保留)") end
 
         local partsLine = uiRoot_:FindById("failurePartsLine")
-        if totals.parts > 0 then
+        if totals.carriedItemCount and totals.carriedItemCount > 0 then
+            if partsLine then partsLine:SetText("遗失回收物 " .. totals.carriedItemCount .. " 件 (估值 " .. totals.carriedItemValue .. ")") end
+        elseif totals.parts > 0 then
             if partsLine then partsLine:SetText("零件 " .. totals.parts .. " (将丢失)") end
         else
             if partsLine then partsLine:SetText("没有零件损失") end
@@ -739,7 +749,7 @@ function ShowFailurePanel(reason)
         setVisible("failureChoicePanel", true)
         local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
         if salvageInfo then
-            salvageInfo:SetText("可抢救 1 个零件(转为 " .. options.salvageBonus .. " 金币)")
+            salvageInfo:SetText("遗失回收物 " .. options.lostItemCount .. " 件; 可抢救 1 件折算 " .. options.salvageBonus .. " 金币")
         end
     else
         setVisible("failureChoicePanel", false)
@@ -759,7 +769,7 @@ function ShowFailurePanel(reason)
             if goldLine then goldLine:SetText("保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")") end
 
             local partsLine = uiRoot_:FindById("failurePartsLine")
-            if partsLine then partsLine:SetText("零件已全部丢失.") end
+            if partsLine then partsLine:SetText("回收包已遗失: " .. options.lostItemCount .. " 件") end
 
             local protocolLine = uiRoot_:FindById("failureProtocolLine")
             if talentBonus > 0 then
@@ -810,7 +820,10 @@ function ApplyFailureSalvage(choice)
         if goldLine then goldLine:SetText("保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")") end
 
         local partsLine = uiRoot_:FindById("failurePartsLine")
-        if partsLine then partsLine:SetText("零件已全部丢失.") end
+        if partsLine then
+            local options = RunInventory.GetFailureSalvageOptions()
+            partsLine:SetText("回收包已遗失: " .. options.lostItemCount .. " 件")
+        end
 
         local protocolLine = uiRoot_:FindById("failureProtocolLine")
         if protocolLine then
@@ -1132,13 +1145,17 @@ function MovePlayer(dx, dy)
                 local searchState = GetSearchState()
                 if cell and cell.roomType == "event" then
                     ShowMessage(EventSystem.GetEnterMessage(p.x, p.y))
+                elseif searchState.searched and searchState.isChest then
+                    ShowMessage("物资箱已开启.")
+                elseif searchState.searched then
+                    ShowMessage("该区域已搜索.")
                 elseif searchState.isChest then
-                    ShowMessage("发现宝箱房!按 F 开启宝箱, 奖励丰厚!")
+                    ShowMessage("发现未登记物资箱。按 F 开启。")
                 elseif searchState.canSearch then
                     if didExpand then
-                        ShowMessage("安全区域展开!自动揭示了周围格子.按 F 搜索物资.")
+                        ShowMessage("安全区域展开!发现可回收物。按 F 搜索。")
                     else
-                        ShowMessage("安全房间.按 F 或点击箱子搜索物资.")
+                        ShowMessage("发现可回收物。按 F 搜索。")
                     end
                 elseif didExpand then
                     ShowMessage("安全区域展开!自动揭示了周围格子.")
@@ -1169,6 +1186,31 @@ end
 
 function CanSearchCurrentRoom()
     return RunInventory.CanSearch(minefield, run)
+end
+
+function OpenLootResultPanel(reward, powerUp)
+    reward = reward or {}
+    lootPanel.active = true
+    lootPanel.reward = reward
+    lootPanel.powerUp = powerUp or 0
+    lootPanel.title = reward.isChest and "未登记物资箱" or "搜索结果"
+    lootPanel.subtitle = reward.isChest and "高价值物资已放入临时回收包" or "可回收物已放入临时回收包"
+    phase = PHASE.LOOT_RESULT
+end
+
+function CloseLootResultPanel()
+    local reward = lootPanel.reward or {}
+    local itemCount = reward.parts or 0
+    local value = reward.itemValue or 0
+    lootPanel.active = false
+    lootPanel.reward = nil
+    phase = PHASE.PLAYING
+    if itemCount > 0 then
+        ShowMessage("回收包 +" .. itemCount .. " 件, 估值 +" .. value .. ".")
+    else
+        ShowMessage("结算币已记录, 未发现可携带回收物.")
+    end
+    UpdateHUD()
 end
 
 function SearchCurrentRoom()
@@ -1203,7 +1245,7 @@ function SearchCurrentRoom()
 
     local msg = reward.isChest and ("宝箱开启! 金币 +" .. reward.gold) or ("搜索完成:金币 +" .. reward.gold)
     if reward.parts > 0 then
-        msg = msg .. ", 零件 +" .. reward.parts
+        msg = msg .. ", 回收物 +" .. reward.parts
     end
     if powerUp > 0 then
         msg = msg .. ", 战斗力 +" .. powerUp
@@ -1211,11 +1253,12 @@ function SearchCurrentRoom()
     if reward.isChest then
         -- v0.3: 宝箱开启后标记房间已清理
         minefield:ClearRoom(p.x, p.y)
-        ShowMessage(msg .. ". 稀有物资已回收!")
+        ShowMessage(msg .. ".")
     else
         ShowMessage(msg .. ".")
     end
 
+    OpenLootResultPanel(reward, powerUp)
     UpdateHUD()
 end
 
@@ -1264,11 +1307,13 @@ function DoExtract()
 
     local partsLine = uiRoot_:FindById("extractPartsLine")
     if partsLine then
-        partsLine:SetText("零件折算:+" .. reward.convertedGold .. " 金币 (" .. totals.parts .. " 个)")
+        partsLine:SetText("回收物估值:+" .. reward.carriedItemValue .. " (" .. reward.carriedItemCount .. " 件)")
     end
 
     local totalLine = uiRoot_:FindById("extractTotalLine")
-    if totalLine then totalLine:SetText("本次撤离预计:+" .. reward.totalGold .. " 金币") end
+    if totalLine then
+        totalLine:SetText("预计总收益:+" .. reward.totalGold .. " 金币")
+    end
 
     local searchLine = uiRoot_:FindById("extractSearchLine")
     if searchLine then
@@ -1310,10 +1355,12 @@ function ConfirmExtract()
 
         local winConvertLine = uiRoot_:FindById("winConvertLine")
         if winConvertLine then
-            if reward.parts > 0 then
+            if reward.carriedItemCount > 0 then
+                winConvertLine:SetText("带回 " .. reward.carriedSummary .. " | 估值 +" .. reward.carriedItemValue)
+            elseif reward.parts > 0 then
                 winConvertLine:SetText("局内金币 " .. reward.directGold .. " + 零件 " .. reward.parts .. " 个 -> +" .. reward.convertedGold)
             else
-                winConvertLine:SetText("没有零件折算")
+                winConvertLine:SetText("没有回收物折算")
             end
         end
 
@@ -1761,6 +1808,141 @@ function DrawEventPanel(vg, w, h)
     nvgText(vg, x + panelW - 28, y + panelH - 30, "W/S 或 ↑/↓ 选择   T/Enter 确认   Esc 返回")
 end
 
+local ITEM_RARITY_COLORS = {
+    common = { 180, 200, 210 },
+    uncommon = { 120, 220, 170 },
+    rare = { 115, 180, 255 },
+}
+
+local function rarityColor(rarity)
+    return ITEM_RARITY_COLORS[rarity or "common"] or ITEM_RARITY_COLORS.common
+end
+
+local function drawLootItemCard(vg, stack, x, y, w, h)
+    local def = stack and stack.def or RunInventory.GetItemDef(stack and stack.itemId)
+    if not def then return end
+    local color = rarityColor(def.rarity)
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, x, y, w, h, 7)
+    nvgFillColor(vg, nvgRGBA(24, 31, 42, 230))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(color[1], color[2], color[3], 190))
+    nvgStrokeWidth(vg, 1.5)
+    nvgStroke(vg)
+
+    local iconSize = 56
+    local iconX = x + 14
+    local iconY = y + 16
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, iconX, iconY, iconSize, iconSize, 6)
+    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 48))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(color[1], color[2], color[3], 160))
+    nvgStrokeWidth(vg, 1)
+    nvgStroke(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFontSize(vg, 24)
+    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 230))
+    nvgText(vg, iconX + iconSize / 2, iconY + iconSize / 2, "物")
+
+    local textX = iconX + iconSize + 14
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+    nvgFontSize(vg, 16)
+    nvgFillColor(vg, nvgRGBA(240, 245, 235, 255))
+    local countText = (stack.count or 1) > 1 and (" x" .. stack.count) or ""
+    nvgText(vg, textX, y + 14, def.name .. countText)
+
+    nvgFontSize(vg, 11)
+    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 230))
+    nvgText(vg, textX, y + 37, def.typeName .. " · " .. def.rarityName)
+
+    local descY = y + 58
+    if def.effectText and def.effectText ~= "" then
+        nvgFontSize(vg, 11)
+        nvgFillColor(vg, nvgRGBA(215, 230, 170, 230))
+        nvgText(vg, textX, descY, def.effectText)
+        descY = descY + 18
+    end
+
+    nvgFontSize(vg, 10)
+    nvgFillColor(vg, nvgRGBA(175, 188, 196, 220))
+    nvgText(vg, textX, descY, def.description or "")
+
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
+    nvgFontSize(vg, 11)
+    nvgFillColor(vg, nvgRGBA(255, 220, 120, 230))
+    nvgText(vg, x + w - 12, y + 14, "估值 " .. tostring((def.value or 0) * (stack.count or 1)))
+end
+
+function DrawLootResultPanel(vg, w, h)
+    if not lootPanel.active or not lootPanel.reward then return end
+
+    local reward = lootPanel.reward
+    local items = reward.items or {}
+    local panelW = math.min(680, w - 80)
+    local panelH = math.min(math.max(360, 210 + math.max(1, #items) * 108), h - 50)
+    local x = (w - panelW) / 2
+    local y = (h - panelH) / 2
+
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(0, 0, 0, 150))
+    nvgFill(vg)
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, x, y, panelW, panelH, 8)
+    nvgFillColor(vg, nvgRGBA(17, 23, 32, 242))
+    nvgFill(vg)
+    nvgStrokeColor(vg, reward.isChest and nvgRGBA(240, 190, 90, 220) or nvgRGBA(90, 170, 190, 210))
+    nvgStrokeWidth(vg, 2)
+    nvgStroke(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+    nvgFontSize(vg, 22)
+    nvgFillColor(vg, nvgRGBA(242, 246, 235, 255))
+    nvgText(vg, x + 26, y + 22, lootPanel.title)
+
+    nvgFontSize(vg, 12)
+    nvgFillColor(vg, nvgRGBA(180, 205, 210, 230))
+    nvgText(vg, x + 26, y + 54, lootPanel.subtitle)
+
+    nvgFontSize(vg, 13)
+    nvgFillColor(vg, nvgRGBA(255, 226, 120, 245))
+    local summary = "结算币 +" .. (reward.gold or 0) .. "    回收物 " .. (reward.parts or 0) .. " 件    估值 +" .. (reward.itemValue or 0)
+    if lootPanel.powerUp and lootPanel.powerUp > 0 then
+        summary = summary .. "    战力 +" .. lootPanel.powerUp
+    end
+    nvgText(vg, x + 26, y + 78, summary)
+
+    local listY = y + 112
+    local cardH = 96
+    if #items == 0 then
+        nvgFontSize(vg, 14)
+        nvgFillColor(vg, nvgRGBA(180, 190, 200, 220))
+        nvgText(vg, x + 26, listY + 20, "未发现可携带回收物。")
+    else
+        local maxCards = math.floor((panelH - 168) / (cardH + 10))
+        if maxCards < 1 then maxCards = 1 end
+        for i = 1, math.min(#items, maxCards) do
+            local stack = {
+                itemId = items[i].itemId,
+                count = items[i].count,
+                def = RunInventory.GetItemDef(items[i].itemId),
+            }
+            drawLootItemCard(vg, stack, x + 24, listY + (i - 1) * (cardH + 10), panelW - 48, cardH)
+        end
+    end
+
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
+    nvgFontSize(vg, 11)
+    nvgFillColor(vg, nvgRGBA(155, 170, 180, 220))
+    nvgText(vg, x + panelW - 26, y + panelH - 30, "Enter / F / Esc 确认放入临时回收包")
+end
+
 function HandleNanoVGRender(eventType, eventData)
     if not nvgScene then return end
 
@@ -1769,7 +1951,7 @@ function HandleNanoVGRender(eventType, eventData)
 
     nvgBeginFrame(nvgScene, screenW, screenH, dpr)
 
-    if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
+    if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.LOOT_RESULT or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
         local hudLayout = HUD.ComputeLayout(w, h)
         local p = run:GetPlayer()
         local cell = minefield and minefield:GetCellView(p.x, p.y) or nil
@@ -1790,7 +1972,12 @@ function HandleNanoVGRender(eventType, eventData)
         end
         local combatStatus = Combat.GetStatus()
         local invTotals = RunInventory.GetTotals()
-        local invStatus = { gold = invTotals.gold, parts = invTotals.parts }
+        local invStatus = {
+            gold = invTotals.gold,
+            parts = invTotals.parts,
+            carriedItemCount = invTotals.carriedItemCount,
+            carriedItemValue = invTotals.carriedItemValue,
+        }
 
         -- 中央游戏区(带偏移和裁剪)
         local c = hudLayout.center
@@ -1875,6 +2062,9 @@ function HandleNanoVGRender(eventType, eventData)
         end
         if phase == PHASE.EVENT_PANEL then
             DrawEventPanel(nvgScene, w, h)
+        end
+        if phase == PHASE.LOOT_RESULT then
+            DrawLootResultPanel(nvgScene, w, h)
         end
     elseif phase == PHASE.MAP_OPEN then
         -- 绘制放大地图
@@ -2624,6 +2814,13 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
+    if phase == PHASE.LOOT_RESULT then
+        if key == KEY_ESCAPE or key == KEY_RETURN or key == KEY_F then
+            CloseLootResultPanel()
+        end
+        return
+    end
+
     -- 撤离确认面板
     if phase == PHASE.CONFIRM_EXTRACT then
         if key == KEY_E or key == KEY_RETURN then
@@ -2702,6 +2899,11 @@ function HandleMouseDown(eventType, eventData)
     end
 
     if button == MOUSEB_LEFT and HandleMenuHotspotClick(mx, my) then
+        return
+    end
+
+    if phase == PHASE.LOOT_RESULT and button == MOUSEB_LEFT then
+        CloseLootResultPanel()
         return
     end
 
