@@ -396,6 +396,46 @@ local function testCombatResultSignals()
     assertEq(costly.hp, 92, "combat hp should reflect damage")
 end
 
+local function testRunStats()
+    RunInventory.Reset()
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 2, y = 2 },
+            chests = {
+                { x = 3, y = 2 },
+            },
+        },
+    })
+    local run = ExtractionRun.New({
+        minefield = field,
+        moveRequiresRevealed = false,
+        revealOnMove = true,
+    })
+
+    local move = run:Move(1, 0)
+    assertTrue(move.ok, "move to chest room failed for stats")
+    RunInventory.RecordMove()
+    local searched = RunInventory.SearchCurrentRoom(field, run)
+    assertTrue(searched.ok, "stats chest search failed")
+    RunInventory.RecordMineHit(true)
+    RunInventory.RecordCombat({ fought = true, damage = 7 })
+    RunInventory.RecordTrade()
+
+    local stats = RunInventory.GetRunStats(run)
+    assertEq(stats.moves, 1, "stats should count moves")
+    assertEq(stats.searchedRooms, 1, "stats should count searched rooms")
+    assertEq(stats.chestRooms, 1, "stats should count chest rooms")
+    assertEq(stats.mineHits, 1, "stats should count mine hits")
+    assertEq(stats.mineImmunityUsed, 1, "stats should count mine immunity")
+    assertEq(stats.monstersDefeated, 1, "stats should count defeated monsters")
+    assertEq(stats.combatDamage, 7, "stats should sum combat damage")
+    assertEq(stats.trades, 1, "stats should count trades")
+    assertEq(stats.turns, 1, "stats should include run turns")
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "normal mode random generation", fn = testNormalModeRandomGeneration },
@@ -408,6 +448,7 @@ local tests = {
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "combat result signals", fn = testCombatResultSignals },
+    { name = "run stats", fn = testRunStats },
 }
 
 for _, test in ipairs(tests) do

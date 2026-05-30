@@ -623,6 +623,7 @@ function ShowFailurePanel(reason)
     phase = PHASE.GAME_OVER
 
     local totals = RunInventory.GetTotals()
+    local stats = RunInventory.GetRunStats(run)
     local options = RunInventory.GetFailureSalvageOptions()
     local protocol = Protocol.GetStatus()
 
@@ -647,6 +648,12 @@ function ShowFailurePanel(reason)
 
         local protocolLine = uiRoot_:FindById("failureProtocolLine")
         if protocolLine then protocolLine:SetText("协议等级:" .. protocol.level .. " / " .. protocol.description) end
+
+        local statsLine = uiRoot_:FindById("failureStatsLine")
+        if statsLine then
+            statsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
+                " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+        end
     end
 
     -- 如果有零件可以抢救, 显示选择面板;否则直接结算并显示重开按钮
@@ -682,12 +689,19 @@ function ShowFailurePanel(reason)
             else
                 if protocolLine then protocolLine:SetText("") end
             end
+
+            local statsLine = uiRoot_:FindById("failureStatsLine")
+            if statsLine then
+                statsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
+                    " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+            end
         end
     end
 end
 
 function ApplyFailureSalvage(choice)
     local salvage = RunInventory.ApplyFailureSalvage(choice)
+    local stats = RunInventory.GetRunStats(run)
 
     setVisible("failureChoicePanel", false)
     setVisible("restartAfterFailureButton", true)
@@ -730,6 +744,12 @@ function ApplyFailureSalvage(choice)
             end
             protocolLine:SetText(bonusText)
         end
+
+        local statsLine = uiRoot_:FindById("failureStatsLine")
+        if statsLine then
+            statsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
+                " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+        end
     end
 
     ShowMessage(text)
@@ -765,6 +785,7 @@ function FinishBattle()
     battleState.phase = "none"
 
     if not result or not result.fought then return end
+    RunInventory.RecordCombat(result)
 
     local playerPower = result.playerPower or enemy.playerPower or Combat.power
     local enemyPower = result.enemyPower or enemy.power
@@ -835,6 +856,7 @@ function MovePlayer(dx, dy)
     local result = run:Move(dx, dy)
 
     if result.ok then
+        RunInventory.RecordMove()
         local cpW, cpH = GetCenterAreaPhysSize()
         DungeonRoom.PlacePlayerFromEntry(dx, dy, cpW, cpH, dpr)
 
@@ -868,6 +890,9 @@ function MovePlayer(dx, dy)
 
         if result.status == "hit_mine" then
             local mineResult = Combat.TakeMineHit()
+            if result.mineTriggered then
+                RunInventory.RecordMineHit(mineResult.immuneUsed)
+            end
             DungeonRoom.TriggerMineFlash()
             if mineResult.dead then
                 ShowFailurePanel("踩雷!受到 " .. mineResult.damage .. " 伤害, 血量归零!")
@@ -1049,6 +1074,7 @@ function DoExtract()
     phase = PHASE.CONFIRM_EXTRACT
     DungeonRoom.TriggerExitPulse()
     local totals = RunInventory.GetTotals()
+    local stats = RunInventory.GetRunStats(run)
     local protocol = Protocol.GetStatus()
     local reward = RunInventory.GetExtractionReward()
 
@@ -1066,7 +1092,13 @@ function DoExtract()
 
     local searchLine = uiRoot_:FindById("extractSearchLine")
     if searchLine then
-        searchLine:SetText("已搜索房间:" .. totals.searchedRooms .. " | 协议等级:" .. protocol.level .. " (" .. protocol.description .. ")")
+        searchLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. totals.searchedRooms ..
+            " | 触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated)
+    end
+
+    local protocolLine = uiRoot_:FindById("extractProtocolLine")
+    if protocolLine then
+        protocolLine:SetText("协议等级:" .. protocol.level .. " (" .. protocol.description .. ")")
     end
 
     local panel = uiRoot_:FindById("extractConfirmPanel")
@@ -1080,6 +1112,7 @@ function ConfirmExtract()
     if result.ok then
         phase = PHASE.EXTRACTED
         local reward = RunInventory.GetExtractionReward()
+        local stats = RunInventory.GetRunStats(run)
 
         -- 写入局外金币
         MetaProgress.AddGold(reward.totalGold)
@@ -1106,7 +1139,14 @@ function ConfirmExtract()
 
         local winStatsLine = uiRoot_:FindById("winStatsLine")
         if winStatsLine then
-            winStatsLine:SetText("搜索房间:" .. RunInventory.GetSearchedCount() .. " | 回合:" .. result.turn)
+            winStatsLine:SetText("探索:" .. CountVisitedCells() .. " | 搜索:" .. stats.searchedRooms ..
+                " | 回合:" .. result.turn)
+        end
+
+        local winRiskLine = uiRoot_:FindById("winRiskLine")
+        if winRiskLine then
+            winRiskLine:SetText("触雷:" .. stats.mineHits .. " | 击败:" .. stats.monstersDefeated ..
+                " | 交易:" .. stats.trades)
         end
     end
 end
@@ -1141,6 +1181,7 @@ function DoTrade()
     local tradePrice = MetaProgress.GetTalentEffects().tradePrice
     RunInventory.parts = RunInventory.parts - 1
     RunInventory.gold = RunInventory.gold + tradePrice
+    RunInventory.RecordTrade()
     tradedRooms[key] = true
     DungeonRoom.TriggerTradePulse()
     ShowMessage("交易成功!用 1 零件换了 " .. tradePrice .. " 金币.")
@@ -1867,6 +1908,13 @@ function CreateUI()
                                 fontColor = { 180, 190, 210, 220 },
                                 textAlign = "center",
                             },
+                            UI.Label {
+                                id = "failureStatsLine",
+                                text = "探索:0 | 搜索:0 | 触雷:0 | 击败:0",
+                                fontSize = 12,
+                                fontColor = { 190, 200, 210, 220 },
+                                textAlign = "center",
+                            },
                         }
                     },
                     UI.Panel {
@@ -1972,6 +2020,13 @@ function CreateUI()
                                 fontColor = { 180, 195, 215, 220 },
                                 textAlign = "center",
                             },
+                            UI.Label {
+                                id = "extractProtocolLine",
+                                text = "协议等级:5",
+                                fontSize = 12,
+                                fontColor = { 150, 185, 220, 210 },
+                                textAlign = "center",
+                            },
                         }
                     },
                     UI.Label {
@@ -2050,6 +2105,13 @@ function CreateUI()
                                 text = "搜索房间:0 | 回合:0",
                                 fontSize = 12,
                                 fontColor = { 180, 205, 190, 220 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "winRiskLine",
+                                text = "触雷:0 | 击败:0 | 交易:0",
+                                fontSize = 12,
+                                fontColor = { 160, 210, 190, 215 },
                                 textAlign = "center",
                             },
                         }

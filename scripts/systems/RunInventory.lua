@@ -10,6 +10,20 @@ RunInventory.parts = 0
 RunInventory.searchedRooms = {}
 RunInventory.failureSalvage = nil
 RunInventory.searchBonus = 0  -- 搜索奖励加成百分比(装备效果)
+RunInventory.stats = {}
+
+local function newStats()
+    return {
+        moves = 0,
+        searchedRooms = 0,
+        chestRooms = 0,
+        mineHits = 0,
+        mineImmunityUsed = 0,
+        monstersDefeated = 0,
+        combatDamage = 0,
+        trades = 0,
+    }
+end
 
 local function cellKey(x, y)
     return tostring(x) .. "," .. tostring(y)
@@ -21,6 +35,7 @@ function RunInventory.Reset()
     RunInventory.searchedRooms = {}
     RunInventory.failureSalvage = nil
     RunInventory.searchBonus = 0
+    RunInventory.stats = newStats()
 end
 
 function RunInventory.CellKey(x, y)
@@ -108,6 +123,10 @@ function RunInventory.SearchCurrentRoom(minefield, run)
     RunInventory.searchedRooms[key] = true
     RunInventory.gold = RunInventory.gold + reward.gold
     RunInventory.parts = RunInventory.parts + reward.parts
+    RunInventory.stats.searchedRooms = RunInventory.stats.searchedRooms + 1
+    if reward.isChest then
+        RunInventory.stats.chestRooms = RunInventory.stats.chestRooms + 1
+    end
 
     return {
         ok = true,
@@ -132,6 +151,41 @@ function RunInventory.GetTotals()
         parts = RunInventory.parts,
         searchedRooms = RunInventory.GetSearchedCount(),
         failureSalvage = RunInventory.failureSalvage,
+    }
+end
+
+function RunInventory.RecordMove()
+    RunInventory.stats.moves = RunInventory.stats.moves + 1
+end
+
+function RunInventory.RecordMineHit(immuneUsed)
+    RunInventory.stats.mineHits = RunInventory.stats.mineHits + 1
+    if immuneUsed then
+        RunInventory.stats.mineImmunityUsed = RunInventory.stats.mineImmunityUsed + 1
+    end
+end
+
+function RunInventory.RecordCombat(result)
+    if not result or not result.fought then return end
+    RunInventory.stats.monstersDefeated = RunInventory.stats.monstersDefeated + 1
+    RunInventory.stats.combatDamage = RunInventory.stats.combatDamage + (result.damage or 0)
+end
+
+function RunInventory.RecordTrade()
+    RunInventory.stats.trades = RunInventory.stats.trades + 1
+end
+
+function RunInventory.GetRunStats(run)
+    return {
+        moves = RunInventory.stats.moves,
+        searchedRooms = RunInventory.GetSearchedCount(),
+        chestRooms = RunInventory.stats.chestRooms,
+        mineHits = RunInventory.stats.mineHits,
+        mineImmunityUsed = RunInventory.stats.mineImmunityUsed,
+        monstersDefeated = RunInventory.stats.monstersDefeated,
+        combatDamage = RunInventory.stats.combatDamage,
+        trades = RunInventory.stats.trades,
+        turns = run and run.turn or 0,
     }
 end
 
