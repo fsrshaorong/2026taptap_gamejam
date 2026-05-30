@@ -116,6 +116,57 @@ local function setVisible(id, visible)
     end
 end
 
+local MENU_BG_W = 1672
+local MENU_BG_H = 941
+local MENU_HOTSPOTS = {
+    {
+        x = 1100, y = 260, w = 430, h = 135,
+        action = function()
+            StartNewGame()
+        end,
+    },
+    {
+        x = 1095, y = 395, w = 430, h = 130,
+        action = function()
+            StartJudgeDemo()
+        end,
+    },
+    {
+        x = 1085, y = 530, w = 430, h = 135,
+        action = function()
+            ShowMenuPage("equip")
+        end,
+    },
+    {
+        x = 1075, y = 670, w = 430, h = 130,
+        action = function()
+            ShowMenuPage("gm")
+        end,
+    },
+}
+
+local function HandleMenuHotspotClick(mx, my)
+    if phase ~= PHASE.MENU or menuPage ~= "main" then return false end
+
+    local viewW = screenW / dpr
+    local viewH = screenH / dpr
+    local sx = viewW / MENU_BG_W
+    local sy = viewH / MENU_BG_H
+
+    for _, spot in ipairs(MENU_HOTSPOTS) do
+        local x = spot.x * sx
+        local y = spot.y * sy
+        local w = spot.w * sx
+        local h = spot.h * sy
+        if mx >= x and mx <= x + w and my >= y and my <= y + h then
+            spot.action()
+            return true
+        end
+    end
+
+    return false
+end
+
 -- ============================================================================
 -- 生命周期
 -- ============================================================================
@@ -1658,6 +1709,7 @@ function CreateUI()
                 children = {
                     -- 右侧按钮区域，对应图片中"灰尾公司"招牌位置
                     UI.Panel {
+                        visible = false,
                         position = "absolute",
                         right = "5%",
                         top = "28%",
@@ -2399,6 +2451,10 @@ function HandleMouseDown(eventType, eventData)
     -- 放大地图交互
     if phase == PHASE.MAP_OPEN then
         MapOverlay.HandleClick(mx, my, button)
+        return
+    end
+
+    if button == MOUSEB_LEFT and HandleMenuHotspotClick(mx, my) then
         return
     end
 
