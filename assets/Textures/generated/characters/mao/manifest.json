@@ -1,0 +1,206 @@
+{
+  "type": "character",
+  "name": "mao",
+  "source": "D:\\A GAME\\26.5.30 GameJam\\Draw\\10_working\\characters\\Maogai.png",
+  "sheet": "mao_sheet.png",
+  "debug": "debug_detected_boxes.png",
+  "frame_size": [
+    128,
+    128
+  ],
+  "scale": 0.39143730886850153,
+  "frames": [
+    {
+      "index": 0,
+      "name": "front_idle",
+      "file": "frames/00_front_idle.png",
+      "bbox": [
+        101,
+        35,
+        337,
+        360
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 1,
+      "name": "back_idle",
+      "file": "frames/01_back_idle.png",
+      "bbox": [
+        452,
+        35,
+        681,
+        359
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 2,
+      "name": "left_idle",
+      "file": "frames/02_left_idle.png",
+      "bbox": [
+        782,
+        33,
+        1034,
+        360
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 3,
+      "name": "right_idle",
+      "file": "frames/03_right_idle.png",
+      "bbox": [
+        1065,
+        33,
+        1315,
+        360
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 4,
+      "name": "front_walk_1",
+      "file": "frames/04_front_walk_1.png",
+      "bbox": [
+        101,
+        383,
+        329,
+        705
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 5,
+      "name": "back_walk_1",
+      "file": "frames/05_back_walk_1.png",
+      "bbox": [
+        449,
+        383,
+        687,
+        705
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 6,
+      "name": "left_walk_1",
+      "file": "frames/06_left_walk_1.png",
+      "bbox": [
+        782,
+        380,
+        1038,
+        703
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 7,
+      "name": "right_walk_1",
+      "file": "frames/07_right_walk_1.png",
+      "bbox": [
+        1058,
+        380,
+        1315,
+        703
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 8,
+      "name": "front_walk_2",
+      "file": "frames/08_front_walk_2.png",
+      "bbox": [
+        101,
+        719,
+        339,
+        1046
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 9,
+      "name": "back_walk_2",
+      "file": "frames/09_back_walk_2.png",
+      "bbox": [
+        449,
+        725,
+        680,
+        1046
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 10,
+      "name": "left_walk_2",
+      "file": "frames/10_left_walk_2.png",
+      "bbox": [
+        782,
+        717,
+        1036,
+        1042
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 11,
+      "name": "right_walk_2",
+      "file": "frames/11_right_walk_2.png",
+      "bbox": [
+        1060,
+        716,
+        1315,
+        1042
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    }
+  ]
+}
