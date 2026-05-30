@@ -207,27 +207,21 @@ function DungeonRoom.Update(dt)
         exitPulseTimer = exitPulseTimer - dt
         if exitPulseTimer < 0 then exitPulseTimer = 0 end
     end
-    -- 动画帧切换(带自动停止)
     animMoveAge = animMoveAge + dt
-    if animMoveAge > ANIM_STOP_DELAY then
+    if animMovedThisFrame then
+        animMoving = true
+        animMoveAge = 0
+    elseif animMoveAge > ANIM_STOP_DELAY then
         animMoving = false
     end
+
     if animMoving then
         advanceWalkAnimation(dt)
     elseif animMoveAge > ANIM_IDLE_RESET_DELAY then
-    -- 动画帧切换(注意: MovePlayer在Update之后调用, 所以这里检查的是上一帧的标记)
-    -- 上一帧有移动 → 推进动画; 上一帧没移动 → 重置
-    if animMovedThisFrame then
-        animTimer = animTimer + dt
-        if animTimer >= ANIM_FRAME_TIME then
-            animTimer = animTimer - ANIM_FRAME_TIME
-            animFrame = (animFrame % 2) + 1  -- 在1和2之间切换
-        end
-    else
         animTimer = 0
         animFrame = 1
     end
-    -- 重置标记, 本帧的MovePlayer会在之后重新设置
+
     animMovedThisFrame = false
 end
 
