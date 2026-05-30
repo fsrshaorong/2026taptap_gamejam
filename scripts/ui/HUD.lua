@@ -143,11 +143,11 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     -- 标题: 区域扫描图
     nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 13)
+    nvgFontSize(vg, 15)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(180, 200, 230, 255))
     nvgText(vg, contentX, curY, "区域扫描图")
-    curY = curY + 18
+    curY = curY + 21
 
     -- 小地图(嵌入左侧栏)
     if context.visibleMap then
@@ -180,12 +180,12 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     end
 
     -- 图例
-    nvgFontSize(vg, 10)
+    nvgFontSize(vg, 11)
     nvgFillColor(vg, nvgRGBA(140, 150, 170, 200))
     nvgText(vg, contentX, curY, "数字 = 周围8格雷险")
-    curY = curY + 14
+    curY = curY + 16
     nvgText(vg, contentX, curY, "特殊房不计入数字")
-    curY = curY + 18
+    curY = curY + 21
 
     -- 分隔线
     nvgBeginPath(vg)
@@ -197,7 +197,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     curY = curY + 8
 
     -- 状态信息
-    nvgFontSize(vg, 12)
+    nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
 
     -- HP
@@ -207,9 +207,9 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     local hpRatio = maxHp > 0 and (hp / maxHp) or 0
 
     -- HP 条背景
-    local barW = sb.w - pad * 2 - 50
-    local barH = 10
-    local barX = contentX + 48
+    local barW = sb.w - pad * 2 - 58
+    local barH = 12
+    local barX = contentX + 56
     nvgFillColor(vg, nvgRGBA(255, 100, 100, 255))
     nvgText(vg, contentX, curY, "生命")
     nvgBeginPath(vg)
@@ -221,32 +221,32 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgFillColor(vg, nvgRGBA(220, 60, 60, 255))
     nvgFill(vg)
     -- HP 数字
-    nvgFontSize(vg, 10)
+    nvgFontSize(vg, 11)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(255, 255, 255, 230))
     nvgText(vg, barX + barW / 2, curY + 2 + barH / 2, hp .. "/" .. maxHp)
-    curY = curY + barH + 10
+    curY = curY + barH + 12
 
     -- 战斗力/金币/零件
-    nvgFontSize(vg, 12)
+    nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
 
     nvgFillColor(vg, nvgRGBA(255, 180, 60, 255))
     nvgText(vg, contentX, curY, "战力: " .. (combat.power or 10))
-    curY = curY + 16
+    curY = curY + 19
 
     local inv = context.inventory or {}
     nvgFillColor(vg, nvgRGBA(255, 230, 80, 255))
     nvgText(vg, contentX, curY, "金币: " .. (inv.gold or 0))
-    curY = curY + 16
+    curY = curY + 19
 
     nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
     nvgText(vg, contentX, curY, "零件: " .. (inv.parts or 0))
-    curY = curY + 16
+    curY = curY + 19
 
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
     nvgText(vg, contentX, curY, "已探索: " .. (context.exploredCount or 0) .. " 格")
-    curY = curY + 22
+    curY = curY + 24
 
     -- 分隔线
     nvgBeginPath(vg)
@@ -258,22 +258,22 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     curY = curY + 8
 
     -- 当前目标
-    nvgFontSize(vg, 11)
+    nvgFontSize(vg, 13)
     nvgFillColor(vg, nvgRGBA(120, 230, 160, 255))
     nvgText(vg, contentX, curY, "目标:")
-    curY = curY + 14
+    curY = curY + 17
     nvgFillColor(vg, nvgRGBA(200, 220, 200, 220))
     nvgText(vg, contentX, curY, "搜刮物资, 前往撤离点")
-    curY = curY + 18
+    curY = curY + 21
 
     -- 附近危险
     local adjacent = context.adjacent or 0
     if adjacent > 0 and context.roomType ~= "mine" then
-        nvgFontSize(vg, 12)
+        nvgFontSize(vg, 14)
         local dangerColor = adjacent >= 3 and nvgRGBA(255, 80, 60, 255) or nvgRGBA(255, 200, 80, 255)
         nvgFillColor(vg, dangerColor)
         nvgText(vg, contentX, curY, "附近危险: " .. adjacent .. " 格")
-        curY = curY + 18
+        curY = curY + 21
     end
 
     -- 协议等级(内联)
@@ -301,7 +301,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         nvgStroke(vg)
         curY = curY + 8
 
-        nvgFontSize(vg, 11)
+        nvgFontSize(vg, 13)
         nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
         nvgText(vg, contentX, curY, "协议等级")
 
@@ -318,10 +318,10 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
         curY = curY + 16
 
-        nvgFontSize(vg, 10)
+        nvgFontSize(vg, 12)
         nvgFillColor(vg, nvgRGBA(pColor[1], pColor[2], pColor[3], 200))
         nvgText(vg, contentX, curY, pTitle)
-        curY = curY + 14
+        curY = curY + 16
 
         nvgFillColor(vg, nvgRGBA(160, 170, 190, 160))
         nvgText(vg, contentX, curY, PROTOCOL_DESCS[level] or "")
@@ -330,7 +330,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     -- 提示消息
     if context.message and context.message ~= "" then
-        nvgFontSize(vg, 11)
+        nvgFontSize(vg, 13)
         nvgFillColor(vg, nvgRGBA(255, 220, 100, 240))
         nvgText(vg, contentX, curY, context.message)
     end
