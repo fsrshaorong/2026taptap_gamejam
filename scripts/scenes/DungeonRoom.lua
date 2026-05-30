@@ -35,6 +35,12 @@ local animFrames = {
     left = { -1, -1 },
     right = { -1, -1 },
 }
+local idleFrames = {
+    down = -1,
+    up = -1,
+    left = -1,
+    right = -1,
+}
 local animDir = "down"       -- 当前朝向: down/up/left/right
 local animFrame = 1          -- 当前帧索引 1 or 2
 local animTimer = 0          -- 帧切换计时器
@@ -54,6 +60,10 @@ function DungeonRoom.Init(vg)
     imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
     imgRoomEvent = nvgCreateImage(vg, "Textures/room_event.png", 0)
     imgRoomMonster = nvgCreateImage(vg, "Textures/room_monster.png", 0)
+    idleFrames.down = nvgCreateImage(vg, "Textures/player_idle_down.png", 0)
+    idleFrames.up = nvgCreateImage(vg, "Textures/player_idle_up.png", 0)
+    idleFrames.left = nvgCreateImage(vg, "Textures/player_idle_left.png", 0)
+    idleFrames.right = nvgCreateImage(vg, "Textures/player_idle_right.png", 0)
     -- 加载行走动画帧
     animFrames.down[1] = nvgCreateImage(vg, "Textures/player_walk_down_1.png", 0)
     animFrames.down[2] = nvgCreateImage(vg, "Textures/player_walk_down_2.png", 0)
@@ -590,10 +600,10 @@ function DungeonRoom.Draw(vg, w, h, context)
             currentImg = frames[animFrame]
         end
     else
-        -- 静止时使用当前方向的第1帧(有则用之, 否则用默认)
-        local frames = animFrames[animDir]
-        if frames and frames[1] >= 0 then
-            currentImg = frames[1]
+        -- 静止时使用当前朝向 idle 帧, 缺失时回退到默认正面帧.
+        local idleImg = idleFrames[animDir]
+        if idleImg and idleImg >= 0 then
+            currentImg = idleImg
         end
     end
     drawSprite(vg, currentImg, playerCX, playerCY, playerSize, 1.0)
