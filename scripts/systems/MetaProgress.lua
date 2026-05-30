@@ -115,6 +115,16 @@ MetaProgress.TALENTS = {
 
 local SAVE_FILE = "meta_save.json"
 local MAX_EQUIPPED = 2
+local RECENT_RECOVERY_MAX = 5
+
+local function newRecovery()
+    return {
+        totalItems = 0,
+        totalValue = 0,
+        totalExtractionsWithItems = 0,
+        recentItems = {},
+    }
+end
 
 -- 运行时数据
 local data = {
@@ -127,7 +137,62 @@ local data = {
         totalExtractions = 0,
         totalGoldEarned = 0,
     },
+    recovery = newRecovery(),
 }
+
+local function toNonNegativeNumber(value)
+    value = tonumber(value) or 0
+    if value < 0 then value = 0 end
+    return math.floor(value)
+end
+
+local function copyRecoveryItem(item)
+    item = item or {}
+    return {
+        id = item.id or item.itemId or "",
+        name = item.name or item.itemId or item.id or "",
+        rarityName = item.rarityName or "",
+        value = toNonNegativeNumber(item.value),
+    }
+end
+
+local function trimRecentItems(items)
+    local trimmed = {}
+    if items then
+        for _, item in ipairs(items) do
+            if #trimmed >= RECENT_RECOVERY_MAX then break end
+            table.insert(trimmed, copyRecoveryItem(item))
+        end
+    end
+    return trimmed
+end
+
+local function normalizeRecovery(savedRecovery)
+    savedRecovery = savedRecovery or {}
+    return {
+        totalItems = toNonNegativeNumber(savedRecovery.totalItems),
+        totalValue = toNonNegativeNumber(savedRecovery.totalValue),
+        totalExtractionsWithItems = toNonNegativeNumber(savedRecovery.totalExtractionsWithItems),
+        recentItems = trimRecentItems(savedRecovery.recentItems),
+    }
+end
+
+local function pushRecentRecoveryItems(items)
+    for _, stack in ipairs(items or {}) do
+        local def = stack.def or {}
+        local count = math.floor(tonumber(stack.count) or 1)
+        if count < 1 then count = 1 end
+        for _ = 1, count do
+            table.insert(data.recovery.recentItems, 1, {
+                id = stack.itemId or stack.id or "",
+                name = def.name or stack.name or stack.itemId or stack.id or "",
+                rarityName = def.rarityName or stack.rarityName or "",
+                value = toNonNegativeNumber(def.value or stack.value),
+            })
+        end
+    end
+    data.recovery.recentItems = trimRecentItems(data.recovery.recentItems)
+end
 
 -- ============================================================================
 -- 存档读写
@@ -141,7 +206,7 @@ function MetaProgress.Load()
             local ok, saved = pcall(cjson.decode, file:ReadString())
             file:Close()
             if ok and saved then
-                data.gold = saved.gold or 0
+                data.gold = toNonNegativeNumber(saved.gold)
                 -- 天赋
                 data.unlockedTalents = {}
                 if saved.unlockedTalents then
@@ -167,11 +232,13 @@ function MetaProgress.Load()
                 end
                 data.equippedItems = valid
                 -- 统计
+                data.stats = { totalRuns = 0, totalExtractions = 0, totalGoldEarned = 0 }
                 if saved.stats then
-                    data.stats.totalRuns = saved.stats.totalRuns or 0
-                    data.stats.totalExtractions = saved.stats.totalExtractions or 0
-                    data.stats.totalGoldEarned = saved.stats.totalGoldEarned or 0
+                    data.stats.totalRuns = toNonNegativeNumber(saved.stats.totalRuns)
+                    data.stats.totalExtractions = toNonNegativeNumber(saved.stats.totalExtractions)
+                    data.stats.totalGoldEarned = toNonNegativeNumber(saved.stats.totalGoldEarned)
                 end
+                data.recovery = normalizeRecovery(saved.recovery)
                 print("[MetaProgress] Loaded: gold=" .. data.gold)
             end
         end
@@ -198,6 +265,7 @@ function MetaProgress.Save()
         ownedItems = itemList,
         equippedItems = data.equippedItems,
         stats = data.stats,
+        recovery = data.recovery,
     }
 
     local file = File(SAVE_FILE, FILE_WRITE)
@@ -221,6 +289,7 @@ end
 --- 增加金币(局结算时调用)
 ---@param amount number
 function MetaProgress.AddGold(amount)
+    amount = toNonNegativeNumber(amount)
     if amount <= 0 then return end
     data.gold = data.gold + amount
     data.stats.totalGoldEarned = data.stats.totalGoldEarned + amount
@@ -231,6 +300,7 @@ end
 ---@param amount number
 ---@return boolean 是否成功
 function MetaProgress.SpendGold(amount)
+    amount = toNonNegativeNumber(amount)
     if amount <= 0 then return false end
     if data.gold < amount then return false end
     data.gold = data.gold - amount
@@ -384,6 +454,71 @@ function MetaProgress.GetStats()
     return data.stats
 end
 
+function MetaProgress.GetRecoverySummary()
+    data.recovery = normalizeRecovery(data.recovery)
+    return {
+        totalItems = data.recovery.totalItems,
+        totalValue = data.recovery.totalValue,
+        totalExtractionsWithItems = data.recovery.totalExtractionsWithItems,
+        recentItems = trimRecentItems(data.recovery.recentItems),
+    }
+end
+
+function MetaProgress.GetRecoverySummaryText(maxItems)
+    local recovery = MetaProgress.GetRecoverySummary()
+    maxItems = maxItems or RECENT_RECOVERY_MAX
+    local names = {}
+    for i, item in ipairs(recovery.recentItems) do
+        if i > maxItems then break end
+        table.insert(names, item.name or item.id or "")
+    end
+    if #names == 0 then
+        return "最近带回: 无"
+    end
+    return "最近带回: " .. table.concat(names, " / ")
+end
+
+function MetaProgress.RecordExtractionReward(reward, runStats)
+    if not reward then
+        return nil
+    end
+    if reward.metaRecorded then
+        return reward.metaReceipt
+    end
+
+    data.recovery = normalizeRecovery(data.recovery)
+
+    local goldAdded = toNonNegativeNumber(reward.totalGold)
+    local itemCount = toNonNegativeNumber(reward.carriedItemCount)
+    local itemValue = toNonNegativeNumber(reward.carriedItemValue)
+    local goldBefore = data.gold
+
+    data.gold = data.gold + goldAdded
+    data.stats.totalGoldEarned = data.stats.totalGoldEarned + goldAdded
+    data.stats.totalExtractions = data.stats.totalExtractions + 1
+
+    if itemCount > 0 or itemValue > 0 then
+        data.recovery.totalItems = data.recovery.totalItems + itemCount
+        data.recovery.totalValue = data.recovery.totalValue + itemValue
+        data.recovery.totalExtractionsWithItems = data.recovery.totalExtractionsWithItems + 1
+        pushRecentRecoveryItems(reward.carriedItems)
+    end
+
+    local receipt = {
+        goldBefore = goldBefore,
+        goldAfter = data.gold,
+        goldAdded = goldAdded,
+        itemCount = itemCount,
+        itemValue = itemValue,
+        recentItems = trimRecentItems(data.recovery.recentItems),
+        stats = runStats,
+    }
+    reward.metaRecorded = true
+    reward.metaReceipt = receipt
+    MetaProgress.Save()
+    return receipt
+end
+
 -- ============================================================================
 -- 局内效果查询(StartNewGame 时调用)
 -- ============================================================================
@@ -482,6 +617,7 @@ function MetaProgress.GMReset()
     data.ownedItems = {}
     data.equippedItems = {}
     data.stats = { totalRuns = 0, totalExtractions = 0, totalGoldEarned = 0 }
+    data.recovery = newRecovery()
     MetaProgress.Save()
 end
 
