@@ -8,6 +8,7 @@ local ExtractionRun = require("systems.ExtractionRun")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Protocol = require("systems.Protocol")
+local Balance = require("systems.Balance")
 local MetaProgress = require("systems.MetaProgress")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
@@ -1410,10 +1411,17 @@ function ShowFailurePanel(reason)
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
         -- 无零件可抢救, 直接结算金币
+        local salvage = RunInventory.ApplyFailureSalvage("accept")
         local talentBonus = GetActiveTalentEffects().failureGoldBonus
-        local finalGold = totals.gold + talentBonus
-        if finalGold > 0 and not failureSettlementRecorded then
-            MetaProgress.AddGold(finalGold)
+        local finalGold = (salvage.gold or 0) + talentBonus
+        if not failureSettlementRecorded then
+            if finalGold > 0 then
+                MetaProgress.AddGold(finalGold)
+            end
+            if salvage.carriedItems and #salvage.carriedItems > 0 then
+                MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
+                MetaProgress.Save()
+            end
             failureSettlementRecorded = true
         end
         local goInfo2 = uiRoot_:FindById("gameOverInfo")
@@ -1462,8 +1470,14 @@ function ApplyFailureSalvage(choice)
     local finalGold = salvage.gold + talentBonus
 
     -- 写入局外金币
-    if finalGold > 0 and not failureSettlementRecorded then
-        MetaProgress.AddGold(finalGold)
+    if not failureSettlementRecorded then
+        if finalGold > 0 then
+            MetaProgress.AddGold(finalGold)
+        end
+        if salvage.carriedItems and #salvage.carriedItems > 0 then
+            MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
+            MetaProgress.Save()
+        end
         failureSettlementRecorded = true
     end
 
@@ -1540,7 +1554,11 @@ function FinishBattle()
     battleState.phase = "none"
 
     if not result or not result.fought then return end
+    Combat.GrantMonsterKillPower(result)
     RunInventory.RecordCombat(result)
+    if result.pressureDelta and result.pressureDelta > 0 then
+        Protocol.AddPressure(result.pressureDelta)
+    end
 
     local playerPower = result.playerPower or enemy.playerPower or Combat.power
     local enemyPower = result.enemyPower or enemy.power
@@ -1589,7 +1607,11 @@ end
 
 local function CompleteActiveMonsterClear(result, cx, cy)
     if not result or not result.fought then return end
+    Combat.GrantMonsterKillPower(result)
     RunInventory.RecordCombat(result)
+    if result.pressureDelta and result.pressureDelta > 0 then
+        Protocol.AddPressure(result.pressureDelta)
+    end
     if minefield then
         minefield:ClearRoom(cx, cy)
     end
@@ -1719,7 +1741,7 @@ function MovePlayer(dx, dy)
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
         local firstExplore = minefield:Explore(p.x, p.y)
         if firstExplore then
-            local protoResult = Protocol.AddPressure()
+            local protoResult = Protocol.AddPressure(Balance.pressure.explore)
             if protoResult.changed then
                 ShowMessage("协议降至 " .. protoResult.level .. " - " .. protoResult.description)
             end
@@ -1758,6 +1780,10 @@ function MovePlayer(dx, dy)
             local mineResult = Combat.TakeMineHit()
             if result.mineTriggered then
                 RunInventory.RecordMineHit(mineResult.immuneUsed)
+                local minePressure = Protocol.AddPressure(Balance.pressure.mine)
+                if minePressure.changed then
+                    ShowMessage("协议降至 " .. minePressure.level .. " - " .. minePressure.description)
+                end
             end
             DungeonRoom.TriggerMineFlash()
             if not mineResult.immuneUsed then
@@ -2073,7 +2099,10 @@ local function GetEventContext()
     local totals = RunInventory.GetTotals()
     return {
         gold = totals.gold,
+        pendingGold = totals.pendingGold,
+        safeGold = totals.safeGold,
         parts = totals.looseParts or 0,
+        tradableItems = RunInventory.GetTradableItems(),
         hp = Combat.hp,
         maxHp = Combat.maxHp,
         tradePrice = GetActiveTalentEffects().tradePrice,
@@ -2115,12 +2144,29 @@ local function ApplyEventResult(result, x, y)
     end
 
     if result.goldDelta ~= 0 then
-        RunInventory.gold = RunInventory.gold + result.goldDelta
-        if RunInventory.gold < 0 then RunInventory.gold = 0 end
+        RunInventory.AddPendingGold(result.goldDelta)
+    end
+    if result.pendingGoldDelta and result.pendingGoldDelta ~= 0 then
+        RunInventory.AddPendingGold(result.pendingGoldDelta)
+    end
+    if result.safeGoldDelta and result.safeGoldDelta ~= 0 then
+        RunInventory.AddSafeGold(result.safeGoldDelta)
     end
     if result.partsDelta ~= 0 then
         RunInventory.parts = RunInventory.parts + result.partsDelta
         if RunInventory.parts < 0 then RunInventory.parts = 0 end
+    end
+    if result.sellItemId then
+        RunInventory.RemoveTradableItem(result.sellItemId, result.sellCount or 1)
+    end
+    if result.rewardItemQuality then
+        RunInventory.AddRewardItemByQuality(result.rewardItemQuality, "event")
+    end
+    for _, rewardItem in ipairs(result.rewardItems or {}) do
+        local count = math.max(1, math.floor(tonumber(rewardItem.count) or 1))
+        for _ = 1, count do
+            RunInventory.AddRewardItemByQuality(rewardItem.quality, "event")
+        end
     end
     if result.hpDelta ~= 0 then
         Combat.ApplyHpDelta(result.hpDelta)

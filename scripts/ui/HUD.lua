@@ -5,6 +5,7 @@
 
 local MiniMap = require("ui.MiniMap")
 local Protocol = require("systems.Protocol")
+local GameText = require("systems.GameText")
 
 local HUD = {}
 
@@ -122,6 +123,11 @@ local PROTOCOL_DESCS = {
     [1] = "立即撤离.",
 }
 
+for level, text in pairs(GameText.protocol.levels) do
+    PROTOCOL_TITLES[level] = text.short
+    PROTOCOL_DESCS[level] = text.desc
+end
+
 -- 协议降级动画状态
 HUD.protocolFlashTimer = 0
 
@@ -237,15 +243,18 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     local inv = context.inventory or {}
     nvgFillColor(vg, nvgRGBA(255, 230, 80, 255))
-    nvgText(vg, contentX, curY, "金币: " .. (inv.gold or 0))
+    nvgText(vg, contentX, curY, GameText.hud.pendingGold .. (inv.pendingGold or inv.gold or 0))
+    curY = curY + 21
+
+    nvgFillColor(vg, nvgRGBA(120, 240, 160, 255))
+    nvgText(vg, contentX, curY, GameText.hud.safeGold .. (inv.safeGold or 0))
     curY = curY + 21
 
     nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
-    nvgText(vg, contentX, curY, "零件: " .. (inv.parts or 0))
+    nvgText(vg, contentX, curY, GameText.hud.parts .. (inv.parts or 0))
     curY = curY + 21
 
-    nvgFillColor(vg, nvgRGBA(150, 230, 190, 255))
-    nvgText(vg, contentX, curY, "回收包: " .. (inv.carriedItemCount or 0) .. " 件 / 估值 " .. (inv.carriedItemValue or 0))
+    nvgFillColor(vg, nvgRGBA(150, 230, 190, 255))    nvgText(vg, contentX, curY, "回收包: " .. (inv.carriedItemCount or 0) .. " 件 / 估值 " .. (inv.carriedItemValue or 0))
     curY = curY + 21
 
     local consumables = inv.consumables or {}

@@ -3,6 +3,8 @@
 -- 管理:全局金币,已解锁天赋,已购买/装备的带入物品,统计数据
 -- ============================================================================
 
+local Balance = require("systems.Balance")
+
 local MetaProgress = {}
 
 -- ============================================================================
@@ -22,7 +24,7 @@ MetaProgress.ITEMS = {
         id = "armor",
         name = "防护甲",
         desc = "+25 最大血量",
-        price = 50,
+        price = Balance.shop.armor.price,
         category = "数值",
         icon = "[DEF]",
     },
@@ -30,7 +32,7 @@ MetaProgress.ITEMS = {
         id = "whetstone",
         name = "磨刀石",
         desc = "+5 战斗力",
-        price = 40,
+        price = Balance.shop.whetstone.price,
         category = "数值",
         icon = "[ATK]",
     },
@@ -38,7 +40,7 @@ MetaProgress.ITEMS = {
         id = "medkit",
         name = "急救包",
         desc = "首次踩雷免疫伤害",
-        price = 60,
+        price = Balance.shop.medkit.price,
         category = "机制",
         icon = "[MED]",
     },
@@ -46,7 +48,7 @@ MetaProgress.ITEMS = {
         id = "compass",
         name = "罗盘",
         desc = "开局显示撤离点所在象限",
-        price = 80,
+        price = Balance.shop.compass.price,
         category = "机制",
         icon = "[NAV]",
     },
@@ -54,7 +56,7 @@ MetaProgress.ITEMS = {
         id = "backpack",
         name = "大背包",
         desc = "搜索奖励 +50%",
-        price = 100,
+        price = Balance.shop.backpack.price,
         category = "数值",
         icon = "[BAG]",
     },
@@ -96,35 +98,35 @@ MetaProgress.TALENTS = {
         direction = "小地图",
         name = "邻域感知",
         desc = "进入房间时高亮 8 邻域",
-        price = 100,
+        price = Balance.talents.talent_map,
     },
     {
         id = "talent_mine",
         direction = "雷房",
         name = "厚皮",
         desc = "雷伤降低 10 点",
-        price = 80,
+        price = Balance.talents.talent_mine,
     },
     {
         id = "talent_monster",
         direction = "怪物",
         name = "威压",
         desc = "怪物逃跑时间 +2 秒",
-        price = 80,
+        price = Balance.talents.talent_monster,
     },
     {
         id = "talent_extract",
         direction = "撤离",
         name = "保险金",
         desc = "失败保底额外 +10 金币",
-        price = 100,
+        price = Balance.talents.talent_extract,
     },
     {
         id = "talent_event",
         direction = "事件",
         name = "议价",
         desc = "NPC 交易价格 15->20",
-        price = 120,
+        price = Balance.talents.talent_event,
     },
 }
 
@@ -222,7 +224,8 @@ local function copyDisplayData(item)
         rarity = item.rarity or "common",
         rarityName = item.rarityName or "一般",
         icon = item.icon or "",
-        value = toNonNegativeNumber(item.value),
+        value = toNonNegativeNumber(item.baseValue or item.value),
+        baseValue = toNonNegativeNumber(item.baseValue or item.value),
         price = toNonNegativeNumber(item.price),
         effectText = item.effectText,
         description = item.description or item.desc or "",
@@ -288,7 +291,8 @@ local function displayFromStack(stack, source)
         rarity = def.rarity or stack.rarity or "common",
         rarityName = def.rarityName or stack.rarityName or "一般",
         icon = def.icon or stack.icon or "",
-        value = def.value or stack.value or 0,
+        value = def.baseValue or def.value or stack.baseValue or stack.value or 0,
+        baseValue = def.baseValue or def.value or stack.baseValue or stack.value or 0,
         price = def.price or stack.price or 0,
         effectText = def.effectText or stack.effectText,
         description = def.description or stack.description or "",

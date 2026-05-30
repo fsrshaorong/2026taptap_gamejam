@@ -3,6 +3,8 @@
 -- 血量 + 战斗力系统, 处理踩雷扣血,敌人生成与战斗判定
 -- ============================================================================
 
+local Balance = require("systems.Balance")
+
 local Combat = {}
 
 -- 玩家属性
@@ -12,18 +14,19 @@ Combat.power = 10         -- 玩家基础战斗力
 
 -- 敌人数据 { ["x,y"] = { name, power, alive } }
 Combat.enemies = {}
+Combat.monsterPowerBonus = 0
 
 -- 配置
 local CONFIG = {
-    mineDamage = 25,             -- 踩雷扣血
+    mineDamage = Balance.mineDamage,             -- 踩雷扣血
     enemySpawnChance = 0.30,     -- 30% 房间有敌人
     enemyPowerMin = 5,           -- 敌人最低战斗力
     enemyPowerMax = 20,          -- 敌人最高战斗力
-    powerUpChance = 0.20,        -- 搜索后获得战斗力加成概率
-    powerUpAmount = 3,           -- 战斗力加成数值
-    monsterRewardBaseGold = 12,  -- 清理异常体基础奖励
-    monsterRewardPowerGold = 1,  -- 按异常体强度追加金币
-    monsterRewardPartPower = 15, -- 高威胁异常体额外掉落零件
+    powerUpChance = 0,           -- 普通搜索不再提升战斗力
+    powerUpAmount = 0,
+    monsterRewardBaseGold = Balance.monster.goldMin,
+    monsterRewardPowerGold = 0,
+    monsterRewardPartPower = 999,
     monsterPositionX = 0.35,
     monsterPositionY = 0.45,
     monsterHpBase = 18,
@@ -44,9 +47,15 @@ local function cellKey(x, y)
 end
 
 local function makeReward(enemyPower)
+    local span = Balance.monster.goldMax - Balance.monster.goldMin + 1
+    local gold = Balance.monster.goldMin
+    if span > 0 then
+        gold = gold + (math.floor(tonumber(enemyPower) or 0) % span)
+    end
     return {
-        gold = CONFIG.monsterRewardBaseGold + math.floor(enemyPower * CONFIG.monsterRewardPowerGold),
-        parts = enemyPower >= CONFIG.monsterRewardPartPower and 1 or 0,
+        gold = gold,
+        pendingGold = gold,
+        parts = 0,
     }
 end
 
@@ -98,6 +107,8 @@ local function buildClearResult(enemy, damage, playerWin)
         enemyPower = enemyPower,
         cleared = true,
         reward = makeReward(enemyPower),
+        powerGain = 0,
+        pressureDelta = Balance.pressure.monsterKill,
     }
 end
 
@@ -127,6 +138,7 @@ function Combat.Reset()
     Combat.hp = Combat.maxHp
     Combat.power = 10
     Combat.enemies = {}
+    Combat.monsterPowerBonus = 0
     Combat.mineImmunity = false    -- 首次踩雷免疫(装备效果)
     Combat.mineDmgReduce = 0       -- 雷伤减免(天赋效果)
 end
@@ -160,6 +172,24 @@ function Combat.ApplyDamage(damage)
     local result = Combat.ApplyHpDelta(-damage)
     result.damage = damage
     return result
+end
+
+function Combat.GrantMonsterKillPower(result)
+    if not result or not result.fought or result.dead then return 0 end
+    local enemy = result.enemy
+    if enemy and enemy.powerGainGranted then return 0 end
+    if Combat.monsterPowerBonus >= Balance.monster.powerGainCap then
+        if enemy then enemy.powerGainGranted = true end
+        return 0
+    end
+
+    local gain = math.min(Balance.monster.powerGain, Balance.monster.powerGainCap - Combat.monsterPowerBonus)
+    if gain <= 0 then return 0 end
+    Combat.power = Combat.power + gain
+    Combat.monsterPowerBonus = Combat.monsterPowerBonus + gain
+    if enemy then enemy.powerGainGranted = true end
+    result.powerGain = gain
+    return gain
 end
 
 --- 踩雷伤害:扣血, 返回是否死亡
@@ -396,13 +426,6 @@ end
 ---@param y number
 ---@return number  获得的战斗力加成(0 表示没获得)
 function Combat.TryPowerUp(minefield, x, y)
-    local seed = minefield.seed or 1
-    local hash = (x * 67 + y * 113 + seed * 23) % 100
-
-    if hash / 100 < CONFIG.powerUpChance then
-        Combat.power = Combat.power + CONFIG.powerUpAmount
-        return CONFIG.powerUpAmount
-    end
     return 0
 end
 
