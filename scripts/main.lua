@@ -13,6 +13,7 @@ local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
 local HUD = require("ui.HUD")
 local DungeonRoom = require("scenes.DungeonRoom")
+local EventSystem = require("systems.EventSystem")
 
 -- ============================================================================
 -- 全局状态
@@ -32,7 +33,7 @@ local run = nil          -- ExtractionRun 实例
 ---@type table
 local minefield = nil    -- Minefield 引用(run.minefield)
 
--- 玩家已访问的格子 { ["x,y"] = true }
+-- 玩家已访问的格子 (v0.3: 由 minefield:Explore() 管理, 此表仅作兼容)
 local visitedCells = {}
 
 -- 游戏阶段
@@ -539,15 +540,17 @@ function StartNewGame(override)
     run = ExtractionRun.New(config)
     minefield = run.minefield
 
-    -- 标记出生格为已访问
+    -- 标记出生格为已探索(v0.3: 通过 Minefield:Explore 管理)
     visitedCells = {}
     local spawn = minefield:GetSpawn()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
+    minefield:Explore(spawn.x, spawn.y)
     RunInventory.Reset()
     Combat.Reset()
     Protocol.Reset()
     DungeonRoom.ResetPlayer()
     tradedRooms = {}
+    EventSystem.Reset(minefield.seed or os.time())
 
     -- 应用装备加成
     local equipBonus = MetaProgress.GetEquipBonus()
@@ -807,6 +810,10 @@ function FinishBattle()
         ShowMessage("强行清理成功, 生命 -" .. result.damage .. "." .. rewardText)
     end
     if not result.dead then
+        -- v0.3: 标记房间已清理
+        if minefield and battleState.cellX then
+            minefield:ClearRoom(battleState.cellX, battleState.cellY)
+        end
         if result.playerWin then
             ShowMessage("异常体已清理. 区域风险下降. (我方" .. playerPower .. " vs 威胁" .. enemyPower .. ")" .. rewardText)
         else
@@ -849,6 +856,13 @@ function MoveScenePlayer(dx, dy, dt)
     if not run then return end
 
     local cpW, cpH = GetCenterAreaPhysSize()
+    local p = run:GetPlayer()
+    DungeonRoom.SetRoomObstacles({
+        run = run,
+        minefield = minefield,
+        searchState = GetSearchState(),
+        enemy = Combat.GetEnemyAny(p.x, p.y),
+    }, cpW, cpH, dpr)
     local result = DungeonRoom.MovePlayer(dx, dy, cpW, cpH, dpr, dt)
     if result.action == "enter" then
         MovePlayer(result.dx, result.dy)
@@ -877,9 +891,23 @@ function MovePlayer(dx, dy)
             monsterFleeTimer = 0
         end
 
-        -- 标记为已访问
+        -- 标记为已探索(v0.3: 通过 Minefield:Explore + Protocol 压力)
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
+        local firstExplore = minefield:Explore(p.x, p.y)
+        if firstExplore then
+            local protoResult = Protocol.AddPressure()
+            if protoResult.changed then
+                ShowMessage("协议降至 " .. protoResult.level .. " - " .. protoResult.description)
+            end
+            -- Protocol 1 惩罚: 探索未知房扣血
+            if protoResult.penalty then
+                Combat.hp = Combat.hp - 1
+                if Combat.hp > 0 then
+                    ShowMessage("临界协议! 探索未知房损失生命! (HP-1)")
+                end
+            end
+        end
 
         -- 邻域感知天赋:高亮 8 邻域
         local talentEffects = MetaProgress.GetTalentEffects()
@@ -953,12 +981,7 @@ function MovePlayer(dx, dy)
                 local cell = minefield:GetCellView(p.x, p.y)
                 local searchState = GetSearchState()
                 if cell and cell.roomType == "event" then
-                    local ekey = tostring(p.x) .. "," .. tostring(p.y)
-                    if tradedRooms[ekey] then
-                        ShowMessage("旅商已交易完毕.")
-                    else
-                        ShowMessage("遇到旅商!按 T 用零件换金币.")
-                    end
+                    ShowMessage(EventSystem.GetEnterMessage(p.x, p.y))
                 elseif searchState.isChest then
                     ShowMessage("发现宝箱房!按 F 开启宝箱, 奖励丰厚!")
                 elseif searchState.canSearch then
@@ -1032,6 +1055,8 @@ function SearchCurrentRoom()
         msg = msg .. ", 战斗力 +" .. powerUp
     end
     if reward.isChest then
+        -- v0.3: 宝箱开启后标记房间已清理
+        minefield:ClearRoom(p.x, p.y)
         ShowMessage(msg .. ". 稀有物资已回收!")
     else
         ShowMessage(msg .. ".")
@@ -1040,12 +1065,11 @@ function SearchCurrentRoom()
     UpdateHUD()
 end
 
---- 传送到已访问的安全格
+--- 传送到已探索的安全格
 function TeleportTo(x, y)
     if not run then return end
-    local key = tostring(x) .. "," .. tostring(y)
-    if not visitedCells[key] then
-        ShowMessage("只能传送到已访问的安全房间.")
+    if not minefield:IsExplored(x, y) then
+        ShowMessage("只能传送到已探索的安全房间.")
         return
     end
 
@@ -1160,33 +1184,69 @@ function CancelExtract()
     if panel then panel:Hide() end
 end
 
---- 事件房交易
+--- 事件房交互（统一入口：旅商/骰子/祭坛/机关）
 function DoTrade()
     if not run or not minefield then return end
     local p = run:GetPlayer()
     local cell = minefield:GetCellView(p.x, p.y)
     if not cell or cell.roomType ~= "event" then
-        ShowMessage("这里没有可交易的 NPC.")
+        ShowMessage("这里没有可交互的事件.")
         return
     end
-    local key = tostring(p.x) .. "," .. tostring(p.y)
-    if tradedRooms[key] then
-        ShowMessage("这个旅商已经交易过了.")
+    if EventSystem.IsCompleted(p.x, p.y) then
+        local def = EventSystem.GetEventDef(EventSystem.GetEventType(p.x, p.y))
+        ShowMessage(def and def.doneMsg or "事件已完成.")
         return
     end
+
+    -- 构建上下文
     local totals = RunInventory.GetTotals()
-    if totals.parts < 1 then
+    local ctx = {
+        gold = totals.gold,
+        parts = totals.parts,
+        hp = Combat.hp,
+        maxHp = Combat.maxHp,
+        tradePrice = MetaProgress.GetTalentEffects().tradePrice,
+        power = Combat.power,
+    }
+
+    local result = EventSystem.Execute(p.x, p.y, ctx)
+    if not result.ok then
         DungeonRoom.TriggerTradePulse()
-        ShowMessage("旅商想要 1 个零件, 当前没有可交易零件.")
+        ShowMessage(result.msg)
         return
     end
-    local tradePrice = MetaProgress.GetTalentEffects().tradePrice
-    RunInventory.parts = RunInventory.parts - 1
-    RunInventory.gold = RunInventory.gold + tradePrice
-    RunInventory.RecordTrade()
+
+    -- 应用结果
+    if result.goldDelta ~= 0 then
+        RunInventory.gold = RunInventory.gold + result.goldDelta
+    end
+    if result.partsDelta ~= 0 then
+        RunInventory.parts = RunInventory.parts + result.partsDelta
+        if RunInventory.parts < 0 then RunInventory.parts = 0 end
+    end
+    if result.hpDelta ~= 0 then
+        Combat.hp = Combat.hp + result.hpDelta
+        if Combat.hp < 0 then Combat.hp = 0 end
+        if Combat.hp > Combat.maxHp then Combat.hp = Combat.maxHp end
+    end
+
+    -- 向后兼容 tradedRooms（HUD 状态查询可能依赖）
+    local key = tostring(p.x) .. "," .. tostring(p.y)
     tradedRooms[key] = true
+    RunInventory.RecordTrade()
+
+    -- v0.3: 事件完成后标记房间已清理
+    minefield:ClearRoom(p.x, p.y)
     DungeonRoom.TriggerTradePulse()
-    ShowMessage("交易成功!用 1 零件换了 " .. tradePrice .. " 金币.")
+    ShowMessage(result.msg)
+
+    -- 检查 HP 归零
+    if Combat.hp <= 0 then
+        ShowFailurePanel("事件导致血量归零!")
+        return
+    end
+
     UpdateHUD()
 end
 
@@ -1206,17 +1266,15 @@ function ShowMessage(text)
 end
 
 function CountVisitedCells()
-    local count = 0
-    for _ in pairs(visitedCells) do
-        count = count + 1
+    if minefield then
+        return minefield:GetExploredCount()
     end
-    return count
+    return 0
 end
 
 function UpdateHUD()
     if not run then return end
-    -- 更新协议等级(基于已探索格数)
-    Protocol.UpdateByExploredRooms(CountVisitedCells())
+    -- v0.3: 协议由 Protocol.AddPressure() 在探索时实时驱动, 此处不再主动更新
     -- HUD 数据由 NanoVG 每帧实时读取, 无需再手动更新 UI Label
 end
 
@@ -1400,7 +1458,6 @@ function HandleNanoVGRender(eventType, eventData)
     if phase == PHASE.PLAYING or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
         local hudLayout = HUD.ComputeLayout(w, h)
         local p = run:GetPlayer()
-        local tradeKey = tostring(p.x) .. "," .. tostring(p.y)
         local cell = minefield and minefield:GetCellView(p.x, p.y) or nil
 
         -- 预计算共用数据
@@ -1430,7 +1487,8 @@ function HandleNanoVGRender(eventType, eventData)
             searchState = GetSearchState(),
             enemy = Combat.GetEnemyAny(p.x, p.y),
             combat = combatStatus,
-            eventTraded = tradedRooms[tradeKey] or false,
+            eventTraded = EventSystem.IsCompleted(p.x, p.y),
+            eventType = (cell and cell.roomType == "event") and EventSystem.GetEventType(p.x, p.y) or nil,
             inventory = invStatus,
             tradePrice = MetaProgress.GetTalentEffects().tradePrice,
             monsterFleeActive = monsterFleeActive,
@@ -1460,7 +1518,11 @@ function HandleNanoVGRender(eventType, eventData)
         -- HUD: 底部交互栏
         local roomType = cell and cell.roomType or "normal"
         local enemy = Combat.GetEnemyAny(p.x, p.y)
-        local eventTraded = tradedRooms[tradeKey] or false
+        local eventCompleted = EventSystem.IsCompleted(p.x, p.y)
+        local eventDef = nil
+        if roomType == "event" then
+            eventDef = EventSystem.GetEventDef(EventSystem.GetEventType(p.x, p.y))
+        end
         local interactHint = HUD.GetInteractHint({
             roomType = roomType,
             searchState = GetSearchState(),
@@ -1469,9 +1531,10 @@ function HandleNanoVGRender(eventType, eventData)
             enemyPower = enemy and enemy.power or nil,
             playerPower = combatStatus.power,
             hasExit = cell and cell.exitId ~= nil,
-            canTrade = roomType == "event" and not eventTraded and invTotals.parts > 0,
-            tradeUnavailable = roomType == "event" and not eventTraded and invTotals.parts <= 0,
-            eventTraded = eventTraded,
+            canTrade = roomType == "event" and not eventCompleted,
+            eventName = eventDef and eventDef.name or nil,
+            tradeUnavailable = false,
+            eventTraded = eventCompleted,
         })
 
         -- 计算撤离距离

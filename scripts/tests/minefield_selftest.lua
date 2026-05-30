@@ -205,13 +205,138 @@ local function testNonFatalMineRoom()
     assertTrue(not secondEntry.mineTriggered, "triggered mine should not report fresh trigger")
 end
 
-local function testProtocolProgression()
+local function testProtocolPressure()
     Protocol.Reset()
-    assertEq(Protocol.GetStatus().level, 5, "protocol should start at level 5")
-    assertEq(Protocol.UpdateByExploredRooms(4).level, 4, "protocol level 4 threshold")
-    assertEq(Protocol.UpdateByExploredRooms(8).level, 3, "protocol level 3 threshold")
-    assertEq(Protocol.UpdateByExploredRooms(12).level, 2, "protocol level 2 threshold")
-    assertEq(Protocol.UpdateByExploredRooms(16).level, 1, "protocol level 1 threshold")
+    local status = Protocol.GetStatus()
+    assertEq(status.level, 5, "protocol should start at level 5")
+    assertEq(status.pressure, 0, "protocol should start at 0 pressure")
+
+    -- 每次探索增加 5 压力, 4次 = 20 → level 4
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    assertEq(Protocol.GetStatus().level, 4, "protocol level 4 at pressure 20")
+    assertEq(Protocol.GetStatus().pressure, 20, "protocol pressure should be 20 after 4 explores")
+
+    -- 再 4 次 = 40 → level 3
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    assertEq(Protocol.GetStatus().level, 3, "protocol level 3 at pressure 40")
+
+    -- 再 4 次 = 60 → level 2
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    assertEq(Protocol.GetStatus().level, 2, "protocol level 2 at pressure 60")
+
+    -- 再 4 次 = 80 → level 1
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    local result = Protocol.AddPressure()  -- 85, still level 1
+    assertEq(Protocol.GetStatus().level, 1, "protocol level 1 at pressure 80+")
+    assertTrue(result.penalty, "protocol 1 should report penalty")
+end
+
+local function testCellStateExploreAndClear()
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 3, y = 3 },
+            monsters = { { x = 4, y = 3 } },
+            chests = { { x = 2, y = 3 } },
+        },
+    })
+
+    -- 初始状态: 所有格都未探索
+    assertEq(field:GetCellState(3, 3), "unknown", "spawn should start unknown")
+    assertEq(field:IsExplored(3, 3), false, "spawn should not be explored initially")
+
+    -- Reveal 只是 scanned, 不是 explored
+    field:Reveal(4, 3)
+    assertEq(field:GetCellState(4, 3), "scanned", "revealed but not entered should be scanned")
+    assertEq(field:IsExplored(4, 3), false, "scanned cell should not be explored")
+
+    -- Explore 标记为 explored
+    local first = field:Explore(3, 3)
+    assertTrue(first, "first explore should return true")
+    assertEq(field:GetCellState(3, 3), "explored", "entered cell should be explored")
+    assertTrue(field:IsExplored(3, 3), "IsExplored should return true")
+
+    -- 重复 explore 返回 false
+    local second = field:Explore(3, 3)
+    assertTrue(not second, "repeated explore should return false")
+
+    -- Explore 未 reveal 过的格子会自动 reveal
+    local firstMonster = field:Explore(4, 3)
+    assertTrue(firstMonster, "exploring monster room should return true")
+    assertEq(field:GetCellState(4, 3), "explored", "monster room should be explored")
+    local cell = field:GetCell(4, 3)
+    assertTrue(cell.revealed, "explore should auto-reveal")
+
+    -- ClearRoom 标记为 cleared
+    local cleared = field:ClearRoom(4, 3)
+    assertTrue(cleared, "first clear should return true")
+    assertEq(field:GetCellState(4, 3), "cleared", "cleared room should report cleared state")
+    assertTrue(field:IsCleared(4, 3), "IsCleared should return true")
+
+    -- 重复 clear 返回 false
+    local secondClear = field:ClearRoom(4, 3)
+    assertTrue(not secondClear, "repeated clear should return false")
+
+    -- GetExploredCount
+    assertEq(field:GetExploredCount(), 2, "explored count should be 2 (spawn + monster)")
+
+    -- PublicCell 包含 explored/cleared 字段
+    local view = field:GetCellView(4, 3)
+    assertTrue(view.explored, "public cell view should include explored")
+    assertTrue(view.cleared, "public cell view should include cleared")
+    local view2 = field:GetCellView(2, 3)
+    assertTrue(not view2.explored, "unexplored cell should show explored=false in view")
+end
+
+local function testZeroExpansionDisabledByDefault()
+    -- 默认 expandZeroCells = false, 0邻域格不应连锁展开
+    local field = Minefield.New({
+        width = 5,
+        height = 5,
+        mineCount = 0,
+        seed = 42,
+        spawnSafeRadius = 0,
+        pathWidth = 0,
+    })
+
+    local result = field:Reveal(1, 1)
+    assertTrue(result.ok, "reveal 0-adjacent cell failed")
+    assertEq(#result.cells, 1, "0-adjacent reveal should NOT expand (expandZeroCells defaults false)")
+
+    -- 验证只有 (1,1) 被 reveal 了
+    assertTrue(field:GetCell(1, 1).revealed, "target cell should be revealed")
+    assertTrue(not field:GetCell(2, 1).revealed, "neighbor should NOT be revealed by default")
+    assertTrue(not field:GetCell(1, 2).revealed, "neighbor should NOT be revealed by default")
+end
+
+local function testTeleportRequiresExplored()
+    -- 模拟传送规则: scanned 不可传送, explored 才可
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 3, y = 3 },
+        },
+    })
+
+    -- Reveal (scan) 不等于 explore
+    field:Reveal(2, 3)
+    assertTrue(not field:IsExplored(2, 3), "scanned cell should not be explorable for teleport")
+
+    -- Explore 后可传送
+    field:Explore(2, 3)
+    assertTrue(field:IsExplored(2, 3), "explored cell should be valid for teleport")
 end
 
 local function testFailureSalvage()
@@ -459,6 +584,128 @@ local function testCombatRewardInventory()
     assertEq(stats.combatDamage, 3, "rewarded combat should still count damage")
 end
 
+-- ============================================================================
+-- EventSystem tests
+-- ============================================================================
+
+local EventSystem = require("systems.EventSystem")
+
+local function testEventTypeDeterminism()
+    EventSystem.Reset(42)
+    local t1 = EventSystem.GetEventType(3, 5)
+    local t2 = EventSystem.GetEventType(3, 5)
+    assertEq(t1, t2, "same coords same seed should give same event type")
+
+    -- Different coords may give different type (not guaranteed, but reset state)
+    EventSystem.Reset(42)
+    local t3 = EventSystem.GetEventType(3, 5)
+    assertEq(t1, t3, "after reset with same seed, same coord should match")
+
+    -- Different seed should change assignment
+    EventSystem.Reset(999)
+    -- The type may or may not differ, but the system shouldn't crash
+    local t4 = EventSystem.GetEventType(3, 5)
+    assert(t4 == "trader" or t4 == "dice" or t4 == "altar" or t4 == "trap",
+        "event type must be one of the four valid types")
+end
+
+local function testEventCompletedState()
+    EventSystem.Reset(100)
+    assert(not EventSystem.IsCompleted(1, 1), "should not be completed initially")
+    EventSystem.MarkCompleted(1, 1)
+    assert(EventSystem.IsCompleted(1, 1), "should be completed after marking")
+    assert(not EventSystem.IsCompleted(2, 2), "other coords unaffected")
+end
+
+local function testEventExecTrader()
+    EventSystem.Reset(50)
+    -- Force the assignment to trader by finding a coord that gives "trader"
+    -- We'll directly assign for testing
+    EventSystem.assignedEvents["10,10"] = "trader"
+
+    -- Not enough parts
+    local r1 = EventSystem.Execute(10, 10, { gold = 100, parts = 0, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    assert(not r1.ok, "trader should fail with 0 parts")
+    assertEq(r1.goldDelta, 0, "no gold change on fail")
+
+    -- Enough parts
+    local r2 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    assert(r2.ok, "trader should succeed with parts")
+    assertEq(r2.goldDelta, 20, "should gain tradePrice gold")
+    assertEq(r2.partsDelta, -1, "should spend 1 part")
+    assertEq(r2.hpDelta, 0, "no hp change for trader")
+
+    -- Already completed
+    local r3 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    assert(not r3.ok, "completed event should fail")
+end
+
+local function testEventExecDice()
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["20,20"] = "dice"
+
+    -- Not enough gold
+    local r1 = EventSystem.Execute(20, 20, { gold = 5, parts = 1, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(not r1.ok, "dice should fail with insufficient gold")
+
+    -- Enough gold - should produce a result (win or lose)
+    local r2 = EventSystem.Execute(20, 20, { gold = 50, parts = 1, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(r2.ok, "dice should succeed with enough gold")
+    assert(r2.goldDelta == 10 or r2.goldDelta == -10, "dice should net +10 (win) or -10 (lose), got: " .. r2.goldDelta)
+    assertEq(r2.partsDelta, 0, "dice no parts change")
+    assertEq(r2.hpDelta, 0, "dice no hp change")
+end
+
+local function testEventExecAltar()
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["30,30"] = "altar"
+
+    -- Not enough HP (hp <= cost)
+    local r1 = EventSystem.Execute(30, 30, { gold = 10, parts = 0, hp = 1, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(not r1.ok, "altar should fail with hp <= cost")
+
+    -- Enough HP
+    local r2 = EventSystem.Execute(30, 30, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(r2.ok, "altar should succeed with hp > cost")
+    assertEq(r2.hpDelta, -1, "altar costs 1 hp")
+    assertEq(r2.goldDelta, 15, "altar gives 15 gold")
+    assertEq(r2.partsDelta, 1, "altar gives 1 part")
+end
+
+local function testEventExecTrap()
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["40,40"] = "trap"
+
+    -- Low power - fail
+    local r1 = EventSystem.Execute(40, 40, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 3 })
+    assert(r1.ok, "trap always 'succeeds' (executes), even on fail check")
+    assertEq(r1.goldDelta, 0, "trap fail gives no gold")
+    assertEq(r1.hpDelta, -1, "trap fail costs 1 hp")
+
+    -- Reset for high power test
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["40,40"] = "trap"
+
+    -- High power - success
+    local r2 = EventSystem.Execute(40, 40, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 10 })
+    assert(r2.ok, "trap should succeed")
+    assertEq(r2.goldDelta, 25, "trap success gives 25 gold")
+    assertEq(r2.partsDelta, 2, "trap success gives 2 parts")
+    assertEq(r2.hpDelta, 0, "trap success no hp cost")
+end
+
+local function testEventEnterMessage()
+    EventSystem.Reset(77)
+    EventSystem.assignedEvents["5,5"] = "dice"
+
+    local msg1 = EventSystem.GetEnterMessage(5, 5)
+    assert(msg1:find("赌徒"), "enter message should mention event name")
+
+    EventSystem.MarkCompleted(5, 5)
+    local msg2 = EventSystem.GetEnterMessage(5, 5)
+    assert(msg2:find("离开"), "done message should indicate event is over")
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "normal mode random generation", fn = testNormalModeRandomGeneration },
@@ -467,12 +714,22 @@ local tests = {
     { name = "flag and mine reveal", fn = testFlagAndMineReveal },
     { name = "extraction run", fn = testExtractionRun },
     { name = "non-fatal mine room", fn = testNonFatalMineRoom },
-    { name = "protocol progression", fn = testProtocolProgression },
+    { name = "protocol pressure", fn = testProtocolPressure },
+    { name = "cell state explore and clear", fn = testCellStateExploreAndClear },
+    { name = "zero expansion disabled by default", fn = testZeroExpansionDisabledByDefault },
+    { name = "teleport requires explored", fn = testTeleportRequiresExplored },
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "combat result signals", fn = testCombatResultSignals },
     { name = "run stats", fn = testRunStats },
     { name = "combat reward inventory", fn = testCombatRewardInventory },
+    { name = "event type determinism", fn = testEventTypeDeterminism },
+    { name = "event completed state", fn = testEventCompletedState },
+    { name = "event exec trader", fn = testEventExecTrader },
+    { name = "event exec dice", fn = testEventExecDice },
+    { name = "event exec altar", fn = testEventExecAltar },
+    { name = "event exec trap", fn = testEventExecTrap },
+    { name = "event enter message", fn = testEventEnterMessage },
 }
 
 for _, test in ipairs(tests) do

@@ -26,6 +26,8 @@ local imgRoomSafe = -1
 local imgRoomDanger = -1
 local imgRoomTreasure = -1
 local imgRoomExit = -1
+local imgRoomEvent = -1
+local imgRoomMonster = -1
 local imgRoomBase = -1
 local imgPropChestClosed = -1
 local imgPropChestOpen = -1
@@ -74,19 +76,18 @@ local function advanceWalkAnimation(dt)
     end
 end
 local animMovedThisFrame = false  -- 本帧是否调用了MovePlayer
-local ANIM_FRAME_TIME = 0.18 -- 每帧持续时间(秒)
 
 --- 初始化图片资源(只调用一次)
 function DungeonRoom.Init(vg)
     if imagesLoaded then return end
     imgPlayer = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
     imgEnemy = nvgCreateImage(vg, "Textures/enemy_slime.png", 0)
-    imgRoomSafe = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomDanger = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomTreasure = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomExit = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomEvent = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomMonster = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomSafe = nvgCreateImage(vg, "Textures/room_safe.png", 0)
+    imgRoomDanger = nvgCreateImage(vg, "Textures/room_danger.png", 0)
+    imgRoomTreasure = nvgCreateImage(vg, "Textures/room_treasure.png", 0)
+    imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
+    imgRoomEvent = nvgCreateImage(vg, "Textures/room_event.png", 0)
+    imgRoomMonster = nvgCreateImage(vg, "Textures/room_monster.png", 0)
     imgRoomBase = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
     imgPropChestClosed = nvgCreateImage(vg, "Textures/generated/props/03_baoxiang_guan.png", 0)
     imgPropChestOpen = nvgCreateImage(vg, "Textures/generated/props/00_baoxiang_kai.png", 0)
@@ -155,6 +156,10 @@ end
 
 local playerPos = { x = 0.5, y = 0.5 }
 
+-- 房间内障碍物(归一化坐标, 圆形碰撞体)
+-- 每个元素: { x=归一化X, y=归一化Y, r=归一化半径 }
+local roomObstacles = {}
+
 -- 踩雷红闪效果
 local mineFlashTimer = 0
 local MINE_FLASH_DURATION = 0.6
@@ -186,6 +191,54 @@ end
 
 function DungeonRoom.TriggerExitPulse()
     exitPulseTimer = EXIT_PULSE_DURATION
+end
+
+--- 设置当前房间的障碍物(每帧或切房间时调用)
+--- obstacles 基于归一化房间坐标(0~1), 半径也归一化
+---@param context table 与 Draw 相同的 context
+---@param screenW number
+---@param screenH number
+---@param dpr number
+function DungeonRoom.SetRoomObstacles(context, screenW, screenH, dpr)
+    roomObstacles = {}
+    if not context or not context.run or not context.minefield then return end
+
+    local layout = DungeonRoom.GetLayout(screenW / dpr, screenH / dpr)
+    -- 碰撞半径(像素 → 归一化, 取宽高平均)
+    local function pixToNorm(px)
+        return px / math.min(layout.w, layout.h)
+    end
+
+    local p = context.run:GetPlayer()
+    local cell = context.minefield:GetCellView(p.x, p.y)
+    local roomType = cell and cell.roomType or "normal"
+
+    -- 宝箱/搜索点: 房间中心
+    if context.searchState and (context.searchState.canSearch or context.searchState.searched) then
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = 0.5, r = pixToNorm(42) }
+    end
+
+    -- 撤离装置: 房间上方中间
+    if cell and cell.exitId then
+        local exitNormY = 54 / layout.h
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = exitNormY, r = pixToNorm(40) }
+    end
+
+    -- 怪物(活着时阻挡)
+    local enemy = context.enemy
+    if enemy and enemy.alive then
+        roomObstacles[#roomObstacles + 1] = { x = 0.35, y = 0.45, r = pixToNorm(32) }
+    end
+
+    -- 事件 NPC
+    if roomType == "event" then
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = 0.35, r = pixToNorm(36) }
+    end
+
+    -- 已触发地雷(中央装饰, 较小碰撞)
+    if roomType == "mine" then
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = 0.38, r = pixToNorm(30) }
+    end
 end
 
 --- 更新红闪计时器(在 HandleUpdate 中调用)
@@ -323,6 +376,27 @@ function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
         return { action = "enter", dx = dx, dy = dy }
     end
 
+    if nextX < minX then nextX = minX end
+    if nextX > maxX then nextX = maxX end
+    if nextY < minY then nextY = minY end
+    if nextY > maxY then nextY = maxY end
+
+    -- 障碍物碰撞解算(圆形推开)
+    local playerR = CONFIG.playerRadius / math.min(layout.w, layout.h)
+    for _, obs in ipairs(roomObstacles) do
+        local odx = nextX - obs.x
+        local ody = nextY - obs.y
+        local dist = math.sqrt(odx * odx + ody * ody)
+        local minDist = playerR + obs.r
+        if dist < minDist and dist > 0.001 then
+            -- 推开到刚好不重叠的位置
+            local push = (minDist - dist)
+            nextX = nextX + (odx / dist) * push
+            nextY = nextY + (ody / dist) * push
+        end
+    end
+
+    -- 推开后再次钳制到房间边界
     if nextX < minX then nextX = minX end
     if nextX > maxX then nextX = maxX end
     if nextY < minY then nextY = minY end
@@ -589,33 +663,22 @@ function DungeonRoom.Draw(vg, w, h, context)
     end
     if cell and cell.exitId then roomBgImg = imgRoomExit end
 
-    if imgRoomBase >= 0 then
-        nvgBeginPath(vg)
-        nvgRect(vg, 0, 0, w, h)
-        nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
-        nvgFill(vg)
+    -- 背景铺满整个区域(cover 模式: 保持比例, 填满不留黑边)
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
+    nvgFill(vg)
 
-        local bgSize = math.min(w, h)
+    local bgImg = (imgRoomBase >= 0) and imgRoomBase or roomBgImg
+    if bgImg >= 0 then
+        -- cover: 取 max 使贴图完全覆盖区域
+        local bgSize = math.max(w, h)
         local bgX = (w - bgSize) / 2
         local bgY = (h - bgSize) / 2
-        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, imgRoomBase, 1.0)
-        nvgBeginPath(vg)
-        nvgRect(vg, bgX, bgY, bgSize, bgSize)
-        nvgFillPaint(vg, paint)
-        nvgFill(vg)
-    elseif roomBgImg >= 0 then
-        local bgSize = math.min(w, h)
-        local bgX = (w - bgSize) / 2
-        local bgY = (h - bgSize) / 2
-        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, roomBgImg, 1.0)
-        nvgBeginPath(vg)
-        nvgRect(vg, bgX, bgY, bgSize, bgSize)
-        nvgFillPaint(vg, paint)
-        nvgFill(vg)
-    else
+        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, bgImg, 1.0)
         nvgBeginPath(vg)
         nvgRect(vg, 0, 0, w, h)
-        nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
+        nvgFillPaint(vg, paint)
         nvgFill(vg)
     end
 
@@ -871,12 +934,20 @@ function DungeonRoom.Draw(vg, w, h, context)
     if roomType == "event" then
         local npcX = layout.x + layout.w * 0.5
         local npcY = layout.y + layout.h * 0.35
-        local traded = context.eventTraded
-        local parts = (context.inventory and context.inventory.parts) or 0
-        local canTrade = not traded and parts > 0
-        local tradePrice = context.tradePrice or 15
+        local completed = context.eventTraded
+        local eventType = context.eventType or "trader"
         local tradeFlash = tradePulseTimer / TRADE_PULSE_DURATION
 
+        -- 事件类型视觉配置
+        local evtVisual = {
+            trader = { bodyColor = nvgRGBA(40, 140, 150, 230), hatColor = nvgRGBA(60, 180, 190, 240), accentColor = nvgRGBA(80, 220, 230, 255), label = "旅商", hint = "T:零件换金币" },
+            dice   = { bodyColor = nvgRGBA(180, 120, 40, 230), hatColor = nvgRGBA(220, 160, 50, 240), accentColor = nvgRGBA(255, 200, 80, 255), label = "赌徒", hint = "T:赌10金(4+赢)" },
+            altar  = { bodyColor = nvgRGBA(120, 50, 150, 230), hatColor = nvgRGBA(160, 70, 200, 240), accentColor = nvgRGBA(200, 130, 255, 255), label = "祭坛", hint = "T:1HP换资源" },
+            trap   = { bodyColor = nvgRGBA(150, 80, 40, 230), hatColor = nvgRGBA(190, 100, 50, 240), accentColor = nvgRGBA(240, 150, 70, 255), label = "机关", hint = "T:拆解(需战力)" },
+        }
+        local vis = evtVisual[eventType] or evtVisual.trader
+
+        -- 脉冲光环
         if tradeFlash > 0 then
             nvgBeginPath(vg)
             nvgCircle(vg, npcX, npcY, 44 + 24 * (1 - tradeFlash))
@@ -885,78 +956,91 @@ function DungeonRoom.Draw(vg, w, h, context)
         end
 
         if imgPropCore >= 0 then
-            drawSpriteBottom(vg, imgPropCore, npcX - 70, npcY + 66, 84, traded and 0.5 or 0.9)
+            drawSpriteBottom(vg, imgPropCore, npcX - 70, npcY + 66, 84, completed and 0.5 or 0.9)
         end
         if imgPropMerchant >= 0 then
-            drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, traded and 0.55 or 1.0)
+            drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, completed and 0.55 or 1.0)
         end
 
-        -- 小摊位
+        -- 小摊位/基座
         nvgBeginPath(vg)
         nvgRoundedRect(vg, npcX - 44, npcY + 42, 88, 20, 4)
-        nvgFillColor(vg, traded and nvgRGBA(45, 55, 55, 170) or (canTrade and nvgRGBA(55, 115, 120, 220) or nvgRGBA(80, 70, 55, 210)))
+        nvgFillColor(vg, completed and nvgRGBA(45, 55, 55, 170) or nvgRGBA(55, 115, 120, 220))
         nvgFill(vg)
-        nvgStrokeColor(vg, traded and nvgRGBA(80, 95, 95, 130) or (canTrade and nvgRGBA(100, 220, 210, 190) or nvgRGBA(230, 170, 85, 190)))
+        nvgStrokeColor(vg, completed and nvgRGBA(80, 95, 95, 130) or vis.accentColor)
         nvgStrokeWidth(vg, 1.5)
         nvgStroke(vg)
 
-        -- NPC 身体(蓝绿色圆形)
+        -- NPC/物件 身体
         nvgBeginPath(vg)
         nvgCircle(vg, npcX, npcY, 18)
-        nvgFillColor(vg, traded and nvgRGBA(50, 60, 60, 160) or nvgRGBA(40, 140, 150, 230))
+        nvgFillColor(vg, completed and nvgRGBA(50, 60, 60, 160) or vis.bodyColor)
         nvgFill(vg)
-        nvgStrokeColor(vg, traded and nvgRGBA(80, 100, 100, 150) or nvgRGBA(80, 220, 230, 255))
+        nvgStrokeColor(vg, completed and nvgRGBA(80, 100, 100, 150) or vis.accentColor)
         nvgStrokeWidth(vg, 2)
         nvgStroke(vg)
 
-        -- NPC 帽子
+        -- 顶部标识（帽子/图标）
         nvgBeginPath(vg)
-        nvgMoveTo(vg, npcX - 12, npcY - 14)
-        nvgLineTo(vg, npcX, npcY - 28)
-        nvgLineTo(vg, npcX + 12, npcY - 14)
-        nvgClosePath(vg)
-        nvgFillColor(vg, traded and nvgRGBA(60, 70, 70, 150) or nvgRGBA(60, 180, 190, 240))
+        if eventType == "dice" then
+            -- 骰子方块
+            nvgRoundedRect(vg, npcX - 10, npcY - 28, 20, 20, 3)
+        elseif eventType == "altar" then
+            -- 倒三角
+            nvgMoveTo(vg, npcX - 12, npcY - 28)
+            nvgLineTo(vg, npcX + 12, npcY - 28)
+            nvgLineTo(vg, npcX, npcY - 12)
+            nvgClosePath(vg)
+        elseif eventType == "trap" then
+            -- 齿轮状（六角）
+            nvgMoveTo(vg, npcX, npcY - 30)
+            nvgLineTo(vg, npcX + 10, npcY - 24)
+            nvgLineTo(vg, npcX + 10, npcY - 14)
+            nvgLineTo(vg, npcX, npcY - 8)
+            nvgLineTo(vg, npcX - 10, npcY - 14)
+            nvgLineTo(vg, npcX - 10, npcY - 24)
+            nvgClosePath(vg)
+        else
+            -- 旅商三角帽
+            nvgMoveTo(vg, npcX - 12, npcY - 14)
+            nvgLineTo(vg, npcX, npcY - 28)
+            nvgLineTo(vg, npcX + 12, npcY - 14)
+            nvgClosePath(vg)
+        end
+        nvgFillColor(vg, completed and nvgRGBA(60, 70, 70, 150) or vis.hatColor)
         nvgFill(vg)
 
-        -- NPC 眼睛
-        nvgBeginPath(vg)
-        nvgCircle(vg, npcX - 6, npcY - 3, 3)
-        nvgCircle(vg, npcX + 6, npcY - 3, 3)
-        nvgFillColor(vg, traded and nvgRGBA(100, 120, 120, 150) or nvgRGBA(200, 255, 255, 255))
-        nvgFill(vg)
+        -- 眼睛（仅 NPC 类型）
+        if eventType == "trader" or eventType == "dice" then
+            nvgBeginPath(vg)
+            nvgCircle(vg, npcX - 6, npcY - 3, 3)
+            nvgCircle(vg, npcX + 6, npcY - 3, 3)
+            nvgFillColor(vg, completed and nvgRGBA(100, 120, 120, 150) or nvgRGBA(200, 255, 255, 255))
+            nvgFill(vg)
+        end
 
-        -- 文字
+        -- 文字标签
         nvgFontFace(vg, "sans")
         nvgFontSize(vg, 14)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
-        if traded then
+        if completed then
             nvgFillColor(vg, nvgRGBA(120, 140, 140, 180))
-            nvgText(vg, npcX, npcY + 24, "交易完成")
-        elseif not canTrade then
-            nvgFillColor(vg, nvgRGBA(235, 180, 90, 240))
-            nvgText(vg, npcX, npcY + 24, "需要零件")
-            nvgFontSize(vg, 12)
-            nvgFillColor(vg, nvgRGBA(230, 210, 170, 210))
-            nvgText(vg, npcX, npcY + 42, "1 零件 -> " .. tradePrice .. " 金币")
+            nvgText(vg, npcX, npcY + 24, "已完成")
         else
-            nvgFillColor(vg, nvgRGBA(100, 230, 240, 240))
-            nvgText(vg, npcX, npcY + 24, "旅商")
+            nvgFillColor(vg, vis.accentColor)
+            nvgText(vg, npcX, npcY + 24, vis.label)
             nvgFontSize(vg, 12)
             nvgFillColor(vg, nvgRGBA(180, 220, 220, 200))
-            nvgText(vg, npcX, npcY + 42, "T:1零件->" .. tradePrice .. "金")
+            nvgText(vg, npcX, npcY + 42, vis.hint)
         end
 
+        -- 脉冲文字
         if tradeFlash > 0 then
             nvgFontFace(vg, "sans")
             nvgFontSize(vg, 16)
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            if traded then
-                nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
-                nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "+金")
-            else
-                nvgFillColor(vg, nvgRGBA(255, 190, 90, math.floor(255 * tradeFlash)))
-                nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "缺零件")
-            end
+            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
+            nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), completed and "完成" or "按T")
         end
     end
 

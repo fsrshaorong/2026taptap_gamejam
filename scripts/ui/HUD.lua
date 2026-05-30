@@ -391,13 +391,19 @@ function HUD.GetInteractHint(context)
         return "异常体已清理"
     end
     if context.canTrade then
+        if context.eventName then
+            return "[T] 事件: " .. context.eventName
+        end
         return "[T] 交易: 1零件换金币"
     end
     if context.tradeUnavailable then
         return "旅商需要 1 个零件"
     end
     if context.eventTraded then
-        return "旅商交易完成"
+        if context.eventName then
+            return context.eventName .. "已完成"
+        end
+        return "事件已完成"
     end
     if context.roomType == "chest" and context.searchState == "idle" then
         return "[F] 搜索物资箱"
