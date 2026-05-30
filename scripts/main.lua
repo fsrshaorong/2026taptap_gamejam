@@ -11,6 +11,7 @@ local Protocol = require("systems.Protocol")
 local MetaProgress = require("systems.MetaProgress")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
+local HUD = require("ui.HUD")
 local DungeonRoom = require("scenes.DungeonRoom")
 
 -- ============================================================================
@@ -719,6 +720,16 @@ function ForceFightCurrentEnemy()
     StartBattle(enemy, p.x, p.y)
 end
 
+--- 获取中央游戏区的 "虚拟屏幕" 物理尺寸(供 DungeonRoom 使用)
+---@return number centerPhysW
+---@return number centerPhysH
+function GetCenterAreaPhysSize()
+    local w = screenW / dpr
+    local h = screenH / dpr
+    local layout = HUD.ComputeLayout(w, h)
+    return math.floor(layout.center.w * dpr), math.floor(layout.center.h * dpr)
+end
+
 --- 移动当前房间里的角色;走到门口后才进入相邻扫雷格.
 ---@param dx number
 ---@param dy number
@@ -726,7 +737,8 @@ function MoveScenePlayer(dx, dy, dt)
     if phase ~= PHASE.PLAYING then return end
     if not run then return end
 
-    local result = DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
+    local cpW, cpH = GetCenterAreaPhysSize()
+    local result = DungeonRoom.MovePlayer(dx, dy, cpW, cpH, dpr, dt)
     if result.action == "enter" then
         MovePlayer(result.dx, result.dy)
     elseif result.action == "blocked_wall" and blockedWallHintTimer <= 0 then
@@ -745,7 +757,8 @@ function MovePlayer(dx, dy)
     local result = run:Move(dx, dy)
 
     if result.ok then
-        DungeonRoom.PlacePlayerFromEntry(dx, dy, screenW, screenH, dpr)
+        local cpW, cpH = GetCenterAreaPhysSize()
+        DungeonRoom.PlacePlayerFromEntry(dx, dy, cpW, cpH, dpr)
 
         -- 威压逃跑:成功离开房间即视为逃跑成功
         if monsterFleeActive then
@@ -1061,8 +1074,7 @@ end
 function ShowMessage(text)
     message = text
     messageTimer = 4.0
-    local label = uiRoot_:FindById("messageLabel")
-    if label then label:SetText(text) end
+    -- 消息现在由 NanoVG HUD 左侧栏显示
 end
 
 function CountVisitedCells()
@@ -1075,31 +1087,9 @@ end
 
 function UpdateHUD()
     if not run then return end
-    local totals = RunInventory.GetTotals()
-    local combat = Combat.GetStatus()
+    -- 更新协议等级(基于已探索格数)
     Protocol.UpdateByExploredRooms(CountVisitedCells())
-
-    local hpLabel = uiRoot_:FindById("hpLabel")
-    if hpLabel then hpLabel:SetText("HP: " .. combat.hp .. "/" .. combat.maxHp) end
-
-    local powerLabel = uiRoot_:FindById("powerLabel")
-    if powerLabel then powerLabel:SetText("战力: " .. combat.power) end
-
-    local goldLabel = uiRoot_:FindById("goldLabel")
-    if goldLabel then goldLabel:SetText("金币: " .. totals.gold) end
-
-    local partsLabel = uiRoot_:FindById("partsLabel")
-    if partsLabel then partsLabel:SetText("零件: " .. totals.parts) end
-
-    local turnLabel = uiRoot_:FindById("turnLabel")
-    if turnLabel then
-        local text = "回合: " .. run.turn
-        if run:CanExtract() then text = text .. " [撤离点]" end
-        turnLabel:SetText(text)
-    end
-
-    local protocolLabel = uiRoot_:FindById("protocolLabel")
-    if protocolLabel then protocolLabel:SetText(Protocol.GetHUDText()) end
+    -- HUD 数据由 NanoVG 每帧实时读取, 无需再手动更新 UI Label
 end
 
 -- ============================================================================
@@ -1270,10 +1260,17 @@ function HandleNanoVGRender(eventType, eventData)
     nvgBeginFrame(nvgScene, screenW, screenH, dpr)
 
     if phase == PHASE.PLAYING or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED then
-        -- 绘制房间场景背景
+        local hudLayout = HUD.ComputeLayout(w, h)
         local p = run:GetPlayer()
         local tradeKey = tostring(p.x) .. "," .. tostring(p.y)
-        DungeonRoom.Draw(nvgScene, w, h, {
+        local cell = minefield and minefield:GetCellView(p.x, p.y) or nil
+
+        -- 中央游戏区(带偏移和裁剪)
+        local c = hudLayout.center
+        nvgSave(nvgScene)
+        nvgScissor(nvgScene, c.x, c.y, c.w, c.h)
+        nvgTranslate(nvgScene, c.x, c.y)
+        DungeonRoom.Draw(nvgScene, c.w, c.h, {
             run = run,
             minefield = minefield,
             searchState = GetSearchState(),
@@ -1283,12 +1280,55 @@ function HandleNanoVGRender(eventType, eventData)
             monsterFleeActive = monsterFleeActive,
             monsterFleeTimer = monsterFleeTimer,
         })
+        nvgRestore(nvgScene)
 
-        -- 绘制小地图
+        -- HUD: 左侧信息栏
+        local visMap = minefield and minefield:GetVisibleMap() or nil
+        local combatStatus = Combat.GetStatus()
+        local invTotals = RunInventory.GetTotals()
+        local invStatus = { gold = invTotals.gold, parts = invTotals.parts }
+        local exploredCount = Protocol.exploredRooms or 0
+
+        HUD.DrawLeftSidebar(nvgScene, hudLayout, {
+            visibleMap = visMap,
+            playerX = p.x,
+            playerY = p.y,
+            fieldWidth = minefield and minefield.width or 15,
+            fieldHeight = minefield and minefield.height or 15,
+            combat = combatStatus,
+            inventory = invStatus,
+            exploredCount = exploredCount,
+            message = message,
+        })
+
+        -- HUD: 右上协议面板
+        local dt = 1.0 / 60.0
+        HUD.DrawProtocolPanel(nvgScene, hudLayout, Protocol.GetStatus(), dt)
+
+        -- HUD: 底部交互栏
+        local roomType = cell and cell.roomType or "normal"
+        local enemy = Combat.GetEnemyAny(p.x, p.y)
+        local interactHint = HUD.GetInteractHint({
+            roomType = roomType,
+            searchState = GetSearchState(),
+            hasEnemy = enemy ~= nil,
+            enemyAlive = enemy and enemy.alive or false,
+            hasExit = cell and cell.exitId ~= nil,
+            canTrade = roomType == "event" and not (tradedRooms[tradeKey] or false),
+        })
+
+        -- 计算撤离距离
+        local exitDist, exitDir = nil, ""
         if minefield then
-            local visMap = minefield:GetVisibleMap()
-            MiniMap.Draw(nvgScene, visMap, p.x, p.y, minefield.width, minefield.height)
+            local exits = minefield:GetExits()
+            exitDist, exitDir = HUD.CalcExitDistance(p.x, p.y, exits)
         end
+
+        HUD.DrawBottomBar(nvgScene, hudLayout, {
+            interactHint = interactHint,
+            exitDistance = exitDist,
+            exitDirection = exitDir,
+        })
 
         -- VS 战斗演出叠加层
         if battleState.active then
@@ -1309,123 +1349,7 @@ end
 -- ============================================================================
 
 function CreateUI()
-    -- 右上角状态面板(竖排)
-    local statusPanel = UI.Panel {
-        id = "statusPanel",
-        position = "absolute",
-        top = 10, right = 10,
-        padding = 10,
-        gap = 4,
-        backgroundColor = { 10, 12, 20, 190 },
-        borderRadius = 8,
-        borderWidth = 1,
-        borderColor = { 60, 80, 120, 100 },
-        pointerEvents = "none",
-        children = {
-            UI.Label {
-                id = "hpLabel",
-                text = "HP: 100/100",
-                fontSize = 12,
-                fontColor = { 255, 100, 100, 255 },
-            },
-            UI.Label {
-                id = "powerLabel",
-                text = "战力: 10",
-                fontSize = 12,
-                fontColor = { 255, 180, 60, 255 },
-            },
-            UI.Label {
-                id = "goldLabel",
-                text = "金币: 0",
-                fontSize = 12,
-                fontColor = { 255, 230, 80, 255 },
-            },
-            UI.Label {
-                id = "partsLabel",
-                text = "零件: 0",
-                fontSize = 12,
-                fontColor = { 160, 210, 255, 255 },
-            },
-            UI.Label {
-                id = "turnLabel",
-                text = "回合: 0",
-                fontSize = 12,
-                fontColor = { 180, 190, 210, 220 },
-            },
-            UI.Label {
-                id = "protocolLabel",
-                text = "协议: 5 / 稳定",
-                fontSize = 12,
-                fontColor = { 255, 210, 90, 240 },
-            },
-        }
-    }
-
-    -- 顶部消息栏
-    local messageBar = UI.Panel {
-        id = "messageBar",
-        position = "absolute",
-        top = 0, left = 180, right = 120,
-        height = 32,
-        justifyContent = "center",
-        alignItems = "center",
-        backgroundColor = { 10, 12, 20, 160 },
-        pointerEvents = "none",
-        children = {
-            UI.Label {
-                id = "messageLabel",
-                text = "",
-                fontSize = 12,
-                fontColor = { 255, 220, 100, 255 },
-                flexShrink = 1,
-            },
-        }
-    }
-
-    -- 底部操作提示
-    local bottomBar = UI.Panel {
-        id = "bottomBar",
-        position = "absolute",
-        bottom = 0, left = 0, right = 0,
-        height = 44,
-        flexDirection = "row",
-        justifyContent = "center",
-        alignItems = "center",
-        gap = 12,
-        backgroundColor = { 10, 12, 20, 200 },
-        children = {
-            UI.Label {
-                text = "WASD/方向键:移动角色",
-                fontSize = 11,
-                fontColor = { 160, 170, 190, 220 },
-            },
-            UI.Label {
-                text = "M:地图",
-                fontSize = 11,
-                fontColor = { 160, 170, 190, 220 },
-            },
-            UI.Label {
-                text = "E:撤离",
-                fontSize = 11,
-                fontColor = { 100, 255, 100, 220 },
-            },
-            UI.Label {
-                text = "F:搜索",
-                fontSize = 11,
-                fontColor = { 255, 220, 120, 220 },
-            },
-            UI.Label {
-                text = "T:交易",
-                fontSize = 11,
-                fontColor = { 100, 220, 230, 220 },
-            },
-            UI.Label {
-                text = "ESC:关闭地图",
-                fontSize = 11,
-                fontColor = { 160, 170, 190, 220 },
-            },
-        }
-    }
+    -- (statusPanel, messageBar, bottomBar 已迁移到 NanoVG HUD, 不再创建)
 
     -- 开始菜单(三屏结构:主菜单 / 装备商店 / 天赋面板)
     local menuOverlay = UI.Panel {
@@ -2036,9 +1960,7 @@ function CreateUI()
         height = "100%",
         pointerEvents = "box-none",
         children = {
-            statusPanel,
-            messageBar,
-            bottomBar,
+            -- statusPanel, messageBar, bottomBar 已迁移到 NanoVG HUD
             menuOverlay,
             gameOverPanel,
             extractConfirmPanel,
@@ -2206,27 +2128,41 @@ function HandleMouseDown(eventType, eventData)
         return
     end
 
-    -- 点击小地图打开放大视图
-    if MiniMap.HitTest(mx, my) then
+    -- 点击左侧栏小地图打开放大视图(使用侧栏区域检测)
+    local w = screenW / dpr
+    local h = screenH / dpr
+    local hudLayout = HUD.ComputeLayout(w, h)
+    local sb = hudLayout.sidebar
+    if mx >= sb.x and mx <= sb.x + sb.w and my >= sb.y and my <= sb.y + sb.h then
+        -- 点击侧边栏任意位置打开地图
         phase = PHASE.MAP_OPEN
         MapOverlay.visible = true
         RefreshMapData()
-        local w = screenW / dpr
-        local h = screenH / dpr
         MapOverlay.ComputeLayout(minefield.width, minefield.height, w, h)
         return
     end
 
-    -- 点击房间门移动
-    if button == MOUSEB_LEFT and run then
-        if DungeonRoom.HitTestSearchPoint(mx, my, screenW, screenH, dpr, GetSearchState()) then
-            SearchCurrentRoom()
-            return
-        end
+    -- 中央游戏区的点击检测(坐标需减去中央区偏移)
+    local c = hudLayout.center
+    local cmx = mx - c.x  -- 相对于中央游戏区的坐标
+    local cmy = my - c.y
 
-        local doorHit = DungeonRoom.HitTestDoor(mx, my, screenW, screenH, dpr, run, minefield)
-        if doorHit then
-            MovePlayer(doorHit.dx, doorHit.dy)
+    if button == MOUSEB_LEFT and run then
+        -- 只处理中央区域内的点击
+        if cmx >= 0 and cmx <= c.w and cmy >= 0 and cmy <= c.h then
+            -- 将中央区尺寸转为 "虚拟全屏" 给 DungeonRoom (它内部用 screenW/dpr 计算)
+            local centerPhysW = math.floor(c.w * dpr)
+            local centerPhysH = math.floor(c.h * dpr)
+
+            if DungeonRoom.HitTestSearchPoint(cmx, cmy, centerPhysW, centerPhysH, dpr, GetSearchState()) then
+                SearchCurrentRoom()
+                return
+            end
+
+            local doorHit = DungeonRoom.HitTestDoor(cmx, cmy, centerPhysW, centerPhysH, dpr, run, minefield)
+            if doorHit then
+                MovePlayer(doorHit.dx, doorHit.dy)
+            end
         end
     end
 end
