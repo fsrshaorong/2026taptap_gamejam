@@ -102,12 +102,12 @@ function Start()
         print("ERROR: Failed to create NanoVG context")
         return
     end
-    nvgCreateFont(nvgScene, "sans", "Fonts/MiSans-Regular.ttf")
+    nvgCreateFont(nvgScene, "sans", "Fonts/FusionPixel.otf")
 
     -- 初始化 UI
     UI.Init({
         fonts = {
-            { family = "sans", weights = { normal = "Fonts/MiSans-Regular.ttf" } }
+            { family = "sans", weights = { normal = "Fonts/FusionPixel.otf" } }
         },
         scale = UI.Scale.DEFAULT,
     })
