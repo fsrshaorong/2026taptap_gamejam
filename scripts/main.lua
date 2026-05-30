@@ -29,6 +29,18 @@ local screenW = 0
 local screenH = 0
 local dpr = 1
 
+local function GetSafeDPR()
+    local value = graphics:GetDPR()
+    if not value or value <= 0 then
+        return 1
+    end
+    return value
+end
+
+local function GetLogicalScreenSize()
+    return screenW / dpr, screenH / dpr
+end
+
 -- 游戏核心
 ---@type table
 local run = nil          -- ExtractionRun 实例
@@ -241,7 +253,7 @@ function Start()
 
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
-    dpr = graphics:GetDPR()
+    dpr = GetSafeDPR()
 
     -- 创建 NanoVG context
     nvgScene = nvgCreate(1)
@@ -2797,10 +2809,12 @@ end
 function HandleNanoVGRender(eventType, eventData)
     if not nvgScene then return end
 
-    local w = screenW / dpr
-    local h = screenH / dpr
+    local w, h = GetLogicalScreenSize()
 
-    nvgBeginFrame(nvgScene, screenW, screenH, dpr)
+    -- NanoVG expects logical window size plus DPR. The HUD layout, mouse input,
+    -- and scene helpers already use logical pixels, so keep the frame in the
+    -- same coordinate space to avoid packaged builds rendering text smaller.
+    nvgBeginFrame(nvgScene, w, h, dpr)
 
     if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.LOOT_RESULT or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED or phase == PHASE.SETTINGS then
         local hudLayout = HUD.ComputeLayout(w, h)
@@ -3803,7 +3817,7 @@ end
 function HandleUpdate(eventType, eventData)
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
-    dpr = graphics:GetDPR()
+    dpr = GetSafeDPR()
 
     local dt = eventData["TimeStep"]:GetFloat()
     if blockedWallHintTimer > 0 then
