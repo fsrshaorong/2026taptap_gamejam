@@ -156,6 +156,10 @@ end
 
 local playerPos = { x = 0.5, y = 0.5 }
 
+-- 房间内障碍物(归一化坐标, 圆形碰撞体)
+-- 每个元素: { x=归一化X, y=归一化Y, r=归一化半径 }
+local roomObstacles = {}
+
 -- 踩雷红闪效果
 local mineFlashTimer = 0
 local MINE_FLASH_DURATION = 0.6
@@ -187,6 +191,54 @@ end
 
 function DungeonRoom.TriggerExitPulse()
     exitPulseTimer = EXIT_PULSE_DURATION
+end
+
+--- 设置当前房间的障碍物(每帧或切房间时调用)
+--- obstacles 基于归一化房间坐标(0~1), 半径也归一化
+---@param context table 与 Draw 相同的 context
+---@param screenW number
+---@param screenH number
+---@param dpr number
+function DungeonRoom.SetRoomObstacles(context, screenW, screenH, dpr)
+    roomObstacles = {}
+    if not context or not context.run or not context.minefield then return end
+
+    local layout = DungeonRoom.GetLayout(screenW / dpr, screenH / dpr)
+    -- 碰撞半径(像素 → 归一化, 取宽高平均)
+    local function pixToNorm(px)
+        return px / math.min(layout.w, layout.h)
+    end
+
+    local p = context.run:GetPlayer()
+    local cell = context.minefield:GetCellView(p.x, p.y)
+    local roomType = cell and cell.roomType or "normal"
+
+    -- 宝箱/搜索点: 房间中心
+    if context.searchState and (context.searchState.canSearch or context.searchState.searched) then
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = 0.5, r = pixToNorm(42) }
+    end
+
+    -- 撤离装置: 房间上方中间
+    if cell and cell.exitId then
+        local exitNormY = 54 / layout.h
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = exitNormY, r = pixToNorm(40) }
+    end
+
+    -- 怪物(活着时阻挡)
+    local enemy = context.enemy
+    if enemy and enemy.alive then
+        roomObstacles[#roomObstacles + 1] = { x = 0.35, y = 0.45, r = pixToNorm(32) }
+    end
+
+    -- 事件 NPC
+    if roomType == "event" then
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = 0.35, r = pixToNorm(36) }
+    end
+
+    -- 已触发地雷(中央装饰, 较小碰撞)
+    if roomType == "mine" then
+        roomObstacles[#roomObstacles + 1] = { x = 0.5, y = 0.38, r = pixToNorm(30) }
+    end
 end
 
 --- 更新红闪计时器(在 HandleUpdate 中调用)
@@ -321,6 +373,27 @@ function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
         return { action = "enter", dx = dx, dy = dy }
     end
 
+    if nextX < minX then nextX = minX end
+    if nextX > maxX then nextX = maxX end
+    if nextY < minY then nextY = minY end
+    if nextY > maxY then nextY = maxY end
+
+    -- 障碍物碰撞解算(圆形推开)
+    local playerR = CONFIG.playerRadius / math.min(layout.w, layout.h)
+    for _, obs in ipairs(roomObstacles) do
+        local odx = nextX - obs.x
+        local ody = nextY - obs.y
+        local dist = math.sqrt(odx * odx + ody * ody)
+        local minDist = playerR + obs.r
+        if dist < minDist and dist > 0.001 then
+            -- 推开到刚好不重叠的位置
+            local push = (minDist - dist)
+            nextX = nextX + (odx / dist) * push
+            nextY = nextY + (ody / dist) * push
+        end
+    end
+
+    -- 推开后再次钳制到房间边界
     if nextX < minX then nextX = minX end
     if nextX > maxX then nextX = maxX end
     if nextY < minY then nextY = minY end
@@ -587,24 +660,22 @@ function DungeonRoom.Draw(vg, w, h, context)
     end
     if cell and cell.exitId then roomBgImg = imgRoomExit end
 
-    if roomBgImg >= 0 then
-        nvgBeginPath(vg)
-        nvgRect(vg, 0, 0, w, h)
-        nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
-        nvgFill(vg)
+    -- 背景铺满整个区域(cover 模式: 保持比例, 填满不留黑边)
+    nvgBeginPath(vg)
+    nvgRect(vg, 0, 0, w, h)
+    nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
+    nvgFill(vg)
 
-        local bgSize = math.min(w, h)
+    local bgImg = (imgRoomBase >= 0) and imgRoomBase or roomBgImg
+    if bgImg >= 0 then
+        -- cover: 取 max 使贴图完全覆盖区域
+        local bgSize = math.max(w, h)
         local bgX = (w - bgSize) / 2
         local bgY = (h - bgSize) / 2
-        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, roomBgImg, 1.0)
-        nvgBeginPath(vg)
-        nvgRect(vg, bgX, bgY, bgSize, bgSize)
-        nvgFillPaint(vg, paint)
-        nvgFill(vg)
-    else
+        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, bgImg, 1.0)
         nvgBeginPath(vg)
         nvgRect(vg, 0, 0, w, h)
-        nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
+        nvgFillPaint(vg, paint)
         nvgFill(vg)
     end
 

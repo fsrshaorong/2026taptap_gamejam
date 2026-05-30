@@ -7,6 +7,54 @@ local UI = require("urhox-libs/UI")
 
 local MapOverlay = {}
 
+-- 图标贴图(64x64)
+local imagesLoaded = false
+local iconImages = {
+    player = -1,
+    hidden = -1,
+    explored = -1,
+    scanned = -1,
+    flag = -1,
+    trap = -1,
+    monster = -1,
+    chest = -1,
+    exit = -1,
+    cleared = -1,
+    number1 = -1,
+    number2 = -1,
+    number3 = -1,
+}
+
+local function ensureImages(vg)
+    if imagesLoaded then return end
+    iconImages.player   = nvgCreateImage(vg, "Textures/generated/icons/64/00_wanjia_dingwei.png", 0)
+    iconImages.hidden   = nvgCreateImage(vg, "Textures/generated/icons/64/01_weizhi_ge.png", 0)
+    iconImages.explored = nvgCreateImage(vg, "Textures/generated/icons/64/02_yitan_ge.png", 0)
+    iconImages.scanned  = nvgCreateImage(vg, "Textures/generated/icons/64/03_saomiao_ge.png", 0)
+    iconImages.flag     = nvgCreateImage(vg, "Textures/generated/icons/64/04_biaoji_qi.png", 0)
+    iconImages.trap     = nvgCreateImage(vg, "Textures/generated/icons/64/05_dici_xianjing_icon.png", 0)
+    iconImages.monster  = nvgCreateImage(vg, "Textures/generated/icons/64/06_guaiwu_icon.png", 0)
+    iconImages.chest    = nvgCreateImage(vg, "Textures/generated/icons/64/07_baoxiang_icon.png", 0)
+    iconImages.exit     = nvgCreateImage(vg, "Textures/generated/icons/64/08_cheli_icon.png", 0)
+    iconImages.cleared  = nvgCreateImage(vg, "Textures/generated/icons/64/10_yiqingli_icon.png", 0)
+    iconImages.number1  = nvgCreateImage(vg, "Textures/generated/icons/64/11_shuzi_1.png", 0)
+    iconImages.number2  = nvgCreateImage(vg, "Textures/generated/icons/64/12_shuzi_2.png", 0)
+    iconImages.number3  = nvgCreateImage(vg, "Textures/generated/icons/64/13_shuzi_3.png", 0)
+    imagesLoaded = true
+end
+
+local function drawIcon(vg, img, cx, cy, size, alpha)
+    if img < 0 then return false end
+    alpha = alpha or 1.0
+    local half = size / 2
+    local paint = nvgImagePattern(vg, cx - half, cy - half, size, size, 0, img, alpha)
+    nvgBeginPath(vg)
+    nvgRect(vg, cx - half, cy - half, size, size)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+    return true
+end
+
 -- 经典扫雷数字颜色
 local NUMBER_COLORS = {
     [1] = { 60, 100, 220 },
@@ -89,33 +137,46 @@ local function drawRoomIcon(vg, cell, cx, cy, cs)
     if not cell.revealed or not cell.roomType then return false end
     local ix = cx + cs / 2
     local iy = cy + cs / 2
+    local iconSize = cs * 0.7
 
     if cell.roomType == "chest" then
-        nvgBeginPath(vg)
-        nvgRoundedRect(vg, ix - cs * 0.22, iy - cs * 0.16, cs * 0.44, cs * 0.32, 3)
-        nvgFillColor(vg, nvgRGBA(255, 200, 50, 245))
-        nvgFill(vg)
-        nvgBeginPath(vg)
-        nvgRect(vg, ix - cs * 0.025, iy - cs * 0.16, cs * 0.05, cs * 0.32)
-        nvgFillColor(vg, nvgRGBA(120, 80, 20, 190))
-        nvgFill(vg)
+        if not drawIcon(vg, iconImages.chest, ix, iy, iconSize) then
+            -- fallback: NanoVG primitive
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, ix - cs * 0.22, iy - cs * 0.16, cs * 0.44, cs * 0.32, 3)
+            nvgFillColor(vg, nvgRGBA(255, 200, 50, 245))
+            nvgFill(vg)
+        end
         return true
     elseif cell.roomType == "monster" then
-        local r = cs * 0.22
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, ix, iy - r)
-        nvgLineTo(vg, ix + r, iy)
-        nvgLineTo(vg, ix, iy + r)
-        nvgLineTo(vg, ix - r, iy)
-        nvgClosePath(vg)
-        nvgFillColor(vg, nvgRGBA(255, 60, 60, 245))
-        nvgFill(vg)
+        if not drawIcon(vg, iconImages.monster, ix, iy, iconSize) then
+            local r = cs * 0.22
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, ix, iy - r)
+            nvgLineTo(vg, ix + r, iy)
+            nvgLineTo(vg, ix, iy + r)
+            nvgLineTo(vg, ix - r, iy)
+            nvgClosePath(vg)
+            nvgFillColor(vg, nvgRGBA(255, 60, 60, 245))
+            nvgFill(vg)
+        end
         return true
     elseif cell.roomType == "event" then
-        nvgBeginPath(vg)
-        nvgCircle(vg, ix, iy, cs * 0.2)
-        nvgFillColor(vg, nvgRGBA(60, 200, 210, 245))
-        nvgFill(vg)
+        if not drawIcon(vg, iconImages.scanned, ix, iy, iconSize) then
+            nvgBeginPath(vg)
+            nvgCircle(vg, ix, iy, cs * 0.2)
+            nvgFillColor(vg, nvgRGBA(60, 200, 210, 245))
+            nvgFill(vg)
+        end
+        return true
+    elseif cell.roomType == "mine" then
+        if not drawIcon(vg, iconImages.trap, ix, iy, iconSize) then
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, cs * 0.5)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(255, 100, 50, 255))
+            nvgText(vg, ix, iy, "*")
+        end
         return true
     end
 
@@ -142,6 +203,8 @@ end
 function MapOverlay.Draw(vg, screenW, screenH)
     if not MapOverlay.visible then return end
     if not MapOverlay.visibleMap then return end
+
+    ensureImages(vg)
 
     local cs = MapOverlay.cellSize
     local ox = MapOverlay.offsetX
@@ -195,6 +258,11 @@ function MapOverlay.Draw(vg, screenW, screenH)
             nvgStrokeWidth(vg, 0.5)
             nvgStroke(vg)
 
+            -- 隐藏格贴图
+            if cell.state == "hidden" then
+                drawIcon(vg, iconImages.hidden, cx + cs / 2, cy + cs / 2, cs * 0.7, 0.8)
+            end
+
             -- 撤离点
             if cell.exitId then
                 nvgBeginPath(vg)
@@ -207,16 +275,18 @@ function MapOverlay.Draw(vg, screenW, screenH)
                     nvgStrokeWidth(vg, 2)
                 end
                 nvgStroke(vg)
-                -- E 标记
-                nvgFontFace(vg, "sans")
-                nvgFontSize(vg, cs * 0.4)
-                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                if cell.randomExit then
-                    nvgFillColor(vg, nvgRGBA(255, 230, 95, 230))
-                else
-                    nvgFillColor(vg, nvgRGBA(80, 255, 80, 200))
+                -- 撤离图标
+                if not drawIcon(vg, iconImages.exit, cx + cs / 2, cy + cs / 2, cs * 0.7) then
+                    nvgFontFace(vg, "sans")
+                    nvgFontSize(vg, cs * 0.4)
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                    if cell.randomExit then
+                        nvgFillColor(vg, nvgRGBA(255, 230, 95, 230))
+                    else
+                        nvgFillColor(vg, nvgRGBA(80, 255, 80, 200))
+                    end
+                    nvgText(vg, cx + cs / 2, cy + cs / 2, "E")
                 end
-                nvgText(vg, cx + cs / 2, cy + cs / 2, "E")
             end
 
             local specialIcon = false
@@ -229,31 +299,43 @@ function MapOverlay.Draw(vg, screenW, screenH)
                 if specialIcon or cell.exitId then
                     drawNumberBadge(vg, cx, cy, cs, cell.adjacent)
                 else
-                    local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
-                    nvgFontFace(vg, "sans")
-                    nvgFontSize(vg, cs * 0.6)
-                    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                    nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
-                    nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+                    -- 尝试使用数字贴图(1-3有专用贴图)
+                    local numIcon = nil
+                    if cell.adjacent == 1 then numIcon = iconImages.number1
+                    elseif cell.adjacent == 2 then numIcon = iconImages.number2
+                    elseif cell.adjacent == 3 then numIcon = iconImages.number3
+                    end
+                    if not (numIcon and drawIcon(vg, numIcon, cx + cs / 2, cy + cs / 2, cs * 0.7)) then
+                        local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
+                        nvgFontFace(vg, "sans")
+                        nvgFontSize(vg, cs * 0.6)
+                        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                        nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
+                        nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+                    end
                 end
             end
 
             -- 旗标
             if cell.state == "flagged" then
-                nvgFontFace(vg, "sans")
-                nvgFontSize(vg, cs * 0.5)
-                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
-                nvgText(vg, cx + cs / 2, cy + cs / 2, "F")
+                if not drawIcon(vg, iconImages.flag, cx + cs / 2, cy + cs / 2, cs * 0.7) then
+                    nvgFontFace(vg, "sans")
+                    nvgFontSize(vg, cs * 0.5)
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                    nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
+                    nvgText(vg, cx + cs / 2, cy + cs / 2, "F")
+                end
             end
 
             -- 地雷标记
             if cell.state == "mine" then
-                nvgFontFace(vg, "sans")
-                nvgFontSize(vg, cs * 0.6)
-                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
-                nvgText(vg, cx + cs / 2, cy + cs / 2, "*")
+                if not drawIcon(vg, iconImages.trap, cx + cs / 2, cy + cs / 2, cs * 0.7) then
+                    nvgFontFace(vg, "sans")
+                    nvgFontSize(vg, cs * 0.6)
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                    nvgFillColor(vg, nvgRGBA(255, 255, 255, 255))
+                    nvgText(vg, cx + cs / 2, cy + cs / 2, "*")
+                end
             end
 
             -- 已探索标记(可传送) - v0.3: 使用 cell.explored 字段
@@ -272,16 +354,18 @@ function MapOverlay.Draw(vg, screenW, screenH)
     -- 玩家位置
     local px = ox + (MapOverlay.playerX - 1) * cs + cs / 2
     local py = oy + (MapOverlay.playerY - 1) * cs + cs / 2
-    local pr = cs * 0.3
 
-    nvgBeginPath(vg)
-    nvgCircle(vg, px, py, pr + 2)
-    nvgFillColor(vg, nvgRGBA(255, 255, 255, 200))
-    nvgFill(vg)
-    nvgBeginPath(vg)
-    nvgCircle(vg, px, py, pr)
-    nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
-    nvgFill(vg)
+    if not drawIcon(vg, iconImages.player, px, py, cs * 0.8) then
+        local pr = cs * 0.3
+        nvgBeginPath(vg)
+        nvgCircle(vg, px, py, pr + 2)
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 200))
+        nvgFill(vg)
+        nvgBeginPath(vg)
+        nvgCircle(vg, px, py, pr)
+        nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
+        nvgFill(vg)
+    end
 
     -- 底部提示
     nvgFontFace(vg, "sans")

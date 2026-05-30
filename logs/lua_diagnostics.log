@@ -1,9 +1,4 @@
-Lua Diagnostics | Errors: 6 | Warnings: 0 | EmmyLua Types: /workspace/.emmylua
-Info: 0 | Hints: 0 | Total: 6 | Time: 2026-05-30 18:06:11 | Dir: /workspace/scripts
+Lua Diagnostics | Errors: 0 | Warnings: 0 | EmmyLua Types: /workspace/.emmylua
+Info: 0 | Hints: 0 | Total: 0 | Time: 2026-05-30 19:16:32 | Dir: /workspace/scripts
 ---
-ERROR | DungeonRoom.lua:1024:19 | Missed symbol `end`. [miss-symbol]
-ERROR | DungeonRoom.lua:192:1 | Miss corresponding `end` . [miss-end]
-ERROR | DungeonRoom.lua:77:7 | Redefined local `ANIM_FRAME_TIME`. [redefined-local]
-ERROR | DungeonRoom.lua:285:64 | Redefined local `dt`. [redefined-local]
-ERROR | DungeonRoom.lua:898:73 | Undefined global `traded`. [undefined-global]
-ERROR | DungeonRoom.lua:901:73 | Undefined global `traded`. [undefined-global]
+✅ No issues found

@@ -844,6 +844,13 @@ function MoveScenePlayer(dx, dy, dt)
     if not run then return end
 
     local cpW, cpH = GetCenterAreaPhysSize()
+    local p = run:GetPlayer()
+    DungeonRoom.SetRoomObstacles({
+        run = run,
+        minefield = minefield,
+        searchState = GetSearchState(),
+        enemy = Combat.GetEnemyAny(p.x, p.y),
+    }, cpW, cpH, dpr)
     local result = DungeonRoom.MovePlayer(dx, dy, cpW, cpH, dpr, dt)
     if result.action == "enter" then
         MovePlayer(result.dx, result.dy)
