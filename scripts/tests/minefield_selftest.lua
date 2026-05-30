@@ -218,16 +218,20 @@ local function testFailureSalvage()
     RunInventory.parts = 3
 
     local options = RunInventory.GetFailureSalvageOptions()
-    assertEq(options.keepGold, 11, "failure salvage should keep half gold rounded down")
-    assertEq(options.keepParts, 1, "failure salvage should keep one part")
+    assertEq(options.safeGold, 23, "failure salvage should keep safe gold")
+    assertEq(options.lostParts, 3, "failure salvage should mark all parts as lost")
+    assertTrue(options.canSalvagePart, "failure salvage should allow part salvage")
+    assertEq(options.salvageBonus, 10, "failure salvage bonus mismatch")
 
-    local gold = RunInventory.ApplyFailureSalvage("gold")
-    assertEq(gold.gold, 11, "gold salvage mismatch")
-    assertEq(gold.parts, 0, "gold salvage should not keep parts")
+    local accept = RunInventory.ApplyFailureSalvage("accept")
+    assertEq(accept.gold, 23, "accept salvage should keep safe gold")
+    assertEq(accept.parts, 0, "accept salvage should lose parts")
+    assertEq(accept.bonus, 0, "accept salvage should not add bonus")
 
-    local parts = RunInventory.ApplyFailureSalvage("parts")
-    assertEq(parts.gold, 0, "parts salvage should not keep gold")
-    assertEq(parts.parts, 1, "parts salvage mismatch")
+    local salvaged = RunInventory.ApplyFailureSalvage("salvage_part")
+    assertEq(salvaged.gold, 33, "part salvage should add bonus gold")
+    assertEq(salvaged.parts, 0, "part salvage should still lose parts")
+    assertEq(salvaged.bonus, 10, "part salvage bonus mismatch")
 end
 
 local tests = {

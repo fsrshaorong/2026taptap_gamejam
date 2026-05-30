@@ -536,7 +536,7 @@ function StartNewGame()
     -- 计算小地图布局
     MiniMap.ComputeLayout(minefield.width, minefield.height)
 
-    ShowMessage("从中心出发，移动角色走进门，前往四角撤离！" .. compassHint)
+    ShowMessage("左上角看扫雷数字避雷；WASD 走门，F 搜索，M 地图，E 撤离。" .. compassHint)
     UpdateHUD()
 
     -- 隐藏菜单
