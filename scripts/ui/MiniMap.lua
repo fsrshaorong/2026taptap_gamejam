@@ -29,6 +29,53 @@ MiniMap.highlightCells = {}   -- { ["x,y"] = true }
 MiniMap.highlightTimer = 0    -- 倒计时(秒)
 local HIGHLIGHT_DURATION = 3.0
 
+local imagesLoaded = false
+local iconImages = {
+    player = -1,
+    hidden = -1,
+    explored = -1,
+    scanned = -1,
+    flag = -1,
+    trap = -1,
+    monster = -1,
+    chest = -1,
+    exit = -1,
+    cleared = -1,
+    number1 = -1,
+    number2 = -1,
+    number3 = -1,
+}
+
+function MiniMap.Init(vg)
+    if imagesLoaded then return end
+    iconImages.player = nvgCreateImage(vg, "Textures/generated/icons/32/00_wanjia_dingwei.png", 0)
+    iconImages.hidden = nvgCreateImage(vg, "Textures/generated/icons/32/01_weizhi_ge.png", 0)
+    iconImages.explored = nvgCreateImage(vg, "Textures/generated/icons/32/02_yitan_ge.png", 0)
+    iconImages.scanned = nvgCreateImage(vg, "Textures/generated/icons/32/03_saomiao_ge.png", 0)
+    iconImages.flag = nvgCreateImage(vg, "Textures/generated/icons/32/04_biaoji_qi.png", 0)
+    iconImages.trap = nvgCreateImage(vg, "Textures/generated/icons/32/05_dici_xianjing_icon.png", 0)
+    iconImages.monster = nvgCreateImage(vg, "Textures/generated/icons/32/06_guaiwu_icon.png", 0)
+    iconImages.chest = nvgCreateImage(vg, "Textures/generated/icons/32/07_baoxiang_icon.png", 0)
+    iconImages.exit = nvgCreateImage(vg, "Textures/generated/icons/32/08_cheli_icon.png", 0)
+    iconImages.cleared = nvgCreateImage(vg, "Textures/generated/icons/32/10_yiqingli_icon.png", 0)
+    iconImages.number1 = nvgCreateImage(vg, "Textures/generated/icons/32/11_shuzi_1.png", 0)
+    iconImages.number2 = nvgCreateImage(vg, "Textures/generated/icons/32/12_shuzi_2.png", 0)
+    iconImages.number3 = nvgCreateImage(vg, "Textures/generated/icons/32/13_shuzi_3.png", 0)
+    imagesLoaded = true
+end
+
+local function drawIcon(vg, img, cx, cy, size, alpha)
+    if img < 0 then return false end
+    alpha = alpha or 1.0
+    local half = size / 2
+    local paint = nvgImagePattern(vg, cx - half, cy - half, size, size, 0, img, alpha)
+    nvgBeginPath(vg)
+    nvgRect(vg, cx - half, cy - half, size, size)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+    return true
+end
+
 --- 设置需要高亮的格子列表
 ---@param cells table { {x,y}, ... }
 function MiniMap.SetHighlight(cells)
@@ -85,6 +132,9 @@ local function drawRoomIcon(vg, cell, cx, cy, cs)
     if not cell.revealed or not cell.roomType or cs < 6 then return false end
 
     if cell.roomType == "chest" then
+        if drawIcon(vg, iconImages.chest, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
+            return true
+        end
         nvgBeginPath(vg)
         nvgRoundedRect(vg, cx + cs * 0.18, cy + cs * 0.25, cs * 0.64, cs * 0.48, 2)
         nvgFillColor(vg, nvgRGBA(255, 200, 50, 240))
@@ -95,6 +145,9 @@ local function drawRoomIcon(vg, cell, cx, cy, cs)
         nvgFill(vg)
         return true
     elseif cell.roomType == "monster" then
+        if drawIcon(vg, iconImages.monster, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
+            return true
+        end
         local mcx = cx + cs / 2
         local mcy = cy + cs / 2
         local mr = cs * 0.32
@@ -108,6 +161,9 @@ local function drawRoomIcon(vg, cell, cx, cy, cs)
         nvgFill(vg)
         return true
     elseif cell.roomType == "mine" and cell.state == "mine" then
+        if drawIcon(vg, iconImages.trap, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
+            return true
+        end
         local tcx = cx + cs / 2
         local tcy = cy + cs * 0.25
         nvgBeginPath(vg)
@@ -138,6 +194,7 @@ end
 ---@param fieldHeight number 地图高
 function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
     if not visibleMap then return end
+    MiniMap.Init(vg)
 
     MiniMap.ComputeLayout(fieldWidth, fieldHeight)
 
@@ -185,8 +242,17 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
             end
             nvgFill(vg)
 
+            if cell.state == "hidden" then
+                drawIcon(vg, iconImages.hidden, cx + cs / 2, cy + cs / 2, cs * 0.9, 0.95)
+            elseif cell.state == "empty" then
+                drawIcon(vg, iconImages.explored, cx + cs / 2, cy + cs / 2, cs * 0.85, 0.8)
+            elseif cell.state == "number" then
+                drawIcon(vg, iconImages.scanned, cx + cs / 2, cy + cs / 2, cs * 0.85, 0.45)
+            end
+
             -- 撤离点标记(始终可见)
             if cell.exitId then
+                drawIcon(vg, iconImages.exit, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0)
                 nvgBeginPath(vg)
                 nvgRect(vg, cx, cy, cs - 1, cs - 1)
                 if cell.randomExit then
@@ -204,27 +270,35 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
 
             -- 数字(如果格子够大且没有图标覆盖)
             if not drawnIcon and cell.state == "number" and cell.adjacent and cs >= 8 then
-                local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
-                nvgFontFace(vg, "sans")
-                nvgFontSize(vg, cs * 0.7)
-                nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
-                nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+                local numberIcon = nil
+                if cell.adjacent == 1 then numberIcon = iconImages.number1
+                elseif cell.adjacent == 2 then numberIcon = iconImages.number2
+                elseif cell.adjacent == 3 then numberIcon = iconImages.number3 end
+                if not (numberIcon and numberIcon >= 0 and drawIcon(vg, numberIcon, cx + cs / 2, cy + cs / 2, cs * 0.82, 1.0)) then
+                    local col = NUMBER_COLORS[cell.adjacent] or { 200, 200, 200 }
+                    nvgFontFace(vg, "sans")
+                    nvgFontSize(vg, cs * 0.7)
+                    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+                    nvgFillColor(vg, nvgRGBA(col[1], col[2], col[3], 255))
+                    nvgText(vg, cx + cs / 2, cy + cs / 2, tostring(cell.adjacent))
+                end
             elseif drawnIcon and cell.state == "number" then
                 drawNumberBadge(vg, cx, cy, cs, cell.adjacent)
             end
 
             -- 旗标图标
             if cell.state == "flagged" and cs >= 6 then
-                nvgBeginPath(vg)
-                local fx = cx + cs * 0.3
-                local fy = cy + cs * 0.2
-                nvgMoveTo(vg, fx, fy)
-                nvgLineTo(vg, fx + cs * 0.4, fy + cs * 0.2)
-                nvgLineTo(vg, fx, fy + cs * 0.4)
-                nvgClosePath(vg)
-                nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
-                nvgFill(vg)
+                if not drawIcon(vg, iconImages.flag, cx + cs / 2, cy + cs / 2, cs * 0.9, 1.0) then
+                    nvgBeginPath(vg)
+                    local fx = cx + cs * 0.3
+                    local fy = cy + cs * 0.2
+                    nvgMoveTo(vg, fx, fy)
+                    nvgLineTo(vg, fx + cs * 0.4, fy + cs * 0.2)
+                    nvgLineTo(vg, fx, fy + cs * 0.4)
+                    nvgClosePath(vg)
+                    nvgFillColor(vg, nvgRGBA(255, 220, 50, 255))
+                    nvgFill(vg)
+                end
             end
         end
     end
@@ -257,15 +331,17 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
     local pr = cs * 0.35
     if pr < 2 then pr = 2 end
 
-    nvgBeginPath(vg)
-    nvgCircle(vg, px, py, pr + 2)
-    nvgFillColor(vg, nvgRGBA(255, 255, 255, 180))
-    nvgFill(vg)
+    if not drawIcon(vg, iconImages.player, px, py, math.max(cs * 1.15, 10), 1.0) then
+        nvgBeginPath(vg)
+        nvgCircle(vg, px, py, pr + 2)
+        nvgFillColor(vg, nvgRGBA(255, 255, 255, 180))
+        nvgFill(vg)
 
-    nvgBeginPath(vg)
-    nvgCircle(vg, px, py, pr)
-    nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
-    nvgFill(vg)
+        nvgBeginPath(vg)
+        nvgCircle(vg, px, py, pr)
+        nvgFillColor(vg, nvgRGBA(50, 200, 255, 255))
+        nvgFill(vg)
+    end
 end
 
 --- 检测点击是否在小地图范围内

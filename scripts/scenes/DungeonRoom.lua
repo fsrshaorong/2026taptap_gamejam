@@ -26,6 +26,19 @@ local imgRoomSafe = -1
 local imgRoomDanger = -1
 local imgRoomTreasure = -1
 local imgRoomExit = -1
+local imgRoomBase = -1
+local imgPropChestClosed = -1
+local imgPropChestOpen = -1
+local imgPropExitDark = -1
+local imgPropExitLight = -1
+local imgPropMerchant = -1
+local imgPropCore = -1
+local imgPropTrap = -1
+local imgPropParts = -1
+local imgPropScanner = -1
+local imgPropGold = -1
+local imgPropMedkit = -1
+local imgPropSupplyBox = -1
 local imagesLoaded = false
 
 -- 角色动画帧
@@ -46,33 +59,58 @@ local animFrame = 1          -- 当前帧索引 1 or 2
 local animTimer = 0          -- 帧切换计时器
 local animMoving = false     -- 是否正在移动
 local animMoveAge = 0        -- 距上次移动的时间(用于自动停止动画)
-local ANIM_FRAME_TIME = 0.25 -- 每帧持续时间(秒)
-local ANIM_STOP_DELAY = 0.05 -- 停止移动后多久停动画
+local ANIM_FRAME_TIME = 0.16 -- 每帧持续时间(秒)
+local ANIM_STOP_DELAY = 0.12 -- 停止移动后多久停动画
+local ANIM_IDLE_RESET_DELAY = 0.35
+
+local function advanceWalkAnimation(dt)
+    local elapsed = tonumber(dt) or 0
+    if elapsed <= 0 then return end
+    if elapsed > 0.08 then elapsed = 0.08 end
+    animTimer = animTimer + elapsed
+    while animTimer >= ANIM_FRAME_TIME do
+        animTimer = animTimer - ANIM_FRAME_TIME
+        animFrame = (animFrame % 2) + 1
+    end
+end
 
 --- 初始化图片资源(只调用一次)
 function DungeonRoom.Init(vg)
     if imagesLoaded then return end
-    imgPlayer = nvgCreateImage(vg, "Textures/player.png", 0)
+    imgPlayer = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
     imgEnemy = nvgCreateImage(vg, "Textures/enemy_slime.png", 0)
-    imgRoomSafe = nvgCreateImage(vg, "Textures/room_safe.png", 0)
-    imgRoomDanger = nvgCreateImage(vg, "Textures/room_danger.png", 0)
-    imgRoomTreasure = nvgCreateImage(vg, "Textures/room_treasure.png", 0)
-    imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
-    imgRoomEvent = nvgCreateImage(vg, "Textures/room_event.png", 0)
-    imgRoomMonster = nvgCreateImage(vg, "Textures/room_monster.png", 0)
-    idleFrames.down = nvgCreateImage(vg, "Textures/player_idle_down.png", 0)
-    idleFrames.up = nvgCreateImage(vg, "Textures/player_idle_up.png", 0)
-    idleFrames.left = nvgCreateImage(vg, "Textures/player_idle_left.png", 0)
-    idleFrames.right = nvgCreateImage(vg, "Textures/player_idle_right.png", 0)
+    imgRoomSafe = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomDanger = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomTreasure = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomExit = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomEvent = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomMonster = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomBase = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgPropChestClosed = nvgCreateImage(vg, "Textures/generated/props/03_baoxiang_guan.png", 0)
+    imgPropChestOpen = nvgCreateImage(vg, "Textures/generated/props/00_baoxiang_kai.png", 0)
+    imgPropExitDark = nvgCreateImage(vg, "Textures/generated/props/01_cheli_zhuangzhi_an.png", 0)
+    imgPropExitLight = nvgCreateImage(vg, "Textures/generated/props/02_cheli_zhuangzhi_liang.png", 0)
+    imgPropMerchant = nvgCreateImage(vg, "Textures/generated/props/04_shangren_tai.png", 0)
+    imgPropCore = nvgCreateImage(vg, "Textures/generated/props/05_yichang_hexin.png", 0)
+    imgPropTrap = nvgCreateImage(vg, "Textures/generated/props/06_dici_xianjing.png", 0)
+    imgPropParts = nvgCreateImage(vg, "Textures/generated/props/07_lingjian_dui.png", 0)
+    imgPropScanner = nvgCreateImage(vg, "Textures/generated/props/08_saomiaoyi.png", 0)
+    imgPropGold = nvgCreateImage(vg, "Textures/generated/props/09_jinbi_dui.png", 0)
+    imgPropMedkit = nvgCreateImage(vg, "Textures/generated/props/10_yiliaobao.png", 0)
+    imgPropSupplyBox = nvgCreateImage(vg, "Textures/generated/props/11_wuzi_xiang.png", 0)
+    idleFrames.down = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
+    idleFrames.up = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/01_back_idle.png", 0)
+    idleFrames.left = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/02_left_idle.png", 0)
+    idleFrames.right = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/03_right_idle.png", 0)
     -- 加载行走动画帧
-    animFrames.down[1] = nvgCreateImage(vg, "Textures/player_walk_down_1.png", 0)
-    animFrames.down[2] = nvgCreateImage(vg, "Textures/player_walk_down_2.png", 0)
-    animFrames.up[1] = nvgCreateImage(vg, "Textures/player_walk_up_1.png", 0)
-    animFrames.up[2] = nvgCreateImage(vg, "Textures/player_walk_up_2.png", 0)
-    animFrames.left[1] = nvgCreateImage(vg, "Textures/player_walk_left_1.png", 0)
-    animFrames.left[2] = nvgCreateImage(vg, "Textures/player_walk_left_2.png", 0)
-    animFrames.right[1] = nvgCreateImage(vg, "Textures/player_walk_right_1.png", 0)
-    animFrames.right[2] = nvgCreateImage(vg, "Textures/player_walk_right_2.png", 0)
+    animFrames.down[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/04_front_walk_1.png", 0)
+    animFrames.down[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/08_front_walk_2.png", 0)
+    animFrames.up[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/05_back_walk_1.png", 0)
+    animFrames.up[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/09_back_walk_2.png", 0)
+    animFrames.left[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/06_left_walk_1.png", 0)
+    animFrames.left[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/10_left_walk_2.png", 0)
+    animFrames.right[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/07_right_walk_1.png", 0)
+    animFrames.right[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/11_right_walk_2.png", 0)
     imagesLoaded = true
 end
 
@@ -86,6 +124,20 @@ local function drawSprite(vg, img, cx, cy, size, alpha)
     nvgRect(vg, cx - half, cy - half, size, size)
     nvgFillPaint(vg, paint)
     nvgFill(vg)
+end
+
+local function drawSpriteBottom(vg, img, cx, bottomY, size, alpha)
+    if img < 0 then return false end
+    alpha = alpha or 1.0
+    local half = size / 2
+    local x = cx - half
+    local y = bottomY - size
+    local paint = nvgImagePattern(vg, x, y, size, size, 0, img, alpha)
+    nvgBeginPath(vg)
+    nvgRect(vg, x, y, size, size)
+    nvgFillPaint(vg, paint)
+    nvgFill(vg)
+    return true
 end
 
 --- 绘制房间背景贴图(平铺填充区域)
@@ -159,12 +211,8 @@ function DungeonRoom.Update(dt)
         animMoving = false
     end
     if animMoving then
-        animTimer = animTimer + dt
-        if animTimer >= ANIM_FRAME_TIME then
-            animTimer = animTimer - ANIM_FRAME_TIME
-            animFrame = (animFrame % 2) + 1  -- 在1和2之间切换
-        end
-    else
+        advanceWalkAnimation(dt)
+    elseif animMoveAge > ANIM_IDLE_RESET_DELAY then
         animTimer = 0
         animFrame = 1
     end
@@ -224,12 +272,16 @@ end
 function DungeonRoom.MovePlayer(dx, dy, screenW, screenH, dpr, dt)
     -- 更新动画方向
     if dx ~= 0 or dy ~= 0 then
+        local resumedThisFrame = not animMoving
         animMoving = true
         animMoveAge = 0  -- 重置移动年龄,防止自动停止
         if math.abs(dx) > math.abs(dy) then
             animDir = dx < 0 and "left" or "right"
         else
             animDir = dy < 0 and "up" or "down"
+        end
+        if resumedThisFrame then
+            advanceWalkAnimation(dt)
         end
     end
 
@@ -319,6 +371,29 @@ local function drawSearchPoint(vg, layout, searchState)
         nvgFill(vg)
     end
 
+    local chestImg = (searchState.searched or flash > 0) and imgPropChestOpen or imgPropChestClosed
+    if chestImg >= 0 then
+        local cx = rect.x + rect.w / 2
+        local bottomY = rect.y + rect.h + 14 - flash * 8
+        drawSpriteBottom(vg, chestImg, cx, bottomY, 104, 1.0)
+        if not searchState.searched then
+            drawSpriteBottom(vg, imgPropGold, cx - 58, rect.y + rect.h + 22, 46, 0.95)
+            drawSpriteBottom(vg, imgPropParts, cx + 58, rect.y + rect.h + 22, 46, 0.95)
+        end
+
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 12)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+        if searchState.searched then
+            nvgFillColor(vg, nvgRGBA(170, 160, 145, 180))
+            nvgText(vg, cx, rect.y + rect.h + 16, searchState.isChest and "宝箱已开启" or "已搜索")
+        else
+            nvgFillColor(vg, nvgRGBA(255, 230, 140, 230))
+            nvgText(vg, cx, rect.y + rect.h + 16, searchState.isChest and "F 开启宝箱" or "F 搜索")
+        end
+        return
+    end
+
     nvgBeginPath(vg)
     nvgRoundedRect(vg, rect.x, rect.y + rect.h * 0.25, rect.w, rect.h * 0.75, 4)
     nvgFillColor(vg, bodyColor)
@@ -381,6 +456,22 @@ local function drawExitDevice(vg, layout, cell)
     nvgCircle(vg, cx, y, glowRadius)
     nvgFillColor(vg, nvgRGBA(60, 235, 140, glowAlpha))
     nvgFill(vg)
+
+    local exitImg = (activePulse > 0.05) and imgPropExitLight or imgPropExitDark
+    if exitImg >= 0 then
+        drawSpriteBottom(vg, exitImg, cx, y + 74, 116, 1.0)
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, 14)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(150, 255, 170, 255))
+        nvgText(vg, cx, y + 94, cell.randomExit and "隐藏撤离点" or "撤离装置")
+        if activePulse > 0 then
+            nvgFontSize(vg, 13)
+            nvgFillColor(vg, nvgRGBA(255, 235, 120, math.floor(255 * activePulse)))
+            nvgText(vg, cx, y + 122 - 10 * (1 - activePulse), "信标已点亮")
+        end
+        return
+    end
 
     nvgBeginPath(vg)
     nvgRoundedRect(vg, cx - 58, y - 18, 116, 36, 6)
@@ -490,11 +581,27 @@ function DungeonRoom.Draw(vg, w, h, context)
     end
     if cell and cell.exitId then roomBgImg = imgRoomExit end
 
-    if roomBgImg >= 0 then
-        -- 全屏绘制背景图
-        local paint = nvgImagePattern(vg, 0, 0, w, h, 0, roomBgImg, 1.0)
+    if imgRoomBase >= 0 then
         nvgBeginPath(vg)
         nvgRect(vg, 0, 0, w, h)
+        nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
+        nvgFill(vg)
+
+        local bgSize = math.min(w, h)
+        local bgX = (w - bgSize) / 2
+        local bgY = (h - bgSize) / 2
+        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, imgRoomBase, 1.0)
+        nvgBeginPath(vg)
+        nvgRect(vg, bgX, bgY, bgSize, bgSize)
+        nvgFillPaint(vg, paint)
+        nvgFill(vg)
+    elseif roomBgImg >= 0 then
+        local bgSize = math.min(w, h)
+        local bgX = (w - bgSize) / 2
+        local bgY = (h - bgSize) / 2
+        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, roomBgImg, 1.0)
+        nvgBeginPath(vg)
+        nvgRect(vg, bgX, bgY, bgSize, bgSize)
         nvgFillPaint(vg, paint)
         nvgFill(vg)
     else
@@ -680,24 +787,28 @@ function DungeonRoom.Draw(vg, w, h, context)
             end
         end
 
-        -- 地雷图标(大圆 + 刺)
-        nvgBeginPath(vg)
-        nvgCircle(vg, cx, cy, 20)
-        nvgFillColor(vg, nvgRGBA(60, 30, 30, 200))
-        nvgFill(vg)
-        nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 220))
-        nvgStrokeWidth(vg, 2.5)
-        nvgStroke(vg)
+        local drewTrap = drawSpriteBottom(vg, imgPropTrap, cx, cy + 56, 118, 1.0)
 
-        -- 十字线
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, cx, cy - 26)
-        nvgLineTo(vg, cx, cy + 26)
-        nvgMoveTo(vg, cx - 26, cy)
-        nvgLineTo(vg, cx + 26, cy)
-        nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 180))
-        nvgStrokeWidth(vg, 2)
-        nvgStroke(vg)
+        if not drewTrap then
+            -- 地雷图标(大圆 + 刺)
+            nvgBeginPath(vg)
+            nvgCircle(vg, cx, cy, 20)
+            nvgFillColor(vg, nvgRGBA(60, 30, 30, 200))
+            nvgFill(vg)
+            nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 220))
+            nvgStrokeWidth(vg, 2.5)
+            nvgStroke(vg)
+
+            -- 十字线
+            nvgBeginPath(vg)
+            nvgMoveTo(vg, cx, cy - 26)
+            nvgLineTo(vg, cx, cy + 26)
+            nvgMoveTo(vg, cx - 26, cy)
+            nvgLineTo(vg, cx + 26, cy)
+            nvgStrokeColor(vg, nvgRGBA(200, 70, 50, 180))
+            nvgStrokeWidth(vg, 2)
+            nvgStroke(vg)
+        end
 
         -- 地面裂纹
         nvgBeginPath(vg)
@@ -759,6 +870,13 @@ function DungeonRoom.Draw(vg, w, h, context)
             nvgCircle(vg, npcX, npcY, 44 + 24 * (1 - tradeFlash))
             nvgFillColor(vg, nvgRGBA(70, 220, 230, math.floor(120 * tradeFlash)))
             nvgFill(vg)
+        end
+
+        if imgPropCore >= 0 then
+            drawSpriteBottom(vg, imgPropCore, npcX - 70, npcY + 66, 84, traded and 0.5 or 0.9)
+        end
+        if imgPropMerchant >= 0 then
+            drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, traded and 0.55 or 1.0)
         end
 
         -- 小摊位

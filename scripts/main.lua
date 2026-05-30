@@ -133,7 +133,7 @@ function Start()
         return
     end
     nvgCreateFont(nvgScene, "sans", "Fonts/FusionPixel.otf")
-    imgBattlePlayer = nvgCreateImage(nvgScene, "Textures/player.png", 0)
+    imgBattlePlayer = nvgCreateImage(nvgScene, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
     imgBattleEnemy = nvgCreateImage(nvgScene, "Textures/enemy_slime.png", 0)
 
     -- 初始化 UI

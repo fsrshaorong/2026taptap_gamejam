@@ -1,0 +1,206 @@
+{
+  "type": "character",
+  "name": "huanxiong",
+  "source": "D:\\A GAME\\26.5.30 GameJam\\Draw\\10_working\\characters\\Huanxionggai.png",
+  "sheet": "huanxiong_sheet.png",
+  "debug": "debug_detected_boxes.png",
+  "frame_size": [
+    128,
+    128
+  ],
+  "scale": 0.4155844155844156,
+  "frames": [
+    {
+      "index": 0,
+      "name": "front_idle",
+      "file": "frames/00_front_idle.png",
+      "bbox": [
+        129,
+        72,
+        333,
+        380
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 1,
+      "name": "back_idle",
+      "file": "frames/01_back_idle.png",
+      "bbox": [
+        468,
+        76,
+        666,
+        376
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 2,
+      "name": "left_idle",
+      "file": "frames/02_left_idle.png",
+      "bbox": [
+        773,
+        75,
+        1025,
+        380
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 3,
+      "name": "right_idle",
+      "file": "frames/03_right_idle.png",
+      "bbox": [
+        1055,
+        75,
+        1305,
+        382
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 4,
+      "name": "front_walk_1",
+      "file": "frames/04_front_walk_1.png",
+      "bbox": [
+        124,
+        395,
+        331,
+        701
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 5,
+      "name": "back_walk_1",
+      "file": "frames/05_back_walk_1.png",
+      "bbox": [
+        467,
+        400,
+        661,
+        701
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 6,
+      "name": "left_walk_1",
+      "file": "frames/06_left_walk_1.png",
+      "bbox": [
+        769,
+        399,
+        1019,
+        698
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 7,
+      "name": "right_walk_1",
+      "file": "frames/07_right_walk_1.png",
+      "bbox": [
+        1060,
+        400,
+        1310,
+        701
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 8,
+      "name": "front_walk_2",
+      "file": "frames/08_front_walk_2.png",
+      "bbox": [
+        123,
+        714,
+        332,
+        1022
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 9,
+      "name": "back_walk_2",
+      "file": "frames/09_back_walk_2.png",
+      "bbox": [
+        468,
+        722,
+        661,
+        1022
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 10,
+      "name": "left_walk_2",
+      "file": "frames/10_left_walk_2.png",
+      "bbox": [
+        771,
+        721,
+        1019,
+        1019
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    },
+    {
+      "index": 11,
+      "name": "right_walk_2",
+      "file": "frames/11_right_walk_2.png",
+      "bbox": [
+        1062,
+        722,
+        1311,
+        1022
+      ],
+      "size": [
+        128,
+        128
+      ],
+      "anchor": "bottom_center"
+    }
+  ]
+}
