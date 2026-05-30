@@ -559,13 +559,21 @@ function ShowFailurePanel(reason)
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
-        local text = reason ..
-            "\n金币 " .. totals.gold .. "(已安全保留)"
+        local reasonLine = uiRoot_:FindById("failureReasonLine")
+        if reasonLine then reasonLine:SetText(reason) end
+
+        local goldLine = uiRoot_:FindById("failureGoldLine")
+        if goldLine then goldLine:SetText("金币 " .. totals.gold .. " (已安全保留)") end
+
+        local partsLine = uiRoot_:FindById("failurePartsLine")
         if totals.parts > 0 then
-            text = text .. "\n零件 " .. totals.parts .. "(将丢失)"
+            if partsLine then partsLine:SetText("零件 " .. totals.parts .. " (将丢失)") end
+        else
+            if partsLine then partsLine:SetText("没有零件损失") end
         end
-        text = text .. "\n协议等级:" .. protocol.level .. " / " .. protocol.description
-        goInfo:SetText(text)
+
+        local protocolLine = uiRoot_:FindById("failureProtocolLine")
+        if protocolLine then protocolLine:SetText("协议等级:" .. protocol.level .. " / " .. protocol.description) end
     end
 
     -- 如果有零件可以抢救, 显示选择面板;否则直接结算并显示重开按钮
@@ -586,11 +594,21 @@ function ShowFailurePanel(reason)
         end
         local goInfo2 = uiRoot_:FindById("gameOverInfo")
         if goInfo2 then
-            local settleText = reason .. "\n保留金币:+" .. finalGold .. "(总计 " .. MetaProgress.GetGold() .. ")"
+            local reasonLine = uiRoot_:FindById("failureReasonLine")
+            if reasonLine then reasonLine:SetText(reason) end
+
+            local goldLine = uiRoot_:FindById("failureGoldLine")
+            if goldLine then goldLine:SetText("保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")") end
+
+            local partsLine = uiRoot_:FindById("failurePartsLine")
+            if partsLine then partsLine:SetText("零件已全部丢失.") end
+
+            local protocolLine = uiRoot_:FindById("failureProtocolLine")
             if talentBonus > 0 then
-                settleText = settleText .. "\n天赋保险金 +" .. talentBonus
+                if protocolLine then protocolLine:SetText("天赋保险金 +" .. talentBonus) end
+            else
+                if protocolLine then protocolLine:SetText("") end
             end
-            goInfo2:SetText(settleText)
         end
     end
 end
@@ -610,17 +628,35 @@ function ApplyFailureSalvage(choice)
         MetaProgress.AddGold(finalGold)
     end
 
-    local text = "保留金币:+" .. finalGold .. "(总计 " .. MetaProgress.GetGold() .. ")"
+    local text = "保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")"
     if salvage.bonus > 0 then
-        text = text .. "\n含抢救零件 +" .. salvage.bonus
+        text = text .. " | 含抢救零件 +" .. salvage.bonus
     end
     if talentBonus > 0 then
-        text = text .. "\n天赋保险金 +" .. talentBonus
+        text = text .. " | 天赋保险金 +" .. talentBonus
     end
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
-        goInfo:SetText(text .. "\n零件已全部丢失.")
+        local reasonLine = uiRoot_:FindById("failureReasonLine")
+        if reasonLine then reasonLine:SetText("撤离失败结算") end
+
+        local goldLine = uiRoot_:FindById("failureGoldLine")
+        if goldLine then goldLine:SetText("保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")") end
+
+        local partsLine = uiRoot_:FindById("failurePartsLine")
+        if partsLine then partsLine:SetText("零件已全部丢失.") end
+
+        local protocolLine = uiRoot_:FindById("failureProtocolLine")
+        if protocolLine then
+            local bonusText = ""
+            if salvage.bonus > 0 then bonusText = "抢救零件 +" .. salvage.bonus end
+            if talentBonus > 0 then
+                if bonusText ~= "" then bonusText = bonusText .. " | " end
+                bonusText = bonusText .. "天赋保险金 +" .. talentBonus
+            end
+            protocolLine:SetText(bonusText)
+        end
     end
 
     ShowMessage(text)
@@ -953,14 +989,23 @@ function ConfirmExtract()
         if confirmPanel then confirmPanel:Hide() end
         local winPanel = uiRoot_:FindById("winPanel")
         if winPanel then winPanel:Show() end
-        local winInfo = uiRoot_:FindById("winInfo")
-        if winInfo then
-            local text = "获得金币:+" .. reward.totalGold .. "(总计 " .. MetaProgress.GetGold() .. ")"
+        local winGoldLine = uiRoot_:FindById("winGoldLine")
+        if winGoldLine then
+            winGoldLine:SetText("获得金币:+" .. reward.totalGold .. " (总计 " .. MetaProgress.GetGold() .. ")")
+        end
+
+        local winConvertLine = uiRoot_:FindById("winConvertLine")
+        if winConvertLine then
             if reward.parts > 0 then
-                text = text .. "\n(局内金币 " .. reward.directGold .. " + 零件×" .. reward.parts .. " 转换 " .. reward.convertedGold .. ")"
+                winConvertLine:SetText("局内金币 " .. reward.directGold .. " + 零件 " .. reward.parts .. " 个 -> +" .. reward.convertedGold)
+            else
+                winConvertLine:SetText("没有零件折算")
             end
-            text = text .. "\n搜索房间:" .. RunInventory.GetSearchedCount() .. " | 回合:" .. result.turn
-            winInfo:SetText(text)
+        end
+
+        local winStatsLine = uiRoot_:FindById("winStatsLine")
+        if winStatsLine then
+            winStatsLine:SetText("搜索房间:" .. RunInventory.GetSearchedCount() .. " | 回合:" .. result.turn)
         end
     end
 end
@@ -1747,13 +1792,40 @@ function CreateUI()
                         fontSize = 22,
                         fontColor = { 255, 80, 80, 255 },
                     },
-                    UI.Label {
+                    UI.Panel {
                         id = "gameOverInfo",
-                        text = "撤离失败",
-                        fontSize = 14,
-                        fontColor = { 200, 180, 180, 220 },
-                        textAlign = "center",
-                        numberOfLines = 4,
+                        gap = 5,
+                        alignItems = "center",
+                        children = {
+                            UI.Label {
+                                id = "failureReasonLine",
+                                text = "撤离失败",
+                                fontSize = 13,
+                                fontColor = { 230, 190, 190, 235 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "failureGoldLine",
+                                text = "金币 0 (已安全保留)",
+                                fontSize = 13,
+                                fontColor = { 255, 220, 120, 235 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "failurePartsLine",
+                                text = "零件 0 (将丢失)",
+                                fontSize = 12,
+                                fontColor = { 210, 190, 170, 220 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "failureProtocolLine",
+                                text = "协议等级:5",
+                                fontSize = 12,
+                                fontColor = { 180, 190, 210, 220 },
+                                textAlign = "center",
+                            },
+                        }
                     },
                     UI.Panel {
                         id = "failureChoicePanel",
@@ -1912,13 +1984,33 @@ function CreateUI()
                         fontSize = 22,
                         fontColor = { 80, 255, 120, 255 },
                     },
-                    UI.Label {
+                    UI.Panel {
                         id = "winInfo",
-                        text = "",
-                        fontSize = 14,
-                        fontColor = { 200, 220, 200, 220 },
-                        textAlign = "center",
-                        numberOfLines = 3,
+                        gap = 5,
+                        alignItems = "center",
+                        children = {
+                            UI.Label {
+                                id = "winGoldLine",
+                                text = "获得金币:+0 (总计 0)",
+                                fontSize = 14,
+                                fontColor = { 200, 255, 200, 240 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "winConvertLine",
+                                text = "局内金币 0 + 零件 0 个 -> +0",
+                                fontSize = 12,
+                                fontColor = { 160, 220, 180, 220 },
+                                textAlign = "center",
+                            },
+                            UI.Label {
+                                id = "winStatsLine",
+                                text = "搜索房间:0 | 回合:0",
+                                fontSize = 12,
+                                fontColor = { 180, 205, 190, 220 },
+                                textAlign = "center",
+                            },
+                        }
                     },
                     UI.Button {
                         text = "返回主菜单",
