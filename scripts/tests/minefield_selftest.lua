@@ -10,6 +10,7 @@ local ExtractionRun = require("systems.ExtractionRun")
 local Protocol = require("systems.Protocol")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
+local Tutorial = require("systems.Tutorial")
 
 local function assertEq(actual, expected, message)
     if actual ~= expected then
@@ -237,6 +238,37 @@ local function testProtocolPressure()
     local result = Protocol.AddPressure()  -- 85, still level 1
     assertEq(Protocol.GetStatus().level, 1, "protocol level 1 at pressure 80+")
     assertTrue(result.penalty, "protocol 1 should report penalty")
+end
+
+local function testProtocolPenaltyDamageCanKill()
+    Protocol.Reset()
+    Combat.Reset()
+    Combat.hp = 1
+
+    for i = 1, 16 do
+        Protocol.AddPressure()
+    end
+
+    local result = Protocol.AddPressure()
+    assertTrue(result.penalty, "protocol 1 should report penalty before applying damage")
+
+    local damage = Combat.ApplyDamage(1)
+    assertEq(damage.hp, 0, "protocol penalty should clamp hp to zero")
+    assertTrue(damage.dead, "protocol penalty damage should report death at zero hp")
+    assertTrue(not Combat.IsAlive(), "combat should not be alive at zero hp")
+end
+
+local function testCombatHpDeltaClamps()
+    Combat.Reset()
+    Combat.hp = 2
+
+    local damage = Combat.ApplyHpDelta(-5)
+    assertEq(damage.hp, 0, "negative hp delta should clamp at zero")
+    assertTrue(damage.dead, "negative hp delta should report death")
+
+    local heal = Combat.ApplyHpDelta(999)
+    assertEq(heal.hp, Combat.maxHp, "positive hp delta should clamp at max hp")
+    assertTrue(not heal.dead, "healed player should be alive")
 end
 
 local function testCellStateExploreAndClear()
@@ -475,6 +507,75 @@ local function testNormalModeRandomGeneration()
         assertAdjacency(field)
     end
     assertTrue(sawDifferentSpawn, "normal mode should randomize spawn instead of always using center")
+end
+
+local function testNormalRunTunedSpecialCounts()
+    for seed = 1, 25 do
+        local field = Minefield.New({
+            mode = "normal",
+            width = 10,
+            height = 10,
+            mineCount = 20,
+            spawnSafeRadius = 0,
+            pathWidth = 0,
+            randomExitCount = 2,
+            monsterRoomRatio = 0.10,
+            chestRoomRatio = 0.10,
+            eventRoomRatio = 0.10,
+            minMonsterRooms = 10,
+            minChestRooms = 10,
+            minEventRooms = 10,
+            maxMonsterRooms = 10,
+            maxChestRooms = 10,
+            maxEventRooms = 10,
+            seed = seed,
+        })
+
+        assertEq(field.mineCount, 20, "10x10 normal mine count mismatch")
+        assertEq(field.monsterCount, 10, "10x10 normal monster room count mismatch")
+        assertEq(field.chestCount, 10, "10x10 normal chest room count mismatch")
+        assertEq(field.eventCount, 10, "10x10 normal event room count mismatch")
+        assertEq(#field:GetExits(), 2, "10x10 normal exit count mismatch")
+    end
+end
+
+local function testTutorialMapDiagonalLayout()
+    local field = Minefield.New(Tutorial.GetMapConfig())
+
+    assertEq(field.width, 5, "tutorial width mismatch")
+    assertEq(field.height, 5, "tutorial height mismatch")
+    assertEq(field.mineCount, 4, "tutorial mine count mismatch")
+    assertEq(field.eventCount, 4, "tutorial event room count mismatch")
+    assertEq(field.monsterCount, 5, "tutorial monster room count mismatch")
+    assertEq(field.chestCount, 4, "tutorial chest room count mismatch")
+    assertEq(#field:GetExits(), 1, "tutorial exit count mismatch")
+
+    local expected = {
+        [1] = { "spawn", "normal", "mine", "event", "monster" },
+        [2] = { "normal", "mine", "event", "monster", "chest" },
+        [3] = { "mine", "event", "monster", "chest", "normal" },
+        [4] = { "event", "monster", "chest", "mine", "normal" },
+        [5] = { "monster", "chest", "normal", "normal", "exit" },
+    }
+
+    for y = 1, 5 do
+        for x = 1, 5 do
+            local cell = field:GetCell(x, y)
+            local want = expected[x][y]
+            if want == "spawn" then
+                assertTrue(cell.spawn, "tutorial spawn mismatch at " .. x .. "," .. y)
+                assertEq(cell.roomType, "normal", "tutorial spawn room type mismatch")
+            elseif want == "mine" then
+                assertTrue(cell.mine, "tutorial mine missing at " .. x .. "," .. y)
+                assertEq(cell.roomType, "mine", "tutorial mine room type mismatch")
+            elseif want == "exit" then
+                assertEq(cell.exitId, "tutorial_exit", "tutorial exit mismatch at " .. x .. "," .. y)
+                assertEq(cell.roomType, "exit", "tutorial exit room type mismatch")
+            else
+                assertEq(cell.roomType, want, "tutorial room type mismatch at " .. x .. "," .. y)
+            end
+        end
+    end
 end
 
 local function testJudgeModeManualMap()
@@ -860,12 +961,16 @@ local tests = {
     { name = "extraction run", fn = testExtractionRun },
     { name = "non-fatal mine room", fn = testNonFatalMineRoom },
     { name = "protocol pressure", fn = testProtocolPressure },
+    { name = "protocol penalty damage can kill", fn = testProtocolPenaltyDamageCanKill },
+    { name = "combat hp delta clamps", fn = testCombatHpDeltaClamps },
     { name = "cell state explore and clear", fn = testCellStateExploreAndClear },
     { name = "zero expansion disabled by default", fn = testZeroExpansionDisabledByDefault },
     { name = "teleport requires explored", fn = testTeleportRequiresExplored },
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
+    { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },
+    { name = "tutorial map diagonal layout", fn = testTutorialMapDiagonalLayout },
     { name = "combat result signals", fn = testCombatResultSignals },
     { name = "monster active combat loop", fn = testMonsterActiveCombatLoop },
     { name = "monster warning attack damage", fn = testMonsterWarningAttackDamage },

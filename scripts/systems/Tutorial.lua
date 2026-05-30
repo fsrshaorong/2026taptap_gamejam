@@ -186,27 +186,44 @@ end
 ---@return table 传给 StartNewGame 的 override 参数
 function Tutorial.GetMapConfig()
     return {
-        mode = "normal",
+        mode = "judge",
         width = 5,
         height = 5,
-        mineDensity = 0.08,
-        mineCount = 2,
+        mineCount = 4,
         spawnSafeRadius = 1,
         pathWidth = 0,
-        randomExitCount = 1,
-        monsterRoomRatio = 0.05,
-        chestRoomRatio = 0.15,
-        eventRoomRatio = 0,
-        maxMonsterRooms = 1,
-        maxChestRooms = 2,
-        maxEventRooms = 0,
-        minMonsterRooms = 0,
-        minChestRooms = 1,
-        minEventRooms = 0,
+        randomExitCount = 0,
+        maxMonsterRooms = 5,
+        maxChestRooms = 4,
+        maxEventRooms = 4,
+        minMonsterRooms = 5,
+        minChestRooms = 4,
+        minEventRooms = 4,
         mineHitsAreFatal = false,
         revealOnMove = true,
         moveRequiresRevealed = false,
         seed = 777,
+        manualMap = {
+            width = 5,
+            height = 5,
+            spawn = { x = 1, y = 1 },
+            mines = {
+                { x = 1, y = 3 }, { x = 2, y = 2 }, { x = 3, y = 1 },
+                { x = 4, y = 4 },
+            },
+            events = {
+                { x = 1, y = 4 }, { x = 2, y = 3 }, { x = 3, y = 2 }, { x = 4, y = 1 },
+            },
+            monsters = {
+                { x = 1, y = 5 }, { x = 2, y = 4 }, { x = 3, y = 3 }, { x = 4, y = 2 }, { x = 5, y = 1 },
+            },
+            chests = {
+                { x = 2, y = 5 }, { x = 3, y = 4 }, { x = 4, y = 3 }, { x = 5, y = 2 },
+            },
+            exits = {
+                { id = "tutorial_exit", x = 5, y = 5 },
+            },
+        },
     }
 end
 

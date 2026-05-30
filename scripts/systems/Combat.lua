@@ -136,6 +136,32 @@ function Combat.IsAlive()
     return Combat.hp > 0
 end
 
+local function clampHp(value)
+    if value < 0 then return 0 end
+    if value > Combat.maxHp then return Combat.maxHp end
+    return value
+end
+
+function Combat.ApplyHpDelta(delta)
+    delta = tonumber(delta) or 0
+    local before = Combat.hp
+    Combat.hp = clampHp(Combat.hp + delta)
+    return {
+        delta = Combat.hp - before,
+        requestedDelta = delta,
+        hp = Combat.hp,
+        dead = Combat.hp <= 0,
+    }
+end
+
+function Combat.ApplyDamage(damage)
+    damage = tonumber(damage) or 0
+    if damage < 0 then damage = 0 end
+    local result = Combat.ApplyHpDelta(-damage)
+    result.damage = damage
+    return result
+end
+
 --- 踩雷伤害:扣血, 返回是否死亡
 ---@return table { damage: number, hp: number, dead: boolean, immuneUsed: boolean }
 function Combat.TakeMineHit()
@@ -151,11 +177,11 @@ function Combat.TakeMineHit()
     end
     local damage = CONFIG.mineDamage - Combat.mineDmgReduce
     if damage < 5 then damage = 5 end  -- 最低伤害 5
-    Combat.hp = math.max(0, Combat.hp - damage)
+    local hit = Combat.ApplyDamage(damage)
     return {
         damage = damage,
-        hp = Combat.hp,
-        dead = Combat.hp <= 0,
+        hp = hit.hp,
+        dead = hit.dead,
         immuneUsed = false,
     }
 end
@@ -272,13 +298,13 @@ function Combat.UpdateEnemy(x, y, dt, playerPos)
     if enemy.attackPhase == "active" and not enemy.attackHitResolved then
         if distToEnemy(enemy, playerPos) <= enemy.attackRadius and enemy.playerInvincibleTimer <= 0 then
             local damage = enemy.monsterDamage
-            Combat.hp = math.max(0, Combat.hp - damage)
+            local hit = Combat.ApplyDamage(damage)
             enemy.playerInvincibleTimer = CONFIG.playerInvincibleDuration
             enemy.attackHitResolved = true
             result.playerHit = true
             result.damage = damage
-            result.hp = Combat.hp
-            result.dead = Combat.hp <= 0
+            result.hp = hit.hp
+            result.dead = hit.dead
         end
     end
 
@@ -357,7 +383,7 @@ function Combat.FightEnemy(x, y)
 
     if playerPower < enemyPower then
         damage = enemyPower - playerPower
-        Combat.hp = math.max(0, Combat.hp - damage)
+        Combat.ApplyDamage(damage)
         playerWin = false
     end
 

@@ -586,16 +586,19 @@ function StartNewGame(override)
         mode = "normal",
         width = 10,
         height = 10,
-        mineDensity = 0.14,
+        mineCount = 20,
         spawnSafeRadius = 0,
         pathWidth = 0,
         randomExitCount = 2,
-        monsterRoomRatio = 0.035,
-        chestRoomRatio = 0.025,
-        eventRoomRatio = 0.018,
-        maxMonsterRooms = 7,
-        maxChestRooms = 5,
-        maxEventRooms = 3,
+        monsterRoomRatio = 0.10,
+        chestRoomRatio = 0.10,
+        eventRoomRatio = 0.10,
+        minMonsterRooms = 10,
+        minChestRooms = 10,
+        minEventRooms = 10,
+        maxMonsterRooms = 10,
+        maxChestRooms = 10,
+        maxEventRooms = 10,
         mineHitsAreFatal = false,
         revealOnMove = true,
         moveRequiresRevealed = false,
@@ -1044,9 +1047,14 @@ function MovePlayer(dx, dy)
             end
             -- Protocol 1 惩罚: 探索未知房扣血
             if protoResult.penalty then
-                Combat.hp = Combat.hp - 1
-                if Combat.hp > 0 then
-                    ShowMessage("临界协议! 探索未知房损失生命! (HP-1)")
+                local penaltyDamage = Combat.ApplyDamage(1)
+                if penaltyDamage.dead then
+                    ShowFailurePanel("临界协议! 探索未知房损失生命, 血量归零!")
+                    RefreshMapData()
+                    UpdateHUD()
+                    return
+                else
+                    ShowMessage("临界协议! 探索未知房损失生命! (HP-1, 剩余 " .. penaltyDamage.hp .. ")")
                 end
             end
         end
@@ -1384,9 +1392,7 @@ local function ApplyEventResult(result, x, y)
         if RunInventory.parts < 0 then RunInventory.parts = 0 end
     end
     if result.hpDelta ~= 0 then
-        Combat.hp = Combat.hp + result.hpDelta
-        if Combat.hp < 0 then Combat.hp = 0 end
-        if Combat.hp > Combat.maxHp then Combat.hp = Combat.maxHp end
+        Combat.ApplyHpDelta(result.hpDelta)
     end
     if result.powerDelta and result.powerDelta ~= 0 then
         Combat.power = Combat.power + result.powerDelta
