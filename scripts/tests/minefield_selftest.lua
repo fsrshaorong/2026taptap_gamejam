@@ -11,6 +11,7 @@ local Protocol = require("systems.Protocol")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Tutorial = require("systems.Tutorial")
+local MetaProgress = require("systems.MetaProgress")
 
 local function assertEq(actual, expected, message)
     if actual ~= expected then
@@ -22,6 +23,45 @@ local function assertTrue(value, message)
     if not value then
         error(message or "assertTrue failed", 2)
     end
+end
+
+local function withMetaProgressMock(saved, fn)
+    local oldFileSystem = fileSystem
+    local oldFile = File
+    local oldCjson = cjson
+    local writes = {}
+
+    fileSystem = {
+        FileExists = function(_, _)
+            return saved ~= nil
+        end,
+    }
+    cjson = {
+        decode = function(_)
+            return saved
+        end,
+        encode = function(value)
+            writes.last = value
+            return "encoded"
+        end,
+    }
+    File = function(_, _)
+        return {
+            IsOpen = function() return true end,
+            ReadString = function() return "{}" end,
+            WriteString = function(_, text) writes.text = text end,
+            Close = function() end,
+        }
+    end
+
+    local ok, err = pcall(fn, writes)
+    fileSystem = oldFileSystem
+    File = oldFile
+    cjson = oldCjson
+    if not ok then
+        error(err, 0)
+    end
+    return writes
 end
 
 local function countAdjacentMines(field, x, y)
@@ -513,6 +553,139 @@ local function testFailureSalvageWithCarriedItems()
     assertTrue(options.lostItemValue > 0, "failure should report lost carried value")
     local salvage = RunInventory.ApplyFailureSalvage("salvage_part")
     assertEq(salvage.gold, 22, "failure salvage should still support old parts rescue")
+end
+
+local function testTradableLoosePartsOnly()
+    RunInventory.Reset()
+    RunInventory.parts = 1
+    RunInventory.AddCarriedItem("static_lens", 1, "test")
+    assertEq(RunInventory.GetLooseParts(), 0, "item-backed parts should not be loose")
+    assertEq(RunInventory.GetTradableItemCount("parts"), 0, "trader should not see item-backed parts as virtual parts")
+
+    local removed = RunInventory.RemoveTradableItem("parts", 1)
+    assertTrue(not removed, "virtual parts sale should fail when only carried items exist")
+    assertEq(RunInventory.GetCarriedItemCount(), 1, "failed virtual sale should keep carried item")
+
+    RunInventory.parts = 2
+    assertEq(RunInventory.GetLooseParts(), 1, "extra part should be loose")
+    local ok = RunInventory.RemoveTradableItem("parts", 1)
+    assertTrue(ok, "virtual parts sale should consume loose part")
+    assertEq(RunInventory.parts, 1, "virtual parts sale should leave item-backed part")
+    assertEq(RunInventory.GetCarriedItemCount(), 1, "virtual parts sale should not remove concrete item")
+end
+
+local function testRemoveConcreteTradableSettlementSafe()
+    RunInventory.Reset()
+    RunInventory.parts = 1
+    RunInventory.AddCarriedItem("static_lens", 1, "test")
+    local ok = RunInventory.RemoveTradableItem("static_lens", 1)
+    assertTrue(ok, "concrete tradable removal should succeed")
+    assertEq(RunInventory.parts, 0, "concrete item removal should also remove its item-backed part")
+    assertEq(RunInventory.GetCarriedItemCount(), 0, "concrete item should be removed")
+    local reward = RunInventory.GetExtractionReward()
+    assertEq(reward.convertedGold, 0, "removed concrete item should not convert on extraction")
+end
+
+local function testMetaProgressLoadRecoveryDefaults()
+    withMetaProgressMock({
+        gold = 7,
+        unlockedTalents = {},
+        ownedItems = {},
+        equippedItems = {},
+        stats = { totalRuns = 2, totalExtractions = 1, totalGoldEarned = 30 },
+    }, function()
+        MetaProgress.Load()
+        local recovery = MetaProgress.GetRecoverySummary()
+        assertEq(MetaProgress.GetGold(), 7, "old save should keep gold")
+        assertEq(recovery.totalItems, 0, "old save should default recovery totalItems")
+        assertEq(recovery.totalValue, 0, "old save should default recovery totalValue")
+        assertEq(#recovery.recentItems, 0, "old save should default empty recent items")
+    end)
+end
+
+local function testMetaProgressRecordExtractionRecovery()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        local reward = {
+            totalGold = 45,
+            carriedItemCount = 2,
+            carriedItemValue = 34,
+            carriedItems = {
+                {
+                    itemId = "static_lens",
+                    count = 1,
+                    def = RunInventory.GetItemDef("static_lens"),
+                },
+                {
+                    itemId = "blackbox_tag",
+                    count = 1,
+                    def = RunInventory.GetItemDef("blackbox_tag"),
+                },
+            },
+        }
+        local receipt = MetaProgress.RecordExtractionReward(reward, { searchedRooms = 2 })
+        assertEq(receipt.goldAdded, 45, "receipt should record added gold")
+        assertEq(MetaProgress.GetGold(), 45, "extraction reward should add meta gold")
+        local stats = MetaProgress.GetStats()
+        assertEq(stats.totalExtractions, 1, "extraction reward should count extraction")
+        assertEq(stats.totalGoldEarned, 45, "extraction reward should count earned gold")
+        local recovery = MetaProgress.GetRecoverySummary()
+        assertEq(recovery.totalItems, 2, "recovery should count carried items")
+        assertEq(recovery.totalValue, 34, "recovery should count carried value")
+        assertEq(recovery.totalExtractionsWithItems, 1, "recovery should count item extraction")
+        assertEq(#recovery.recentItems, 2, "recovery should keep recent item summaries")
+
+        MetaProgress.RecordExtractionReward(reward, nil)
+        assertEq(MetaProgress.GetGold(), 45, "same reward table should not double-record")
+    end)
+end
+
+local function testMetaProgressRecentRecoveryTrim()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        local reward = {
+            totalGold = 100,
+            carriedItemCount = 6,
+            carriedItemValue = 60,
+            carriedItems = {
+                { itemId = "broken_copper_wire", count = 2, def = RunInventory.GetItemDef("broken_copper_wire") },
+                { itemId = "dim_capacitor", count = 2, def = RunInventory.GetItemDef("dim_capacitor") },
+                { itemId = "static_lens", count = 2, def = RunInventory.GetItemDef("static_lens") },
+            },
+        }
+        MetaProgress.RecordExtractionReward(reward, nil)
+        local recovery = MetaProgress.GetRecoverySummary()
+        assertEq(recovery.totalItems, 6, "recovery total should keep all items")
+        assertEq(#recovery.recentItems, 5, "recent recovery should be trimmed")
+    end)
+end
+
+local function testMetaProgressFailureDoesNotRecordRecovery()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(12)
+        local recovery = MetaProgress.GetRecoverySummary()
+        assertEq(MetaProgress.GetGold(), 12, "failure retained gold should still add gold")
+        assertEq(recovery.totalItems, 0, "failure gold should not register carried items")
+        assertEq(recovery.totalValue, 0, "failure gold should not register carried value")
+        assertEq(#recovery.recentItems, 0, "failure gold should not update recent items")
+    end)
+end
+
+local function testMetaProgressGrowthEffectsStillApply()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(500)
+        local bought = MetaProgress.BuyItem("armor")
+        assertTrue(bought, "should buy armor with extracted gold")
+        local equipped = MetaProgress.ToggleEquip("armor")
+        assertTrue(equipped, "should equip bought armor")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "armor should still grant HP")
+
+        local unlocked = MetaProgress.UnlockTalent("talent_mine")
+        assertTrue(unlocked, "should unlock mine talent with extracted gold")
+        assertEq(MetaProgress.GetTalentEffects().mineDmgReduce, 10, "mine talent should still apply")
+    end)
 end
 
 local function testEventRoomNotSearchable()
@@ -1065,6 +1238,13 @@ local tests = {
     { name = "chest reward beats normal search", fn = testChestRewardBeatsNormalSearch },
     { name = "carried items extraction no duplicate parts", fn = testCarriedItemsExtractionNoDuplicateParts },
     { name = "failure salvage with carried items", fn = testFailureSalvageWithCarriedItems },
+    { name = "tradable loose parts only", fn = testTradableLoosePartsOnly },
+    { name = "remove concrete tradable settlement safe", fn = testRemoveConcreteTradableSettlementSafe },
+    { name = "meta progress load recovery defaults", fn = testMetaProgressLoadRecoveryDefaults },
+    { name = "meta progress record extraction recovery", fn = testMetaProgressRecordExtractionRecovery },
+    { name = "meta progress recent recovery trim", fn = testMetaProgressRecentRecoveryTrim },
+    { name = "meta progress failure does not record recovery", fn = testMetaProgressFailureDoesNotRecordRecovery },
+    { name = "meta progress growth effects still apply", fn = testMetaProgressGrowthEffectsStillApply },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },
     { name = "tutorial map diagonal layout", fn = testTutorialMapDiagonalLayout },

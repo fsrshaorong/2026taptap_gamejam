@@ -235,6 +235,12 @@ function RunInventory.ConvertCarriedItemsToPartsOrGold(partsToGoldRate)
     return RunInventory.GetExtractionReward(partsToGoldRate)
 end
 
+function RunInventory.GetLooseParts()
+    local looseParts = RunInventory.parts - RunInventory.GetCarriedItemCount()
+    if looseParts < 0 then looseParts = 0 end
+    return looseParts
+end
+
 function RunInventory.GetCarriedItemSummary(maxItems)
     maxItems = maxItems or 3
     local names = {}
@@ -267,7 +273,7 @@ function RunInventory.GetTradableItems()
         id = "parts",
         itemId = "parts",
         name = "异常回收物",
-        count = RunInventory.parts,
+        count = RunInventory.GetLooseParts(),
         value = 10,
         type = "virtual",
     })
@@ -280,7 +286,7 @@ function RunInventory.GetTradableItemDisplayName(itemId)
 end
 
 function RunInventory.GetTradableItemCount(itemId)
-    if itemId == "parts" then return RunInventory.parts end
+    if itemId == "parts" then return RunInventory.GetLooseParts() end
     local stack = RunInventory.carriedItems[itemId]
     return stack and stack.count or 0
 end
@@ -289,7 +295,7 @@ function RunInventory.RemoveTradableItem(itemId, count)
     count = math.floor(tonumber(count) or 1)
     if count < 1 then count = 1 end
     if itemId == "parts" then
-        if RunInventory.parts < count then return false, "not_enough" end
+        if RunInventory.GetLooseParts() < count then return false, "not_enough" end
         RunInventory.parts = RunInventory.parts - count
         return true
     end
@@ -297,6 +303,7 @@ function RunInventory.RemoveTradableItem(itemId, count)
     local stack = RunInventory.carriedItems[itemId]
     if not stack or stack.count < count then return false, "not_enough" end
     stack.count = stack.count - count
+    RunInventory.parts = math.max(0, RunInventory.parts - count)
     if stack.count <= 0 then
         RunInventory.carriedItems[itemId] = nil
     end
@@ -465,6 +472,7 @@ function RunInventory.GetTotals()
     return {
         gold = RunInventory.gold,
         parts = RunInventory.parts,
+        looseParts = RunInventory.GetLooseParts(),
         carriedItemCount = RunInventory.GetCarriedItemCount(),
         carriedItemValue = RunInventory.GetCarriedItemValue(),
         carriedItems = RunInventory.GetCarriedItems(),
@@ -536,8 +544,7 @@ function RunInventory.GetExtractionReward(partsToGoldRate)
     partsToGoldRate = partsToGoldRate or 10
     local carriedCount = RunInventory.GetCarriedItemCount()
     local carriedValue = RunInventory.GetCarriedItemValue()
-    local looseParts = RunInventory.parts - carriedCount
-    if looseParts < 0 then looseParts = 0 end
+    local looseParts = RunInventory.GetLooseParts()
     local loosePartsGold = looseParts * partsToGoldRate
     local convertedGold = carriedValue + loosePartsGold
     return {

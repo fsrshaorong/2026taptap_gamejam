@@ -49,6 +49,8 @@ local PHASE = {
     EXTRACTED = "extracted",
 }
 local phase = PHASE.MENU
+local extractionSettlementRecorded = false
+local failureSettlementRecorded = false
 
 -- 消息
 local message = ""
@@ -334,6 +336,17 @@ function RefreshMainMenu()
         else
             statsLabel:SetText("首次探索, 祝你好运!")
         end
+    end
+
+    local recovery = MetaProgress.GetRecoverySummary()
+    local recoveryLabel = uiRoot_ and uiRoot_:FindById("menuRecoveryLabel")
+    if recoveryLabel then
+        recoveryLabel:SetText("后勤回收: " .. recovery.totalItems .. " 件 | 估值 " .. recovery.totalValue)
+    end
+
+    local recentLabel = uiRoot_ and uiRoot_:FindById("menuRecentRecoveryLabel")
+    if recentLabel then
+        recentLabel:SetText(MetaProgress.GetRecoverySummaryText(4))
     end
 end
 
@@ -626,6 +639,8 @@ function StartNewGame(override)
     DungeonRoom.ResetPlayer()
     tradedRooms = {}
     EventSystem.Reset(minefield.seed or os.time())
+    extractionSettlementRecorded = false
+    failureSettlementRecorded = false
 
     -- 应用装备加成
     local equipBonus = MetaProgress.GetEquipBonus()
@@ -757,8 +772,9 @@ function ShowFailurePanel(reason)
         -- 无零件可抢救, 直接结算金币
         local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
         local finalGold = totals.gold + talentBonus
-        if finalGold > 0 then
+        if finalGold > 0 and not failureSettlementRecorded then
             MetaProgress.AddGold(finalGold)
+            failureSettlementRecorded = true
         end
         local goInfo2 = uiRoot_:FindById("gameOverInfo")
         if goInfo2 then
@@ -799,8 +815,9 @@ function ApplyFailureSalvage(choice)
     local finalGold = salvage.gold + talentBonus
 
     -- 写入局外金币
-    if finalGold > 0 then
+    if finalGold > 0 and not failureSettlementRecorded then
         MetaProgress.AddGold(finalGold)
+        failureSettlementRecorded = true
     end
 
     local text = "保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")"
@@ -1339,9 +1356,13 @@ function ConfirmExtract()
         local reward = RunInventory.GetExtractionReward()
         local stats = RunInventory.GetRunStats(run)
 
-        -- 写入局外金币
-        MetaProgress.AddGold(reward.totalGold)
-        MetaProgress.RecordExtraction()
+        local receipt = nil
+        if not extractionSettlementRecorded then
+            receipt = MetaProgress.RecordExtractionReward(reward, stats)
+            extractionSettlementRecorded = true
+        else
+            receipt = { goldAfter = MetaProgress.GetGold(), itemCount = 0, itemValue = 0 }
+        end
 
         ShowMessage("撤离成功!共获得 " .. reward.totalGold .. " 金币.")
         local confirmPanel = uiRoot_:FindById("extractConfirmPanel")
@@ -1350,13 +1371,13 @@ function ConfirmExtract()
         if winPanel then winPanel:Show() end
         local winGoldLine = uiRoot_:FindById("winGoldLine")
         if winGoldLine then
-            winGoldLine:SetText("获得金币:+" .. reward.totalGold .. " (总计 " .. MetaProgress.GetGold() .. ")")
+            winGoldLine:SetText("获得金币:+" .. reward.totalGold .. " (总计 " .. (receipt.goldAfter or MetaProgress.GetGold()) .. ")")
         end
 
         local winConvertLine = uiRoot_:FindById("winConvertLine")
         if winConvertLine then
             if reward.carriedItemCount > 0 then
-                winConvertLine:SetText("带回 " .. reward.carriedSummary .. " | 估值 +" .. reward.carriedItemValue)
+                winConvertLine:SetText("后勤已登记: " .. reward.carriedItemCount .. " 件 | 估值 +" .. reward.carriedItemValue .. " | " .. reward.carriedSummary)
             elseif reward.parts > 0 then
                 winConvertLine:SetText("局内金币 " .. reward.directGold .. " + 零件 " .. reward.parts .. " 个 -> +" .. reward.convertedGold)
             else
@@ -1389,7 +1410,7 @@ local function GetEventContext()
     local totals = RunInventory.GetTotals()
     return {
         gold = totals.gold,
-        parts = totals.parts,
+        parts = totals.looseParts or 0,
         hp = Combat.hp,
         maxHp = Combat.maxHp,
         tradePrice = MetaProgress.GetTalentEffects().tradePrice,
@@ -2174,6 +2195,18 @@ function CreateUI()
                                 text = "",
                                 fontSize = 11,
                                 fontColor = { 120, 130, 150, 180 },
+                            },
+                            UI.Label {
+                                id = "menuRecoveryLabel",
+                                text = "后勤回收: 0 件 | 估值 0",
+                                fontSize = 11,
+                                fontColor = { 150, 220, 190, 210 },
+                            },
+                            UI.Label {
+                                id = "menuRecentRecoveryLabel",
+                                text = "最近带回: 无",
+                                fontSize = 11,
+                                fontColor = { 150, 170, 190, 190 },
                             },
                         }
                     },
