@@ -1039,7 +1039,7 @@ function SearchCurrentRoom()
 
     local reward = result.reward
     if reward.isChest then
-        DungeonRoom.TriggerChestOpen()
+        DungeonRoom.TriggerChestOpen(reward)
     end
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()

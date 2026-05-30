@@ -164,10 +164,12 @@ local roomObstacles = {}
 local mineFlashTimer = 0
 local MINE_FLASH_DURATION = 0.6
 local chestOpenTimer = 0
+local chestRewardBurst = { timer = 0, gold = 0, parts = 0 }
 local tradePulseTimer = 0
 local exitPulseTimer = 0
 local roomTime = 0
 local CHEST_OPEN_DURATION = 0.9
+local CHEST_REWARD_DURATION = 1.2
 local TRADE_PULSE_DURATION = 0.8
 local EXIT_PULSE_DURATION = 0.8
 
@@ -181,8 +183,11 @@ function DungeonRoom.TriggerMineFlash()
     mineFlashTimer = MINE_FLASH_DURATION
 end
 
-function DungeonRoom.TriggerChestOpen()
+function DungeonRoom.TriggerChestOpen(reward)
     chestOpenTimer = CHEST_OPEN_DURATION
+    chestRewardBurst.timer = CHEST_REWARD_DURATION
+    chestRewardBurst.gold = reward and reward.gold or 0
+    chestRewardBurst.parts = reward and reward.parts or 0
 end
 
 function DungeonRoom.TriggerTradePulse()
@@ -251,6 +256,10 @@ function DungeonRoom.Update(dt)
     if chestOpenTimer > 0 then
         chestOpenTimer = chestOpenTimer - dt
         if chestOpenTimer < 0 then chestOpenTimer = 0 end
+    end
+    if chestRewardBurst.timer > 0 then
+        chestRewardBurst.timer = chestRewardBurst.timer - dt
+        if chestRewardBurst.timer < 0 then chestRewardBurst.timer = 0 end
     end
     if tradePulseTimer > 0 then
         tradePulseTimer = tradePulseTimer - dt
@@ -455,6 +464,35 @@ local function drawSearchPoint(vg, layout, searchState)
         local cx = rect.x + rect.w / 2
         local bottomY = rect.y + rect.h + 14 - flash * 8
         drawSpriteBottom(vg, chestImg, cx, bottomY, 104, 1.0)
+        if chestRewardBurst.timer > 0 then
+            local progress = 1.0 - (chestRewardBurst.timer / CHEST_REWARD_DURATION)
+            local rise = 78 * progress
+            local spread = 34 + 26 * progress
+            local alpha = math.floor(255 * math.max(0, 1.0 - progress))
+            local scale = 1.0 + 0.25 * math.sin(progress * math.pi)
+            local iconSize = 44 * scale
+            local iconY = rect.y + rect.h - 12 - rise
+
+            nvgBeginPath(vg)
+            nvgCircle(vg, cx, iconY + 18, 34 + 24 * progress)
+            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(90 * (1.0 - progress))))
+            nvgFill(vg)
+
+            drawSprite(vg, imgPropGold, cx - spread, iconY, iconSize, alpha / 255)
+            if chestRewardBurst.parts > 0 then
+                drawSprite(vg, imgPropParts, cx + spread, iconY + 4, iconSize, alpha / 255)
+            end
+
+            nvgFontFace(vg, "sans")
+            nvgFontSize(vg, 12 + 2 * scale)
+            nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+            nvgFillColor(vg, nvgRGBA(255, 235, 130, alpha))
+            nvgText(vg, cx - spread, iconY + 32, "+" .. chestRewardBurst.gold)
+            if chestRewardBurst.parts > 0 then
+                nvgFillColor(vg, nvgRGBA(170, 230, 255, alpha))
+                nvgText(vg, cx + spread, iconY + 36, "+" .. chestRewardBurst.parts)
+            end
+        end
         if not searchState.searched then
             drawSpriteBottom(vg, imgPropGold, cx - 58, rect.y + rect.h + 22, 46, 0.95)
             drawSpriteBottom(vg, imgPropParts, cx + 58, rect.y + rect.h + 22, 46, 0.95)
