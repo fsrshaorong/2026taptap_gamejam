@@ -32,7 +32,7 @@ local run = nil          -- ExtractionRun 实例
 ---@type table
 local minefield = nil    -- Minefield 引用(run.minefield)
 
--- 玩家已访问的格子 { ["x,y"] = true }
+-- 玩家已访问的格子 (v0.3: 由 minefield:Explore() 管理, 此表仅作兼容)
 local visitedCells = {}
 
 -- 游戏阶段
@@ -539,10 +539,11 @@ function StartNewGame(override)
     run = ExtractionRun.New(config)
     minefield = run.minefield
 
-    -- 标记出生格为已访问
+    -- 标记出生格为已探索(v0.3: 通过 Minefield:Explore 管理)
     visitedCells = {}
     local spawn = minefield:GetSpawn()
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
+    minefield:Explore(spawn.x, spawn.y)
     RunInventory.Reset()
     Combat.Reset()
     Protocol.Reset()
@@ -798,6 +799,10 @@ function FinishBattle()
         ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. result.damage .. " HP (剩余 " .. Combat.hp .. ")")
     end
     if not result.dead then
+        -- v0.3: 标记房间已清理
+        if minefield and battleState.cellX then
+            minefield:ClearRoom(battleState.cellX, battleState.cellY)
+        end
         if result.playerWin then
             ShowMessage("击败 " .. enemy.name .. "! 房间已清理 (我方" .. playerPower .. " vs 敌方" .. enemyPower .. ")")
         else
@@ -867,9 +872,23 @@ function MovePlayer(dx, dy)
             ShowMessage("成功逃离怪物!")
         end
 
-        -- 标记为已访问
+        -- 标记为已探索(v0.3: 通过 Minefield:Explore + Protocol 压力)
         local p = result.player
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
+        local firstExplore = minefield:Explore(p.x, p.y)
+        if firstExplore then
+            local protoResult = Protocol.AddPressure()
+            if protoResult.changed then
+                ShowMessage("协议降至 " .. protoResult.level .. " - " .. protoResult.description)
+            end
+            -- Protocol 1 惩罚: 探索未知房扣血
+            if protoResult.penalty then
+                Combat.hp = Combat.hp - 1
+                if Combat.hp > 0 then
+                    ShowMessage("临界协议! 探索未知房损失生命! (HP-1)")
+                end
+            end
+        end
 
         -- 邻域感知天赋:高亮 8 邻域
         local talentEffects = MetaProgress.GetTalentEffects()
@@ -1030,6 +1049,8 @@ function SearchCurrentRoom()
         msg = msg .. ", 战斗力 +" .. powerUp
     end
     if reward.isChest then
+        -- v0.3: 宝箱开启后标记房间已清理
+        minefield:ClearRoom(p.x, p.y)
         ShowMessage(msg .. ". 稀有物资已回收!")
     else
         ShowMessage(msg .. ".")
@@ -1038,12 +1059,11 @@ function SearchCurrentRoom()
     UpdateHUD()
 end
 
---- 传送到已访问的安全格
+--- 传送到已探索的安全格
 function TeleportTo(x, y)
     if not run then return end
-    local key = tostring(x) .. "," .. tostring(y)
-    if not visitedCells[key] then
-        ShowMessage("只能传送到已访问的安全房间.")
+    if not minefield:IsExplored(x, y) then
+        ShowMessage("只能传送到已探索的安全房间.")
         return
     end
 
@@ -1183,6 +1203,8 @@ function DoTrade()
     RunInventory.gold = RunInventory.gold + tradePrice
     RunInventory.RecordTrade()
     tradedRooms[key] = true
+    -- v0.3: 事件完成后标记房间已清理
+    minefield:ClearRoom(p.x, p.y)
     DungeonRoom.TriggerTradePulse()
     ShowMessage("交易成功!用 1 零件换了 " .. tradePrice .. " 金币.")
     UpdateHUD()
@@ -1204,17 +1226,15 @@ function ShowMessage(text)
 end
 
 function CountVisitedCells()
-    local count = 0
-    for _ in pairs(visitedCells) do
-        count = count + 1
+    if minefield then
+        return minefield:GetExploredCount()
     end
-    return count
+    return 0
 end
 
 function UpdateHUD()
     if not run then return end
-    -- 更新协议等级(基于已探索格数)
-    Protocol.UpdateByExploredRooms(CountVisitedCells())
+    -- v0.3: 协议由 Protocol.AddPressure() 在探索时实时驱动, 此处不再主动更新
     -- HUD 数据由 NanoVG 每帧实时读取, 无需再手动更新 UI Label
 end
 

@@ -229,6 +229,8 @@ function Minefield:_BuildEmptyGrid()
                 spawn = false,
                 exitId = nil,
                 roomType = "normal",
+                explored = false,   -- 玩家亲自进入过
+                cleared = false,    -- 特殊房事件已完成(怪物击杀/宝箱开启等)
             }
         end
     end
@@ -621,6 +623,8 @@ function Minefield:_PublicCell(cell, revealMines)
         reserved = cell.reserved,
         path = cell.path,
         roomType = cell.revealed and cell.roomType or nil,
+        explored = cell.explored,
+        cleared = cell.cleared,
     }
 end
 
@@ -895,6 +899,65 @@ function Minefield:FindPathToExit(exitId)
     end
 
     return nil
+end
+
+-- ============================================================================
+-- Cell State API (v0.3 格状态: 未知→已扫描→已探索→已清理)
+-- ============================================================================
+
+--- 标记格子为"已探索"(玩家亲自进入). 同时自动 reveal.
+--- @return boolean firstTime 是否首次探索(用于协议压力计算)
+function Minefield:Explore(x, y)
+    local cell = self:GetCell(x, y)
+    if not cell then return false end
+    if cell.explored then return false end
+    cell.explored = true
+    -- 探索自动揭示
+    if not cell.revealed then
+        self:Reveal(x, y)
+    end
+    return true  -- 首次探索
+end
+
+--- 标记格子为"已清理"(特殊房事件完成)
+function Minefield:ClearRoom(x, y)
+    local cell = self:GetCell(x, y)
+    if not cell then return false end
+    if cell.cleared then return false end
+    cell.cleared = true
+    return true
+end
+
+--- 检查格子是否已探索
+function Minefield:IsExplored(x, y)
+    local cell = self:GetCell(x, y)
+    return cell ~= nil and cell.explored == true
+end
+
+--- 检查格子是否已清理
+function Minefield:IsCleared(x, y)
+    local cell = self:GetCell(x, y)
+    return cell ~= nil and cell.cleared == true
+end
+
+--- 获取已探索格数
+function Minefield:GetExploredCount()
+    local count = 0
+    self:ForEachCell(function(cell)
+        if cell.explored then count = count + 1 end
+    end)
+    return count
+end
+
+--- 获取格子状态字符串 (供UI显示)
+--- @return "unknown"|"scanned"|"explored"|"cleared"
+function Minefield:GetCellState(x, y)
+    local cell = self:GetCell(x, y)
+    if not cell then return "unknown" end
+    if cell.cleared then return "cleared" end
+    if cell.explored then return "explored" end
+    if cell.revealed then return "scanned" end
+    return "unknown"
 end
 
 function Minefield:DebugDump(revealMines)

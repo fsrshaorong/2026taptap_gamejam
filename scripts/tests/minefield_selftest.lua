@@ -205,13 +205,138 @@ local function testNonFatalMineRoom()
     assertTrue(not secondEntry.mineTriggered, "triggered mine should not report fresh trigger")
 end
 
-local function testProtocolProgression()
+local function testProtocolPressure()
     Protocol.Reset()
-    assertEq(Protocol.GetStatus().level, 5, "protocol should start at level 5")
-    assertEq(Protocol.UpdateByExploredRooms(4).level, 4, "protocol level 4 threshold")
-    assertEq(Protocol.UpdateByExploredRooms(8).level, 3, "protocol level 3 threshold")
-    assertEq(Protocol.UpdateByExploredRooms(12).level, 2, "protocol level 2 threshold")
-    assertEq(Protocol.UpdateByExploredRooms(16).level, 1, "protocol level 1 threshold")
+    local status = Protocol.GetStatus()
+    assertEq(status.level, 5, "protocol should start at level 5")
+    assertEq(status.pressure, 0, "protocol should start at 0 pressure")
+
+    -- 每次探索增加 5 压力, 4次 = 20 → level 4
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    assertEq(Protocol.GetStatus().level, 4, "protocol level 4 at pressure 20")
+    assertEq(Protocol.GetStatus().pressure, 20, "protocol pressure should be 20 after 4 explores")
+
+    -- 再 4 次 = 40 → level 3
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    assertEq(Protocol.GetStatus().level, 3, "protocol level 3 at pressure 40")
+
+    -- 再 4 次 = 60 → level 2
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    assertEq(Protocol.GetStatus().level, 2, "protocol level 2 at pressure 60")
+
+    -- 再 4 次 = 80 → level 1
+    for i = 1, 4 do
+        Protocol.AddPressure()
+    end
+    local result = Protocol.AddPressure()  -- 85, still level 1
+    assertEq(Protocol.GetStatus().level, 1, "protocol level 1 at pressure 80+")
+    assertTrue(result.penalty, "protocol 1 should report penalty")
+end
+
+local function testCellStateExploreAndClear()
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 3, y = 3 },
+            monsters = { { x = 4, y = 3 } },
+            chests = { { x = 2, y = 3 } },
+        },
+    })
+
+    -- 初始状态: 所有格都未探索
+    assertEq(field:GetCellState(3, 3), "unknown", "spawn should start unknown")
+    assertEq(field:IsExplored(3, 3), false, "spawn should not be explored initially")
+
+    -- Reveal 只是 scanned, 不是 explored
+    field:Reveal(4, 3)
+    assertEq(field:GetCellState(4, 3), "scanned", "revealed but not entered should be scanned")
+    assertEq(field:IsExplored(4, 3), false, "scanned cell should not be explored")
+
+    -- Explore 标记为 explored
+    local first = field:Explore(3, 3)
+    assertTrue(first, "first explore should return true")
+    assertEq(field:GetCellState(3, 3), "explored", "entered cell should be explored")
+    assertTrue(field:IsExplored(3, 3), "IsExplored should return true")
+
+    -- 重复 explore 返回 false
+    local second = field:Explore(3, 3)
+    assertTrue(not second, "repeated explore should return false")
+
+    -- Explore 未 reveal 过的格子会自动 reveal
+    local firstMonster = field:Explore(4, 3)
+    assertTrue(firstMonster, "exploring monster room should return true")
+    assertEq(field:GetCellState(4, 3), "explored", "monster room should be explored")
+    local cell = field:GetCell(4, 3)
+    assertTrue(cell.revealed, "explore should auto-reveal")
+
+    -- ClearRoom 标记为 cleared
+    local cleared = field:ClearRoom(4, 3)
+    assertTrue(cleared, "first clear should return true")
+    assertEq(field:GetCellState(4, 3), "cleared", "cleared room should report cleared state")
+    assertTrue(field:IsCleared(4, 3), "IsCleared should return true")
+
+    -- 重复 clear 返回 false
+    local secondClear = field:ClearRoom(4, 3)
+    assertTrue(not secondClear, "repeated clear should return false")
+
+    -- GetExploredCount
+    assertEq(field:GetExploredCount(), 2, "explored count should be 2 (spawn + monster)")
+
+    -- PublicCell 包含 explored/cleared 字段
+    local view = field:GetCellView(4, 3)
+    assertTrue(view.explored, "public cell view should include explored")
+    assertTrue(view.cleared, "public cell view should include cleared")
+    local view2 = field:GetCellView(2, 3)
+    assertTrue(not view2.explored, "unexplored cell should show explored=false in view")
+end
+
+local function testZeroExpansionDisabledByDefault()
+    -- 默认 expandZeroCells = false, 0邻域格不应连锁展开
+    local field = Minefield.New({
+        width = 5,
+        height = 5,
+        mineCount = 0,
+        seed = 42,
+        spawnSafeRadius = 0,
+        pathWidth = 0,
+    })
+
+    local result = field:Reveal(1, 1)
+    assertTrue(result.ok, "reveal 0-adjacent cell failed")
+    assertEq(#result.cells, 1, "0-adjacent reveal should NOT expand (expandZeroCells defaults false)")
+
+    -- 验证只有 (1,1) 被 reveal 了
+    assertTrue(field:GetCell(1, 1).revealed, "target cell should be revealed")
+    assertTrue(not field:GetCell(2, 1).revealed, "neighbor should NOT be revealed by default")
+    assertTrue(not field:GetCell(1, 2).revealed, "neighbor should NOT be revealed by default")
+end
+
+local function testTeleportRequiresExplored()
+    -- 模拟传送规则: scanned 不可传送, explored 才可
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 3, y = 3 },
+        },
+    })
+
+    -- Reveal (scan) 不等于 explore
+    field:Reveal(2, 3)
+    assertTrue(not field:IsExplored(2, 3), "scanned cell should not be explorable for teleport")
+
+    -- Explore 后可传送
+    field:Explore(2, 3)
+    assertTrue(field:IsExplored(2, 3), "explored cell should be valid for teleport")
 end
 
 local function testFailureSalvage()
@@ -444,7 +569,10 @@ local tests = {
     { name = "flag and mine reveal", fn = testFlagAndMineReveal },
     { name = "extraction run", fn = testExtractionRun },
     { name = "non-fatal mine room", fn = testNonFatalMineRoom },
-    { name = "protocol progression", fn = testProtocolProgression },
+    { name = "protocol pressure", fn = testProtocolPressure },
+    { name = "cell state explore and clear", fn = testCellStateExploreAndClear },
+    { name = "zero expansion disabled by default", fn = testZeroExpansionDisabledByDefault },
+    { name = "teleport requires explored", fn = testTeleportRequiresExplored },
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "combat result signals", fn = testCombatResultSignals },

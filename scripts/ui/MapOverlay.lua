@@ -256,9 +256,8 @@ function MapOverlay.Draw(vg, screenW, screenH)
                 nvgText(vg, cx + cs / 2, cy + cs / 2, "*")
             end
 
-            -- 已访问标记(可传送)
-            local key = tostring(x) .. "," .. tostring(y)
-            if MapOverlay.visitedCells and MapOverlay.visitedCells[key]
+            -- 已探索标记(可传送) - v0.3: 使用 cell.explored 字段
+            if cell.explored
                and cell.state ~= "hidden" and cell.state ~= "flagged"
                and cell.state ~= "mine" then
                 -- 右下角小圆点表示可传送
@@ -336,8 +335,8 @@ function MapOverlay.HandleClick(mx, my, button)
             MapOverlay.onFlag(gx, gy)
         end
     elseif (cell.state == "number" or cell.state == "empty") then
-        local key = tostring(gx) .. "," .. tostring(gy)
-        if MapOverlay.visitedCells and MapOverlay.visitedCells[key] then
+        -- v0.3: 使用 cell.explored 判断是否可传送
+        if cell.explored then
             if MapOverlay.onTeleport then
                 MapOverlay.onTeleport(gx, gy)
             end
