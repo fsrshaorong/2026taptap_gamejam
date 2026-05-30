@@ -95,6 +95,37 @@ local function drawPanel(vg, x, y, w, h, alpha)
 end
 
 -- ============================================================================
+-- 协议常量(左侧栏 + 协议面板共用)
+-- ============================================================================
+
+local PROTOCOL_COLORS = {
+    [5] = { 80, 200, 120 },   -- 绿
+    [4] = { 200, 200, 80 },   -- 黄
+    [3] = { 240, 160, 40 },   -- 橙
+    [2] = { 240, 80, 40 },    -- 红橙
+    [1] = { 255, 40, 40 },    -- 红
+}
+
+local PROTOCOL_TITLES = {
+    [5] = "正常作业",
+    [4] = "轻度警戒",
+    [3] = "风险作业",
+    [2] = "强制返程建议",
+    [1] = "最终广播",
+}
+
+local PROTOCOL_DESCS = {
+    [5] = "区域稳定, 允许回收.",
+    [4] = "异常读数上升.",
+    [3] = "深入提高收益和风险.",
+    [2] = "撤离窗口缩短.",
+    [1] = "立即撤离.",
+}
+
+-- 协议降级动画状态
+HUD.protocolFlashTimer = 0
+
+-- ============================================================================
 -- 左侧信息栏
 -- ============================================================================
 
@@ -235,6 +266,68 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, "搜刮物资, 前往撤离点")
     curY = curY + 18
 
+    -- 附近危险
+    local adjacent = context.adjacent or 0
+    if adjacent > 0 and context.roomType ~= "mine" then
+        nvgFontSize(vg, 12)
+        local dangerColor = adjacent >= 3 and nvgRGBA(255, 80, 60, 255) or nvgRGBA(255, 200, 80, 255)
+        nvgFillColor(vg, dangerColor)
+        nvgText(vg, contentX, curY, "附近危险: " .. adjacent .. " 格")
+        curY = curY + 18
+    end
+
+    -- 协议等级(内联)
+    local protocolStatus = context.protocolStatus
+    if protocolStatus then
+        local level = protocolStatus.level or 5
+        local pColor = PROTOCOL_COLORS[level] or { 180, 180, 180 }
+        local pTitle = PROTOCOL_TITLES[level] or ""
+
+        -- 降级闪烁
+        local dt = context.dt or (1.0 / 60.0)
+        if protocolStatus.changed then
+            HUD.protocolFlashTimer = 0.8
+        end
+        if HUD.protocolFlashTimer > 0 then
+            HUD.protocolFlashTimer = HUD.protocolFlashTimer - dt
+        end
+
+        -- 分隔线
+        nvgBeginPath(vg)
+        nvgMoveTo(vg, contentX, curY)
+        nvgLineTo(vg, contentX + sb.w - pad * 2, curY)
+        nvgStrokeColor(vg, nvgRGBA(60, 80, 110, 100))
+        nvgStrokeWidth(vg, 1)
+        nvgStroke(vg)
+        curY = curY + 8
+
+        nvgFontSize(vg, 11)
+        nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
+        nvgText(vg, contentX, curY, "协议等级")
+
+        -- 等级数字(右侧对齐)
+        local numScale = 1.0
+        if HUD.protocolFlashTimer > 0 then
+            numScale = 1.0 + 0.2 * math.abs(math.sin(HUD.protocolFlashTimer * 8))
+        end
+        nvgFontSize(vg, 22 * numScale)
+        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(pColor[1], pColor[2], pColor[3], 255))
+        nvgText(vg, contentX + sb.w - pad * 2, curY - 4, tostring(level))
+
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+        curY = curY + 16
+
+        nvgFontSize(vg, 10)
+        nvgFillColor(vg, nvgRGBA(pColor[1], pColor[2], pColor[3], 200))
+        nvgText(vg, contentX, curY, pTitle)
+        curY = curY + 14
+
+        nvgFillColor(vg, nvgRGBA(160, 170, 190, 160))
+        nvgText(vg, contentX, curY, PROTOCOL_DESCS[level] or "")
+        curY = curY + 18
+    end
+
     -- 提示消息
     if context.message and context.message ~= "" then
         nvgFontSize(vg, 11)
@@ -246,33 +339,6 @@ end
 -- ============================================================================
 -- 右上协议面板
 -- ============================================================================
-
-local PROTOCOL_COLORS = {
-    [5] = { 80, 200, 120 },   -- 绿
-    [4] = { 200, 200, 80 },   -- 黄
-    [3] = { 240, 160, 40 },   -- 橙
-    [2] = { 240, 80, 40 },    -- 红橙
-    [1] = { 255, 40, 40 },    -- 红
-}
-
-local PROTOCOL_TITLES = {
-    [5] = "正常作业",
-    [4] = "轻度警戒",
-    [3] = "风险作业",
-    [2] = "强制返程建议",
-    [1] = "最终广播",
-}
-
-local PROTOCOL_DESCS = {
-    [5] = "区域稳定, 允许回收.",
-    [4] = "异常读数上升.",
-    [3] = "深入提高收益和风险.",
-    [2] = "撤离窗口缩短.",
-    [1] = "立即撤离.",
-}
-
--- 协议降级动画状态
-HUD.protocolFlashTimer = 0
 
 --- 绘制右上协议面板
 ---@param vg userdata

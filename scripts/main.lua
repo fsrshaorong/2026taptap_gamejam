@@ -1107,9 +1107,7 @@ function SearchCurrentRoom()
     end
 
     local reward = result.reward
-    if reward.isChest then
-        DungeonRoom.TriggerChestOpen(reward)
-    end
+    DungeonRoom.TriggerChestOpen(reward)
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
@@ -1566,6 +1564,7 @@ function HandleNanoVGRender(eventType, eventData)
         -- HUD: 左侧信息栏
         local exploredCount = Protocol.exploredRooms or 0
 
+        local dt = 1.0 / 60.0
         HUD.DrawLeftSidebar(nvgScene, hudLayout, {
             visibleMap = visMap,
             playerX = p.x,
@@ -1576,11 +1575,11 @@ function HandleNanoVGRender(eventType, eventData)
             inventory = invStatus,
             exploredCount = exploredCount,
             message = message,
+            adjacent = cell and cell.adjacent or 0,
+            roomType = cell and cell.roomType or "normal",
+            protocolStatus = Protocol.GetStatus(),
+            dt = dt,
         })
-
-        -- HUD: 右上协议面板
-        local dt = 1.0 / 60.0
-        HUD.DrawProtocolPanel(nvgScene, hudLayout, Protocol.GetStatus(), dt)
 
         -- HUD: 底部交互栏
         local roomType = cell and cell.roomType or "normal"

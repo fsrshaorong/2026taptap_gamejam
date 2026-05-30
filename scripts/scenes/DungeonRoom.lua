@@ -168,8 +168,8 @@ local chestRewardBurst = { timer = 0, gold = 0, parts = 0 }
 local tradePulseTimer = 0
 local exitPulseTimer = 0
 local roomTime = 0
-local CHEST_OPEN_DURATION = 0.9
-local CHEST_REWARD_DURATION = 1.2
+local CHEST_OPEN_DURATION = 1.4
+local CHEST_REWARD_DURATION = 2.0
 local TRADE_PULSE_DURATION = 0.8
 local EXIT_PULSE_DURATION = 0.8
 
@@ -460,10 +460,15 @@ local function drawSearchPoint(vg, layout, searchState)
     end
 
     if flash > 0 then
-        local glow = math.floor(150 * flash)
+        local glow = math.floor(200 * flash)
         nvgBeginPath(vg)
-        nvgCircle(vg, rect.x + rect.w / 2, rect.y + rect.h / 2, 42 + 28 * (1 - flash))
+        nvgCircle(vg, rect.x + rect.w / 2, rect.y + rect.h / 2, 60 + 40 * (1 - flash))
         nvgFillColor(vg, nvgRGBA(255, 205, 70, glow))
+        nvgFill(vg)
+        -- 外层光晕
+        nvgBeginPath(vg)
+        nvgCircle(vg, rect.x + rect.w / 2, rect.y + rect.h / 2, 90 + 50 * (1 - flash))
+        nvgFillColor(vg, nvgRGBA(255, 180, 40, math.floor(80 * flash)))
         nvgFill(vg)
     end
 
@@ -474,16 +479,19 @@ local function drawSearchPoint(vg, layout, searchState)
         drawSpriteBottom(vg, chestImg, cx, bottomY, 104, 1.0)
         if chestRewardBurst.timer > 0 then
             local progress = 1.0 - (chestRewardBurst.timer / CHEST_REWARD_DURATION)
-            local rise = 78 * progress
-            local spread = 34 + 26 * progress
-            local alpha = math.floor(255 * math.max(0, 1.0 - progress))
-            local scale = 1.0 + 0.25 * math.sin(progress * math.pi)
-            local iconSize = 44 * scale
-            local iconY = rect.y + rect.h - 12 - rise
+            local easeOut = 1.0 - (1.0 - progress) * (1.0 - progress)
+            local rise = 120 * easeOut
+            local spread = 44 + 36 * easeOut
+            local fadeStart = 0.7
+            local alpha = progress < fadeStart and 255 or math.floor(255 * math.max(0, (1.0 - progress) / (1.0 - fadeStart)))
+            local scale = 1.0 + 0.4 * math.sin(progress * math.pi)
+            local iconSize = 56 * scale
+            local iconY = rect.y + rect.h - 20 - rise
 
+            -- 大光圈背景
             nvgBeginPath(vg)
-            nvgCircle(vg, cx, iconY + 18, 34 + 24 * progress)
-            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(90 * (1.0 - progress))))
+            nvgCircle(vg, cx, iconY + 18, 50 + 36 * easeOut)
+            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(120 * (1.0 - progress))))
             nvgFill(vg)
 
             drawSprite(vg, imgPropGold, cx - spread, iconY, iconSize, alpha / 255)
@@ -492,13 +500,13 @@ local function drawSearchPoint(vg, layout, searchState)
             end
 
             nvgFontFace(vg, "sans")
-            nvgFontSize(vg, 12 + 2 * scale)
+            nvgFontSize(vg, 16 + 4 * scale)
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
             nvgFillColor(vg, nvgRGBA(255, 235, 130, alpha))
-            nvgText(vg, cx - spread, iconY + 32, "+" .. chestRewardBurst.gold)
+            nvgText(vg, cx - spread, iconY + 38, "+" .. chestRewardBurst.gold)
             if chestRewardBurst.parts > 0 then
                 nvgFillColor(vg, nvgRGBA(170, 230, 255, alpha))
-                nvgText(vg, cx + spread, iconY + 36, "+" .. chestRewardBurst.parts)
+                nvgText(vg, cx + spread, iconY + 42, "+" .. chestRewardBurst.parts)
             end
         end
         if not searchState.searched then
@@ -905,14 +913,6 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgStrokeColor(vg, nvgRGBA(120, 210, 255, 170))
         nvgStrokeWidth(vg, 3)
         nvgStroke(vg)
-    end
-
-    if cell and cell.adjacent and cell.adjacent > 0 and roomType ~= "mine" then
-        nvgFontFace(vg, "sans")
-        nvgFontSize(vg, 28)
-        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBA(255, 200, 80, 210))
-        nvgText(vg, playerCX, playerCY + 40, "附近危险: " .. cell.adjacent)
     end
 
     if cell and cell.exitId then
