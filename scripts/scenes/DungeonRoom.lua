@@ -720,7 +720,7 @@ function DungeonRoom.Draw(vg, w, h, context)
     nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
     nvgFill(vg)
 
-    local bgImg = (imgRoomBase >= 0) and imgRoomBase or roomBgImg
+    local bgImg = (roomBgImg >= 0) and roomBgImg or imgRoomBase
     if bgImg >= 0 then
         -- cover: 取 max 使贴图完全覆盖区域
         local bgSize = math.max(w, h)
