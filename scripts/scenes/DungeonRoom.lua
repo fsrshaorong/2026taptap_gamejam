@@ -1020,16 +1020,8 @@ function DungeonRoom.Draw(vg, w, h, context)
 
     -- 事件房 NPC 绘制
     if roomType == "event" then
-        -- 如果有宝箱(搜索点),商人移到右下墙壁附近避免重叠
-        local hasChest = context.searchState and (context.searchState.canSearch or context.searchState.searched)
-        local npcX, npcY
-        if hasChest then
-            npcX = layout.x + layout.w * 0.72
-            npcY = layout.y + layout.h * 0.62
-        else
-            npcX = layout.x + layout.w * 0.5
-            npcY = layout.y + layout.h * 0.35
-        end
+        local npcX = layout.x + layout.w * 0.5
+        local npcY = layout.y + layout.h * 0.35
         local completed = context.eventTraded
         local eventType = context.eventType or "trader"
         local tradeFlash = tradePulseTimer / TRADE_PULSE_DURATION

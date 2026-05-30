@@ -391,6 +391,39 @@ local function testSearchedChestState()
     assertTrue(after.searched and after.isChest, "searched chest should keep chest marker")
 end
 
+local function testEventRoomNotSearchable()
+    RunInventory.Reset()
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 2, y = 2 },
+            events = {
+                { x = 3, y = 2 },
+            },
+        },
+    })
+    local run = ExtractionRun.New({
+        minefield = field,
+        moveRequiresRevealed = false,
+        revealOnMove = true,
+    })
+
+    local move = run:Move(1, 0)
+    assertTrue(move.ok, "move to event room failed")
+
+    RunInventory.searchedRooms[RunInventory.CellKey(3, 2)] = true
+    local state = RunInventory.GetSearchState(field, run)
+    assertTrue(not state.canSearch, "event room should not be searchable")
+    assertTrue(not state.searched, "event room should not render as searched chest")
+    assertEq(state.reason, "event", "event room blocked reason mismatch")
+
+    local searched = RunInventory.SearchCurrentRoom(field, run)
+    assertTrue(not searched.ok, "event room search should fail")
+    assertEq(searched.status, "event", "event room search status mismatch")
+end
+
 local function testNormalModeRandomGeneration()
     local sawDifferentSpawn = false
     for seed = 1, 25 do
@@ -777,6 +810,7 @@ local tests = {
     { name = "teleport requires explored", fn = testTeleportRequiresExplored },
     { name = "failure salvage", fn = testFailureSalvage },
     { name = "searched chest state", fn = testSearchedChestState },
+    { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "combat result signals", fn = testCombatResultSignals },
     { name = "monster active combat loop", fn = testMonsterActiveCombatLoop },
     { name = "monster warning attack damage", fn = testMonsterWarningAttackDamage },

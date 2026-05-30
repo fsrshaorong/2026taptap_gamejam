@@ -90,6 +90,9 @@ function RunInventory.GetSearchState(minefield, run)
     if cell.roomType == "monster" then
         return { canSearch = false, searched = searched, reason = "monster" }
     end
+    if cell.roomType == "event" then
+        return { canSearch = false, searched = false, reason = "event" }
+    end
     if searched then
         return { canSearch = false, searched = true, reason = "searched", isChest = (cell.roomType == "chest") }
     end

@@ -1162,6 +1162,8 @@ function SearchCurrentRoom()
             ShowMessage("这个房间已经搜过了.")
         elseif result.status == "spawn" then
             ShowMessage("出生点没有可带走的物资.")
+        elseif result.status == "event" then
+            ShowMessage("事件房没有宝箱，按 T 处理事件。")
         elseif result.status == "exit" then
             ShowMessage("这里是撤离点, 准备好就按 E 撤离.")
         else
