@@ -472,6 +472,7 @@ end
 
 function StartNewGame()
     run = ExtractionRun.New({
+        mode = "legacy",
         width = 15,
         height = 15,
         mineDensity = 0.16,

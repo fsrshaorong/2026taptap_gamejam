@@ -56,6 +56,7 @@ end
 local function testGenerationConnectivity()
     for seed = 1, 50 do
         local field = Minefield.New({
+            mode = "legacy",
             width = 15,
             height = 15,
             mineDensity = 0.18,
@@ -234,8 +235,93 @@ local function testFailureSalvage()
     assertEq(salvaged.bonus, 10, "part salvage bonus mismatch")
 end
 
+local function testNormalModeRandomGeneration()
+    local sawDifferentSpawn = false
+    for seed = 1, 25 do
+        local field = Minefield.New({
+            mode = "normal",
+            width = 11,
+            height = 11,
+            mineDensity = 0.18,
+            randomExitCount = 2,
+            seed = seed,
+        })
+
+        local spawn = field:GetSpawn()
+        local spawnCell = field:GetCell(spawn.x, spawn.y)
+        assertTrue(spawnCell ~= nil, "normal spawn missing for seed " .. seed)
+        assertTrue(spawnCell.spawn, "normal spawn flag missing for seed " .. seed)
+        assertTrue(not spawnCell.mine, "normal spawn has mine for seed " .. seed)
+        assertEq(spawnCell.roomType, "normal", "normal spawn should not overlap special room")
+
+        if spawn.x ~= 6 or spawn.y ~= 6 then
+            sawDifferentSpawn = true
+        end
+
+        local exits = field:GetExits()
+        assertEq(#exits, 2, "normal mode should expose only random exits")
+        for _, exit in ipairs(exits) do
+            local cell = field:GetCell(exit.x, exit.y)
+            assertTrue(cell ~= nil, "normal exit missing cell")
+            assertTrue(not cell.mine, "normal exit has mine")
+            assertTrue(not cell.spawn, "normal exit overlaps spawn")
+            assertEq(cell.roomType, "exit", "normal exit room type mismatch")
+            assertTrue(cell.randomExit, "normal exit should be hidden random exit")
+
+            local view = field:GetCellView(exit.x, exit.y)
+            assertEq(view.exitId, nil, "unrevealed normal exit should be hidden")
+        end
+
+        assertAdjacency(field)
+    end
+    assertTrue(sawDifferentSpawn, "normal mode should randomize spawn instead of always using center")
+end
+
+local function testJudgeModeManualMap()
+    local field = Minefield.New({
+        mode = "judge",
+        width = 7,
+        height = 7,
+        manualMap = {
+            spawn = { x = 2, y = 2 },
+            mines = {
+                { x = 1, y = 1 },
+                { x = 3, y = 2 },
+            },
+            exits = {
+                { id = "demo_exit", x = 7, y = 7 },
+            },
+            monsters = {
+                { x = 4, y = 4 },
+            },
+            chests = {
+                { x = 5, y = 4 },
+            },
+            events = {
+                { x = 6, y = 4 },
+            },
+        },
+    })
+
+    local spawn = field:GetSpawn()
+    assertEq(spawn.x, 2, "judge spawn x mismatch")
+    assertEq(spawn.y, 2, "judge spawn y mismatch")
+    assertTrue(field:GetCell(2, 2).spawn, "judge spawn flag missing")
+    assertTrue(field:GetCell(1, 1).mine, "judge mine missing")
+    assertTrue(field:GetCell(3, 2).mine, "judge mine missing")
+    assertEq(field.mineCount, 2, "judge mine count mismatch")
+    assertEq(field:GetCell(4, 4).roomType, "monster", "judge monster room missing")
+    assertEq(field:GetCell(5, 4).roomType, "chest", "judge chest room missing")
+    assertEq(field:GetCell(6, 4).roomType, "event", "judge event room missing")
+    assertEq(field:GetCell(7, 7).roomType, "exit", "judge exit room missing")
+    assertEq(field:GetExits()[1].id, "demo_exit", "judge exit id mismatch")
+    assertAdjacency(field)
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
+    { name = "normal mode random generation", fn = testNormalModeRandomGeneration },
+    { name = "judge mode manual map", fn = testJudgeModeManualMap },
     { name = "zero reveal expansion", fn = testZeroRevealExpansion },
     { name = "flag and mine reveal", fn = testFlagAndMineReveal },
     { name = "extraction run", fn = testExtractionRun },

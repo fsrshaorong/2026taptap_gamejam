@@ -1,8 +1,10 @@
 -- ============================================================================
 -- Minefield.lua
 -- Pure Lua minesweeper field generation and reveal logic.
--- The generator reserves the spawn, four corner exits, and guaranteed paths
--- before placing mines, then validates that every exit remains reachable.
+-- Supports three generation modes:
+-- legacy: center spawn, corner exits, guaranteed paths (current demo behavior)
+-- normal: random spawn, random hidden exits, no guaranteed path
+-- judge: fully manual map layout for stable demo/showcase runs
 -- ============================================================================
 
 local Minefield = {}
@@ -78,6 +80,15 @@ local function copyCoord(cell)
     return { x = cell.x, y = cell.y }
 end
 
+local function copyExit(exit)
+    return {
+        id = exit.id,
+        x = exit.x,
+        y = exit.y,
+        randomExit = exit.randomExit == true,
+    }
+end
+
 local function defaultExits(width, height)
     return {
         { id = "nw", x = 1, y = 1 },
@@ -97,34 +108,62 @@ function Minefield:Init(config)
     self.width = clampInt(config.width or 15, 3, 200)
     self.height = clampInt(config.height or 15, 3, 200)
     self.seed = tonumber(config.seed) or os.time()
+    self.mode = config.mode or config.gameMode or "legacy"
+    self.manualMap = config.manualMap
     self.mineDensity = tonumber(config.mineDensity) or 0.18
     self.requestedMineCount = config.mineCount
-    self.spawnSafeRadius = clampInt(config.spawnSafeRadius or 1, 0, 20)
+    local defaultSpawnSafeRadius = self.mode == "normal" and 0 or 1
+    self.spawnSafeRadius = clampInt(config.spawnSafeRadius or defaultSpawnSafeRadius, 0, 20)
     self.pathWidth = clampInt(config.pathWidth or 0, 0, 20)
     self.maxAttempts = clampInt(config.maxAttempts or 8, 1, 50)
+    self.randomExitCount = clampInt(config.randomExitCount or 2, 0, 20)
+    self.spawnLocked = config.spawnX ~= nil or config.spawnY ~= nil
 
     self.spawn = {
         x = clampInt(config.spawnX or math.floor((self.width + 1) / 2), 1, self.width),
         y = clampInt(config.spawnY or math.floor((self.height + 1) / 2), 1, self.height),
     }
-    self.exits = config.exits or defaultExits(self.width, self.height)
+    if config.exits then
+        self.exits = {}
+        for _, exit in ipairs(config.exits) do
+            table.insert(self.exits, copyExit(exit))
+        end
+    elseif self.mode == "legacy" then
+        self.exits = defaultExits(self.width, self.height)
+    else
+        self.exits = {}
+    end
 
     self:Generate()
 end
 
 function Minefield:Generate()
+    if self.mode == "judge" then
+        self.rng = RNG.New(self.seed)
+        self.generationAttempt = 1
+        self:_GenerateManual()
+        self.generated = true
+        return true
+    end
+
     local generated = false
 
     for attempt = 1, self.maxAttempts do
         self.rng = RNG.New(self.seed + attempt * 9973)
         self.generationAttempt = attempt
+        if self.mode == "normal" and not self.spawnLocked then
+            self:_ChooseRandomSpawn()
+        end
         self:_BuildEmptyGrid()
         self:_ReserveCriticalCells()
         self:_PlaceMines()
         self:_AssignSpecialRooms()
         self:_ComputeAdjacency()
 
-        local ok = self:HasPathToAllExits()
+        local ok = true
+        if self.mode == "legacy" then
+            ok = self:HasPathToAllExits()
+        end
         if ok then
             generated = true
             break
@@ -133,6 +172,13 @@ function Minefield:Generate()
 
     self.generated = generated
     return generated
+end
+
+function Minefield:_ChooseRandomSpawn()
+    self.spawn = {
+        x = self.rng:Int(1, self.width),
+        y = self.rng:Int(1, self.height),
+    }
 end
 
 function Minefield:_BuildEmptyGrid()
@@ -144,6 +190,10 @@ function Minefield:_BuildEmptyGrid()
     self.safeCellCount = self.width * self.height
     self.revealedSafeCount = 0
     self.flaggedCount = 0
+    self.monsterCount = 0
+    self.chestCount = 0
+    self.eventCount = 0
+    self.generatedRandomExitCount = 0
 
     for y = 1, self.height do
         self.grid[y] = {}
@@ -166,12 +216,7 @@ function Minefield:_BuildEmptyGrid()
     end
 
     for _, exit in ipairs(self.exits) do
-        if self:IsInside(exit.x, exit.y) then
-            local cell = self:GetCell(exit.x, exit.y)
-            cell.exitId = exit.id
-            cell.roomType = "exit"
-            self.exitLookup[exit.id] = copyCoord(cell)
-        end
+        self:_RegisterExit(exit.id, exit.x, exit.y, exit.randomExit)
     end
 
     local spawnCell = self:GetCell(self.spawn.x, self.spawn.y)
@@ -186,9 +231,29 @@ function Minefield:_ReserveCriticalCells()
     for _, exit in ipairs(self.exits) do
         if self:IsInside(exit.x, exit.y) then
             self:_ReserveArea(exit.x, exit.y, 0, "exit")
-            self:_ReserveRouteTo(exit)
+            if self.mode == "legacy" then
+                self:_ReserveRouteTo(exit)
+            end
         end
     end
+end
+
+function Minefield:_RegisterExit(id, x, y, randomExit)
+    if not id or not self:IsInside(x, y) then
+        return nil
+    end
+    local cell = self:GetCell(x, y)
+    if not cell then
+        return nil
+    end
+    if cell.mine or cell.spawn then
+        return nil
+    end
+    cell.exitId = id
+    cell.roomType = "exit"
+    cell.randomExit = randomExit == true
+    self.exitLookup[id] = copyCoord(cell)
+    return cell
 end
 
 function Minefield:_ReserveCell(x, y, reason, isPath)
@@ -336,25 +401,105 @@ function Minefield:_AssignSpecialRooms()
         idx = idx + 1
     end
 
-    -- 随机撤离房:1-2个, 从剩余候选中选取
+    -- 随机撤离房:从剩余候选中选取
     local remainCount = #safeCandidates - idx + 1
-    local randomExitCount = 2
-    if remainCount < 2 then randomExitCount = math.max(0, remainCount) end
+    local randomExitCount = self.randomExitCount
+    if randomExitCount > remainCount then randomExitCount = math.max(0, remainCount) end
 
     for i = 1, randomExitCount do
         if idx > #safeCandidates then break end
         local cell = safeCandidates[idx]
         local eid = "random_" .. i
-        cell.roomType = "exit"
-        cell.exitId = eid
-        cell.randomExit = true  -- 标记为随机撤离房(区别于四角固定撤离)
-        self.exitLookup[eid] = { x = cell.x, y = cell.y }
+        self:_RegisterExit(eid, cell.x, cell.y, true)
+        if self.mode == "normal" then
+            table.insert(self.exits, { id = eid, x = cell.x, y = cell.y, randomExit = true })
+        end
         idx = idx + 1
     end
 
     self.monsterCount = monsterCount
     self.chestCount = chestCount
-    self.randomExitCount = randomExitCount
+    self.eventCount = eventCount
+    self.generatedRandomExitCount = randomExitCount
+end
+
+function Minefield:_GenerateManual()
+    local manual = self.manualMap or {}
+    if manual.width then self.width = clampInt(manual.width, 3, 200) end
+    if manual.height then self.height = clampInt(manual.height, 3, 200) end
+    if manual.spawn then
+        self.spawn = {
+            x = clampInt(manual.spawn.x, 1, self.width),
+            y = clampInt(manual.spawn.y, 1, self.height),
+        }
+    end
+    self.exits = {}
+    self:_BuildEmptyGrid()
+
+    local spawnCell = self:GetCell(self.spawn.x, self.spawn.y)
+    if spawnCell then
+        spawnCell.spawn = true
+        spawnCell.roomType = "normal"
+    end
+
+    local function applyMine(point)
+        local cell = self:GetCell(point.x, point.y)
+        if cell and not cell.spawn then
+            cell.mine = true
+            cell.roomType = "mine"
+            self.mineCount = self.mineCount + 1
+        end
+    end
+
+    local function applyRoom(point, roomType)
+        local cell = self:GetCell(point.x, point.y)
+        if cell and not cell.spawn and not cell.mine and not cell.exitId then
+            cell.roomType = roomType
+            if roomType == "monster" then
+                self.monsterCount = self.monsterCount + 1
+            elseif roomType == "chest" then
+                self.chestCount = self.chestCount + 1
+            elseif roomType == "event" then
+                self.eventCount = self.eventCount + 1
+            end
+        end
+    end
+
+    for _, point in ipairs(manual.mines or {}) do
+        applyMine(point)
+    end
+    for _, exit in ipairs(manual.exits or {}) do
+        local id = exit.id or ("manual_exit_" .. tostring(#self.exits + 1))
+        if self:_RegisterExit(id, exit.x, exit.y, exit.randomExit) then
+            table.insert(self.exits, { id = id, x = exit.x, y = exit.y, randomExit = exit.randomExit == true })
+        end
+    end
+    for _, point in ipairs(manual.monsters or {}) do
+        applyRoom(point, "monster")
+    end
+    for _, point in ipairs(manual.chests or {}) do
+        applyRoom(point, "chest")
+    end
+    for _, point in ipairs(manual.events or {}) do
+        applyRoom(point, "event")
+    end
+    for _, room in ipairs(manual.rooms or {}) do
+        local roomType = room.roomType or room.type or "normal"
+        if roomType == "mine" then
+            applyMine(room)
+        elseif roomType == "exit" then
+            local id = room.id or ("manual_exit_" .. tostring(#self.exits + 1))
+            if self:_RegisterExit(id, room.x, room.y, room.randomExit) then
+                table.insert(self.exits, { id = id, x = room.x, y = room.y, randomExit = room.randomExit == true })
+            end
+        else
+            applyRoom(room, roomType)
+        end
+    end
+
+    self.targetMineCount = self.mineCount
+    self.safeCellCount = self.width * self.height - self.mineCount
+    self:_ComputeAdjacency()
 end
 
 function Minefield:_ComputeAdjacency()
@@ -394,7 +539,7 @@ end
 function Minefield:GetExits()
     local exits = {}
     for _, exit in ipairs(self.exits) do
-        table.insert(exits, { id = exit.id, x = exit.x, y = exit.y })
+        table.insert(exits, copyExit(exit))
     end
     return exits
 end
