@@ -472,12 +472,13 @@ end
 
 function StartNewGame()
     run = ExtractionRun.New({
-        mode = "legacy",
+        mode = "normal",
         width = 15,
         height = 15,
         mineDensity = 0.16,
-        spawnSafeRadius = 1,
+        spawnSafeRadius = 0,
         pathWidth = 0,
+        randomExitCount = 2,
         mineHitsAreFatal = false,
         revealOnMove = true,
         moveRequiresRevealed = false,
@@ -524,7 +525,7 @@ function StartNewGame()
     -- 罗盘效果:显示撤离点象限提示
     local compassHint = ""
     if equipBonus.showExitHint then
-        local exits = minefield:GetExits()
+        local exits = minefield:GetVisibleExits()
         if exits and #exits > 0 then
             local hints = {}
             local centerX = math.floor(minefield.width / 2)
@@ -1321,7 +1322,7 @@ function HandleNanoVGRender(eventType, eventData)
         -- 计算撤离距离
         local exitDist, exitDir = nil, ""
         if minefield then
-            local exits = minefield:GetExits()
+            local exits = minefield:GetVisibleExits()
             exitDist, exitDir = HUD.CalcExitDistance(p.x, p.y, exits)
         end
 

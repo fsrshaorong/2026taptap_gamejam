@@ -118,6 +118,7 @@ function Minefield:Init(config)
     self.maxAttempts = clampInt(config.maxAttempts or 8, 1, 50)
     self.randomExitCount = clampInt(config.randomExitCount or 2, 0, 20)
     self.spawnLocked = config.spawnX ~= nil or config.spawnY ~= nil
+    self.expandZeroCells = config.expandZeroCells == true
 
     self.spawn = {
         x = clampInt(config.spawnX or math.floor((self.width + 1) / 2), 1, self.width),
@@ -544,6 +545,17 @@ function Minefield:GetExits()
     return exits
 end
 
+function Minefield:GetVisibleExits()
+    local exits = {}
+    for _, exit in ipairs(self.exits) do
+        local view = self:GetCellView(exit.x, exit.y)
+        if view and view.exitId then
+            table.insert(exits, copyExit(exit))
+        end
+    end
+    return exits
+end
+
 function Minefield:GetExit(exitId)
     local exit = self.exitLookup[exitId]
     if not exit then return nil end
@@ -679,7 +691,7 @@ function Minefield:Reveal(x, y)
             local wasRevealed = current.revealed
             self:_RevealCell(current, result)
 
-            if current.adjacent == 0 and not wasRevealed then
+            if self.expandZeroCells and current.adjacent == 0 and not wasRevealed then
                 for _, dir in ipairs(DIR8) do
                     local neighbor = self:GetCell(current.x + dir.x, current.y + dir.y)
                     if neighbor and not neighbor.mine and not neighbor.flagged and not neighbor.revealed then

@@ -83,7 +83,7 @@ local function testGenerationConnectivity()
     end
 end
 
-local function testZeroRevealExpansion()
+local function testZeroRevealSingleCell()
     local field = Minefield.New({
         width = 5,
         height = 5,
@@ -95,9 +95,9 @@ local function testZeroRevealExpansion()
 
     local result = field:Reveal(3, 3)
     assertTrue(result.ok, "zero reveal failed")
-    assertEq(result.status, "expanded", "zero reveal should expand")
-    assertEq(#result.cells, 25, "zero reveal should open whole empty board")
-    assertTrue(field:IsSolved(), "empty board should be solved")
+    assertEq(result.status, "revealed", "zero reveal should not auto expand")
+    assertEq(#result.cells, 1, "zero reveal should open only the selected cell")
+    assertTrue(not field:IsSolved(), "empty board should not be solved by one zero reveal")
 end
 
 local function testFlagAndMineReveal()
@@ -260,6 +260,7 @@ local function testNormalModeRandomGeneration()
 
         local exits = field:GetExits()
         assertEq(#exits, 2, "normal mode should expose only random exits")
+        assertEq(#field:GetVisibleExits(), 0, "normal random exits should not be visible before reveal")
         for _, exit in ipairs(exits) do
             local cell = field:GetCell(exit.x, exit.y)
             assertTrue(cell ~= nil, "normal exit missing cell")
@@ -270,7 +271,13 @@ local function testNormalModeRandomGeneration()
 
             local view = field:GetCellView(exit.x, exit.y)
             assertEq(view.exitId, nil, "unrevealed normal exit should be hidden")
+
+            local reveal = field:Reveal(exit.x, exit.y)
+            assertTrue(reveal.ok, "normal exit reveal failed")
+            assertEq(field:GetCellView(exit.x, exit.y).exitId, exit.id, "revealed normal exit should become visible")
         end
+
+        assertEq(#field:GetVisibleExits(), 2, "revealed normal exits should be visible")
 
         assertAdjacency(field)
     end
@@ -322,7 +329,7 @@ local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "normal mode random generation", fn = testNormalModeRandomGeneration },
     { name = "judge mode manual map", fn = testJudgeModeManualMap },
-    { name = "zero reveal expansion", fn = testZeroRevealExpansion },
+    { name = "zero reveal single cell", fn = testZeroRevealSingleCell },
     { name = "flag and mine reveal", fn = testFlagAndMineReveal },
     { name = "extraction run", fn = testExtractionRun },
     { name = "non-fatal mine room", fn = testNonFatalMineRoom },
