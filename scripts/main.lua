@@ -1653,101 +1653,75 @@ function CreateUI()
                 id = "menuPage_main",
                 position = "absolute",
                 top = 0, left = 0, right = 0, bottom = 0,
-                padding = 32,
-                gap = 16,
-                backgroundColor = { 5, 8, 15, 245 },
-                justifyContent = "center",
-                alignItems = "center",
+                backgroundImage = "Textures/menu_bg.png",
+                backgroundFit = "fill",
                 children = {
-                    UI.Label {
-                        text = "扫雷搜打撤",
-                        fontSize = 26,
-                        fontColor = { 255, 240, 180, 255 },
-                    },
-                    UI.Label {
-                        text = "扫雷情报驱动的撤离地牢",
-                        fontSize = 12,
-                        fontColor = { 140, 150, 170, 200 },
-                    },
+                    -- 右侧按钮区域，对应图片中"灰尾公司"招牌位置
                     UI.Panel {
-                        flexDirection = "row",
-                        gap = 8,
-                        marginTop = 4,
-                        alignItems = "center",
-                        children = {
-                            UI.Label {
-                                id = "menuGoldLabel",
-                                text = "金币: 0",
-                                fontSize = 14,
-                                fontColor = { 255, 220, 80, 255 },
-                            },
-                        }
-                    },
-                    UI.Panel {
-                        id = "menuEquippedInfo",
-                        marginTop = 2,
-                        alignItems = "center",
-                        children = {
-                            UI.Label {
-                                id = "menuEquippedLabel",
-                                text = "装备: 无",
-                                fontSize = 12,
-                                fontColor = { 160, 200, 255, 200 },
-                            },
-                        }
-                    },
-                    UI.Button {
-                        text = "出发探索",
-                        variant = "primary",
-                        width = 180,
-                        marginTop = 8,
-                        onClick = function()
-                            StartNewGame()
-                        end,
-                    },
-                    UI.Button {
-                        text = "评审演示",
-                        width = 180,
-                        onClick = function()
-                            StartJudgeDemo()
-                        end,
-                    },
-                    UI.Panel {
-                        flexDirection = "row",
-                        gap = 12,
-                        marginTop = 4,
+                        position = "absolute",
+                        right = "5%",
+                        top = "28%",
+                        width = "22%",
+                        gap = 10,
+                        alignItems = "stretch",
                         children = {
                             UI.Button {
-                                text = "装备",
-                                width = 90,
+                                text = "出发探索",
+                                variant = "primary",
+                                height = 40,
+                                onClick = function()
+                                    StartNewGame()
+                                end,
+                            },
+                            UI.Button {
+                                text = "新手教程",
+                                height = 40,
+                                onClick = function()
+                                    StartJudgeDemo()
+                                end,
+                            },
+                            UI.Button {
+                                text = "装备/天赋",
+                                height = 40,
                                 onClick = function()
                                     ShowMenuPage("equip")
                                 end,
                             },
                             UI.Button {
-                                text = "天赋",
-                                width = 90,
+                                text = "设置",
+                                height = 40,
                                 onClick = function()
-                                    ShowMenuPage("talent")
+                                    ShowMenuPage("gm")
                                 end,
                             },
                         }
                     },
-                    UI.Label {
-                        id = "menuStatsLabel",
-                        text = "",
-                        fontSize = 11,
-                        fontColor = { 120, 130, 150, 180 },
-                        marginTop = 6,
-                    },
-                    UI.Button {
-                        text = "🔧 GM",
-                        width = 60,
-                        height = 24,
-                        marginTop = 4,
-                        onClick = function()
-                            ShowMenuPage("gm")
-                        end,
+                    -- 左下角金币/装备信息
+                    UI.Panel {
+                        position = "absolute",
+                        left = 16,
+                        bottom = 16,
+                        gap = 4,
+                        children = {
+                            UI.Label {
+                                id = "menuGoldLabel",
+                                text = "金币: 0",
+                                fontSize = 13,
+                                fontColor = { 255, 220, 80, 255 },
+                            },
+                            UI.Label {
+                                id = "menuEquippedLabel",
+                                text = "装备: 无",
+                                fontSize = 11,
+                                fontColor = { 160, 200, 255, 200 },
+                            },
+                            UI.Label {
+                                id = "menuStatsLabel",
+                                text = "",
+                                fontSize = 11,
+                                fontColor = { 120, 130, 150, 180 },
+                            },
+                        }
                     },
                 }
             },
