@@ -793,12 +793,21 @@ function FinishBattle()
     local playerPower = result.playerPower or enemy.playerPower or Combat.power
     local enemyPower = result.enemyPower or enemy.power
 
+    local reward = result.reward or { gold = 0, parts = 0 }
+    local rewardText = ""
+    if (reward.gold or 0) > 0 then
+        rewardText = rewardText .. " 获得结算币 +" .. reward.gold
+    end
+    if (reward.parts or 0) > 0 then
+        rewardText = rewardText .. " 零件 +" .. reward.parts
+    end
+
     if result.dead then
         ShowFailurePanel("你被 " .. enemy.name .. "(战力" .. enemy.power .. ") 击败!")
     elseif result.playerWin then
-        ShowMessage("击败 " .. enemy.name .. "(战力" .. enemy.power .. ")!你毫发无损.")
+        ShowMessage("异常体已清理." .. rewardText)
     else
-        ShowMessage("击败 " .. enemy.name .. " 但受伤 -" .. result.damage .. " HP (剩余 " .. Combat.hp .. ")")
+        ShowMessage("强行清理成功, 生命 -" .. result.damage .. "." .. rewardText)
     end
     if not result.dead then
         -- v0.3: 标记房间已清理
@@ -806,23 +815,26 @@ function FinishBattle()
             minefield:ClearRoom(battleState.cellX, battleState.cellY)
         end
         if result.playerWin then
-            ShowMessage("击败 " .. enemy.name .. "! 房间已清理 (我方" .. playerPower .. " vs 敌方" .. enemyPower .. ")")
+            ShowMessage("异常体已清理. 区域风险下降. (我方" .. playerPower .. " vs 威胁" .. enemyPower .. ")" .. rewardText)
         else
-            ShowMessage("击败 " .. enemy.name .. ", 房间已清理, 代价 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
+            ShowMessage("强行清理成功, 生命 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")." .. rewardText)
         end
     end
     UpdateHUD()
 end
 
---- 威压天赋:逃跑时间到或玩家主动战斗
+--- 主动清理当前异常体
 function ForceFightCurrentEnemy()
     if not run then return end
     local p = run:GetPlayer()
     local enemy = Combat.GetEnemy(p.x, p.y)
     if not enemy then
         monsterFleeActive = false
+        monsterFleeTimer = 0
         return
     end
+    monsterFleeActive = false
+    monsterFleeTimer = 0
     StartBattle(enemy, p.x, p.y)
 end
 
@@ -874,11 +886,9 @@ function MovePlayer(dx, dy)
         local cpW, cpH = GetCenterAreaPhysSize()
         DungeonRoom.PlacePlayerFromEntry(dx, dy, cpW, cpH, dpr)
 
-        -- 威压逃跑:成功离开房间即视为逃跑成功
         if monsterFleeActive then
             monsterFleeActive = false
             monsterFleeTimer = 0
-            ShowMessage("成功逃离怪物!")
         end
 
         -- 标记为已探索(v0.3: 通过 Minefield:Explore + Protocol 压力)
@@ -953,18 +963,10 @@ function MovePlayer(dx, dy)
             -- 检查是否有敌人
             local enemy = Combat.GetEnemy(p.x, p.y)
             if enemy then
-                -- 威压天赋:给予逃跑窗口
-                local fleeBonus = talentEffects.monsterFleeBonus
-                if fleeBonus > 0 then
-                    -- 启动逃跑倒计时, 玩家可在窗口内离开房间
-                    monsterFleeActive = true
-                    monsterFleeTimer = MONSTER_FLEE_BASE + fleeBonus
-                    ShowMessage("遭遇 " .. enemy.name .. "(战力" .. enemy.power .. ")!" ..
-                        math.floor(monsterFleeTimer) .. "秒内可逃跑, 或按 F 战斗")
-                else
-                    -- 无天赋直接进入 VS 演出
-                    StartBattle(enemy, p.x, p.y)
-                end
+                monsterFleeActive = false
+                monsterFleeTimer = 0
+                ShowMessage("检测到异常体活动. 可绕行, 可清理. 异常体威胁:" ..
+                    enemy.power .. " 你的战斗力:" .. Combat.power .. " 按 F 清理.")
             elseif result.status == "at_exit" then
                 local cell = minefield:GetCellView(p.x, p.y)
                 DungeonRoom.TriggerExitPulse()
@@ -1460,6 +1462,16 @@ function HandleNanoVGRender(eventType, eventData)
 
         -- 预计算共用数据
         local visMap = minefield and minefield:GetVisibleMap() or nil
+        if visMap then
+            for y, row in ipairs(visMap) do
+                for x, mapCell in ipairs(row) do
+                    if mapCell.roomType == "monster" then
+                        local mapEnemy = Combat.GetEnemyAny(x, y)
+                        mapCell.monsterCleared = mapEnemy ~= nil and mapEnemy.alive == false
+                    end
+                end
+            end
+        end
         local combatStatus = Combat.GetStatus()
         local invTotals = RunInventory.GetTotals()
         local invStatus = { gold = invTotals.gold, parts = invTotals.parts }
@@ -2237,14 +2249,12 @@ function HandleUpdate(eventType, eventData)
         end
     end
 
-    -- 威压天赋逃跑倒计时
+    -- 旧逃跑倒计时兼容:到时只关闭提示, 不再强制战斗.
     if monsterFleeActive and monsterFleeTimer > 0 then
         monsterFleeTimer = monsterFleeTimer - dt
         if monsterFleeTimer <= 0 then
-            -- 时间到, 强制战斗
             monsterFleeActive = false
             monsterFleeTimer = 0
-            ForceFightCurrentEnemy()
         end
     end
 
@@ -2316,10 +2326,9 @@ function HandleKeyDown(eventType, eventData)
     elseif key == KEY_E then
         DoExtract()
     elseif key == KEY_F then
-        -- 威压逃跑窗口中:F 键主动战斗
-        if monsterFleeActive then
-            monsterFleeActive = false
-            monsterFleeTimer = 0
+        local p = run and run:GetPlayer() or nil
+        local enemy = p and Combat.GetEnemy(p.x, p.y) or nil
+        if enemy then
             ForceFightCurrentEnemy()
         else
             SearchCurrentRoom()

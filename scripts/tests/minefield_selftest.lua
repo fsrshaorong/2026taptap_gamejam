@@ -504,7 +504,12 @@ local function testCombatResultSignals()
     assertEq(win.playerPower, 12, "combat result should include player power")
     assertEq(win.enemyPower, 9, "combat result should include enemy power")
     assertEq(win.damage, 0, "winning combat should not cost hp")
+    assertTrue(win.reward and win.reward.gold > 0, "combat result should include gold reward")
+    assertEq(win.reward.parts, 0, "low threat combat should not force part reward")
     assertTrue(not Combat.enemies["1,1"].alive, "enemy should be cleared after fight")
+
+    local repeated = Combat.FightEnemy(1, 1)
+    assertTrue(not repeated.fought, "cleared enemy should not fight twice")
 
     Combat.Reset()
     Combat.power = 6
@@ -519,6 +524,7 @@ local function testCombatResultSignals()
     assertEq(costly.enemyPower, 14, "costly combat should include enemy power")
     assertEq(costly.damage, 8, "combat damage should be power gap")
     assertEq(costly.hp, 92, "combat hp should reflect damage")
+    assertTrue(costly.reward and costly.reward.gold > 0, "costly combat should still pay reward")
 end
 
 local function testRunStats()
@@ -559,6 +565,23 @@ local function testRunStats()
     assertEq(stats.combatDamage, 7, "stats should sum combat damage")
     assertEq(stats.trades, 1, "stats should count trades")
     assertEq(stats.turns, 1, "stats should include run turns")
+end
+
+local function testCombatRewardInventory()
+    RunInventory.Reset()
+    RunInventory.RecordCombat({
+        fought = true,
+        damage = 3,
+        reward = { gold = 25, parts = 1 },
+    })
+
+    local totals = RunInventory.GetTotals()
+    assertEq(totals.gold, 25, "combat reward should add gold")
+    assertEq(totals.parts, 1, "combat reward should add parts")
+
+    local stats = RunInventory.GetRunStats(nil)
+    assertEq(stats.monstersDefeated, 1, "rewarded combat should still count defeated monster")
+    assertEq(stats.combatDamage, 3, "rewarded combat should still count damage")
 end
 
 -- ============================================================================
@@ -699,6 +722,7 @@ local tests = {
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "combat result signals", fn = testCombatResultSignals },
     { name = "run stats", fn = testRunStats },
+    { name = "combat reward inventory", fn = testCombatRewardInventory },
     { name = "event type determinism", fn = testEventTypeDeterminism },
     { name = "event completed state", fn = testEventCompletedState },
     { name = "event exec trader", fn = testEventExecTrader },
