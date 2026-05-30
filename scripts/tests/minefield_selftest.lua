@@ -561,6 +561,128 @@ local function testRunStats()
     assertEq(stats.turns, 1, "stats should include run turns")
 end
 
+-- ============================================================================
+-- EventSystem tests
+-- ============================================================================
+
+local EventSystem = require("systems.EventSystem")
+
+local function testEventTypeDeterminism()
+    EventSystem.Reset(42)
+    local t1 = EventSystem.GetEventType(3, 5)
+    local t2 = EventSystem.GetEventType(3, 5)
+    assertEq(t1, t2, "same coords same seed should give same event type")
+
+    -- Different coords may give different type (not guaranteed, but reset state)
+    EventSystem.Reset(42)
+    local t3 = EventSystem.GetEventType(3, 5)
+    assertEq(t1, t3, "after reset with same seed, same coord should match")
+
+    -- Different seed should change assignment
+    EventSystem.Reset(999)
+    -- The type may or may not differ, but the system shouldn't crash
+    local t4 = EventSystem.GetEventType(3, 5)
+    assert(t4 == "trader" or t4 == "dice" or t4 == "altar" or t4 == "trap",
+        "event type must be one of the four valid types")
+end
+
+local function testEventCompletedState()
+    EventSystem.Reset(100)
+    assert(not EventSystem.IsCompleted(1, 1), "should not be completed initially")
+    EventSystem.MarkCompleted(1, 1)
+    assert(EventSystem.IsCompleted(1, 1), "should be completed after marking")
+    assert(not EventSystem.IsCompleted(2, 2), "other coords unaffected")
+end
+
+local function testEventExecTrader()
+    EventSystem.Reset(50)
+    -- Force the assignment to trader by finding a coord that gives "trader"
+    -- We'll directly assign for testing
+    EventSystem.assignedEvents["10,10"] = "trader"
+
+    -- Not enough parts
+    local r1 = EventSystem.Execute(10, 10, { gold = 100, parts = 0, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    assert(not r1.ok, "trader should fail with 0 parts")
+    assertEq(r1.goldDelta, 0, "no gold change on fail")
+
+    -- Enough parts
+    local r2 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    assert(r2.ok, "trader should succeed with parts")
+    assertEq(r2.goldDelta, 20, "should gain tradePrice gold")
+    assertEq(r2.partsDelta, -1, "should spend 1 part")
+    assertEq(r2.hpDelta, 0, "no hp change for trader")
+
+    -- Already completed
+    local r3 = EventSystem.Execute(10, 10, { gold = 100, parts = 2, hp = 3, maxHp = 5, tradePrice = 20, power = 5 })
+    assert(not r3.ok, "completed event should fail")
+end
+
+local function testEventExecDice()
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["20,20"] = "dice"
+
+    -- Not enough gold
+    local r1 = EventSystem.Execute(20, 20, { gold = 5, parts = 1, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(not r1.ok, "dice should fail with insufficient gold")
+
+    -- Enough gold - should produce a result (win or lose)
+    local r2 = EventSystem.Execute(20, 20, { gold = 50, parts = 1, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(r2.ok, "dice should succeed with enough gold")
+    assert(r2.goldDelta == 10 or r2.goldDelta == -10, "dice should net +10 (win) or -10 (lose), got: " .. r2.goldDelta)
+    assertEq(r2.partsDelta, 0, "dice no parts change")
+    assertEq(r2.hpDelta, 0, "dice no hp change")
+end
+
+local function testEventExecAltar()
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["30,30"] = "altar"
+
+    -- Not enough HP (hp <= cost)
+    local r1 = EventSystem.Execute(30, 30, { gold = 10, parts = 0, hp = 1, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(not r1.ok, "altar should fail with hp <= cost")
+
+    -- Enough HP
+    local r2 = EventSystem.Execute(30, 30, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 5 })
+    assert(r2.ok, "altar should succeed with hp > cost")
+    assertEq(r2.hpDelta, -1, "altar costs 1 hp")
+    assertEq(r2.goldDelta, 15, "altar gives 15 gold")
+    assertEq(r2.partsDelta, 1, "altar gives 1 part")
+end
+
+local function testEventExecTrap()
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["40,40"] = "trap"
+
+    -- Low power - fail
+    local r1 = EventSystem.Execute(40, 40, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 3 })
+    assert(r1.ok, "trap always 'succeeds' (executes), even on fail check")
+    assertEq(r1.goldDelta, 0, "trap fail gives no gold")
+    assertEq(r1.hpDelta, -1, "trap fail costs 1 hp")
+
+    -- Reset for high power test
+    EventSystem.Reset(50)
+    EventSystem.assignedEvents["40,40"] = "trap"
+
+    -- High power - success
+    local r2 = EventSystem.Execute(40, 40, { gold = 10, parts = 0, hp = 3, maxHp = 5, tradePrice = 15, power = 10 })
+    assert(r2.ok, "trap should succeed")
+    assertEq(r2.goldDelta, 25, "trap success gives 25 gold")
+    assertEq(r2.partsDelta, 2, "trap success gives 2 parts")
+    assertEq(r2.hpDelta, 0, "trap success no hp cost")
+end
+
+local function testEventEnterMessage()
+    EventSystem.Reset(77)
+    EventSystem.assignedEvents["5,5"] = "dice"
+
+    local msg1 = EventSystem.GetEnterMessage(5, 5)
+    assert(msg1:find("赌徒"), "enter message should mention event name")
+
+    EventSystem.MarkCompleted(5, 5)
+    local msg2 = EventSystem.GetEnterMessage(5, 5)
+    assert(msg2:find("离开"), "done message should indicate event is over")
+end
+
 local tests = {
     { name = "generation connectivity", fn = testGenerationConnectivity },
     { name = "normal mode random generation", fn = testNormalModeRandomGeneration },
@@ -577,6 +699,13 @@ local tests = {
     { name = "searched chest state", fn = testSearchedChestState },
     { name = "combat result signals", fn = testCombatResultSignals },
     { name = "run stats", fn = testRunStats },
+    { name = "event type determinism", fn = testEventTypeDeterminism },
+    { name = "event completed state", fn = testEventCompletedState },
+    { name = "event exec trader", fn = testEventExecTrader },
+    { name = "event exec dice", fn = testEventExecDice },
+    { name = "event exec altar", fn = testEventExecAltar },
+    { name = "event exec trap", fn = testEventExecTrap },
+    { name = "event enter message", fn = testEventEnterMessage },
 }
 
 for _, test in ipairs(tests) do

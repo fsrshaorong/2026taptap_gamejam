@@ -873,12 +873,20 @@ function DungeonRoom.Draw(vg, w, h, context)
     if roomType == "event" then
         local npcX = layout.x + layout.w * 0.5
         local npcY = layout.y + layout.h * 0.35
-        local traded = context.eventTraded
-        local parts = (context.inventory and context.inventory.parts) or 0
-        local canTrade = not traded and parts > 0
-        local tradePrice = context.tradePrice or 15
+        local completed = context.eventTraded
+        local eventType = context.eventType or "trader"
         local tradeFlash = tradePulseTimer / TRADE_PULSE_DURATION
 
+        -- 事件类型视觉配置
+        local evtVisual = {
+            trader = { bodyColor = nvgRGBA(40, 140, 150, 230), hatColor = nvgRGBA(60, 180, 190, 240), accentColor = nvgRGBA(80, 220, 230, 255), label = "旅商", hint = "T:零件换金币" },
+            dice   = { bodyColor = nvgRGBA(180, 120, 40, 230), hatColor = nvgRGBA(220, 160, 50, 240), accentColor = nvgRGBA(255, 200, 80, 255), label = "赌徒", hint = "T:赌10金(4+赢)" },
+            altar  = { bodyColor = nvgRGBA(120, 50, 150, 230), hatColor = nvgRGBA(160, 70, 200, 240), accentColor = nvgRGBA(200, 130, 255, 255), label = "祭坛", hint = "T:1HP换资源" },
+            trap   = { bodyColor = nvgRGBA(150, 80, 40, 230), hatColor = nvgRGBA(190, 100, 50, 240), accentColor = nvgRGBA(240, 150, 70, 255), label = "机关", hint = "T:拆解(需战力)" },
+        }
+        local vis = evtVisual[eventType] or evtVisual.trader
+
+        -- 脉冲光环
         if tradeFlash > 0 then
             nvgBeginPath(vg)
             nvgCircle(vg, npcX, npcY, 44 + 24 * (1 - tradeFlash))
@@ -893,72 +901,85 @@ function DungeonRoom.Draw(vg, w, h, context)
             drawSpriteBottom(vg, imgPropMerchant, npcX, npcY + 84, 112, traded and 0.55 or 1.0)
         end
 
-        -- 小摊位
+        -- 小摊位/基座
         nvgBeginPath(vg)
         nvgRoundedRect(vg, npcX - 44, npcY + 42, 88, 20, 4)
-        nvgFillColor(vg, traded and nvgRGBA(45, 55, 55, 170) or (canTrade and nvgRGBA(55, 115, 120, 220) or nvgRGBA(80, 70, 55, 210)))
+        nvgFillColor(vg, completed and nvgRGBA(45, 55, 55, 170) or nvgRGBA(55, 115, 120, 220))
         nvgFill(vg)
-        nvgStrokeColor(vg, traded and nvgRGBA(80, 95, 95, 130) or (canTrade and nvgRGBA(100, 220, 210, 190) or nvgRGBA(230, 170, 85, 190)))
+        nvgStrokeColor(vg, completed and nvgRGBA(80, 95, 95, 130) or vis.accentColor)
         nvgStrokeWidth(vg, 1.5)
         nvgStroke(vg)
 
-        -- NPC 身体(蓝绿色圆形)
+        -- NPC/物件 身体
         nvgBeginPath(vg)
         nvgCircle(vg, npcX, npcY, 18)
-        nvgFillColor(vg, traded and nvgRGBA(50, 60, 60, 160) or nvgRGBA(40, 140, 150, 230))
+        nvgFillColor(vg, completed and nvgRGBA(50, 60, 60, 160) or vis.bodyColor)
         nvgFill(vg)
-        nvgStrokeColor(vg, traded and nvgRGBA(80, 100, 100, 150) or nvgRGBA(80, 220, 230, 255))
+        nvgStrokeColor(vg, completed and nvgRGBA(80, 100, 100, 150) or vis.accentColor)
         nvgStrokeWidth(vg, 2)
         nvgStroke(vg)
 
-        -- NPC 帽子
+        -- 顶部标识（帽子/图标）
         nvgBeginPath(vg)
-        nvgMoveTo(vg, npcX - 12, npcY - 14)
-        nvgLineTo(vg, npcX, npcY - 28)
-        nvgLineTo(vg, npcX + 12, npcY - 14)
-        nvgClosePath(vg)
-        nvgFillColor(vg, traded and nvgRGBA(60, 70, 70, 150) or nvgRGBA(60, 180, 190, 240))
+        if eventType == "dice" then
+            -- 骰子方块
+            nvgRoundedRect(vg, npcX - 10, npcY - 28, 20, 20, 3)
+        elseif eventType == "altar" then
+            -- 倒三角
+            nvgMoveTo(vg, npcX - 12, npcY - 28)
+            nvgLineTo(vg, npcX + 12, npcY - 28)
+            nvgLineTo(vg, npcX, npcY - 12)
+            nvgClosePath(vg)
+        elseif eventType == "trap" then
+            -- 齿轮状（六角）
+            nvgMoveTo(vg, npcX, npcY - 30)
+            nvgLineTo(vg, npcX + 10, npcY - 24)
+            nvgLineTo(vg, npcX + 10, npcY - 14)
+            nvgLineTo(vg, npcX, npcY - 8)
+            nvgLineTo(vg, npcX - 10, npcY - 14)
+            nvgLineTo(vg, npcX - 10, npcY - 24)
+            nvgClosePath(vg)
+        else
+            -- 旅商三角帽
+            nvgMoveTo(vg, npcX - 12, npcY - 14)
+            nvgLineTo(vg, npcX, npcY - 28)
+            nvgLineTo(vg, npcX + 12, npcY - 14)
+            nvgClosePath(vg)
+        end
+        nvgFillColor(vg, completed and nvgRGBA(60, 70, 70, 150) or vis.hatColor)
         nvgFill(vg)
 
-        -- NPC 眼睛
-        nvgBeginPath(vg)
-        nvgCircle(vg, npcX - 6, npcY - 3, 3)
-        nvgCircle(vg, npcX + 6, npcY - 3, 3)
-        nvgFillColor(vg, traded and nvgRGBA(100, 120, 120, 150) or nvgRGBA(200, 255, 255, 255))
-        nvgFill(vg)
+        -- 眼睛（仅 NPC 类型）
+        if eventType == "trader" or eventType == "dice" then
+            nvgBeginPath(vg)
+            nvgCircle(vg, npcX - 6, npcY - 3, 3)
+            nvgCircle(vg, npcX + 6, npcY - 3, 3)
+            nvgFillColor(vg, completed and nvgRGBA(100, 120, 120, 150) or nvgRGBA(200, 255, 255, 255))
+            nvgFill(vg)
+        end
 
-        -- 文字
+        -- 文字标签
         nvgFontFace(vg, "sans")
         nvgFontSize(vg, 14)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
-        if traded then
+        if completed then
             nvgFillColor(vg, nvgRGBA(120, 140, 140, 180))
-            nvgText(vg, npcX, npcY + 24, "交易完成")
-        elseif not canTrade then
-            nvgFillColor(vg, nvgRGBA(235, 180, 90, 240))
-            nvgText(vg, npcX, npcY + 24, "需要零件")
-            nvgFontSize(vg, 12)
-            nvgFillColor(vg, nvgRGBA(230, 210, 170, 210))
-            nvgText(vg, npcX, npcY + 42, "1 零件 -> " .. tradePrice .. " 金币")
+            nvgText(vg, npcX, npcY + 24, "已完成")
         else
-            nvgFillColor(vg, nvgRGBA(100, 230, 240, 240))
-            nvgText(vg, npcX, npcY + 24, "旅商")
+            nvgFillColor(vg, vis.accentColor)
+            nvgText(vg, npcX, npcY + 24, vis.label)
             nvgFontSize(vg, 12)
             nvgFillColor(vg, nvgRGBA(180, 220, 220, 200))
-            nvgText(vg, npcX, npcY + 42, "T:1零件->" .. tradePrice .. "金")
+            nvgText(vg, npcX, npcY + 42, vis.hint)
         end
 
+        -- 脉冲文字
         if tradeFlash > 0 then
             nvgFontFace(vg, "sans")
             nvgFontSize(vg, 16)
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            if traded then
-                nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
-                nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "+金")
-            else
-                nvgFillColor(vg, nvgRGBA(255, 190, 90, math.floor(255 * tradeFlash)))
-                nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "缺零件")
-            end
+            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
+            nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), completed and "完成" or "按T")
         end
     end
 
