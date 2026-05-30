@@ -26,6 +26,8 @@ local imgRoomSafe = -1
 local imgRoomDanger = -1
 local imgRoomTreasure = -1
 local imgRoomExit = -1
+local imgRoomEvent = -1
+local imgRoomMonster = -1
 local imgRoomBase = -1
 local imgPropChestClosed = -1
 local imgPropChestOpen = -1
@@ -80,12 +82,12 @@ function DungeonRoom.Init(vg)
     if imagesLoaded then return end
     imgPlayer = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
     imgEnemy = nvgCreateImage(vg, "Textures/enemy_slime.png", 0)
-    imgRoomSafe = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomDanger = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomTreasure = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomExit = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomEvent = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
-    imgRoomMonster = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
+    imgRoomSafe = nvgCreateImage(vg, "Textures/room_safe.png", 0)
+    imgRoomDanger = nvgCreateImage(vg, "Textures/room_danger.png", 0)
+    imgRoomTreasure = nvgCreateImage(vg, "Textures/room_treasure.png", 0)
+    imgRoomExit = nvgCreateImage(vg, "Textures/room_exit.png", 0)
+    imgRoomEvent = nvgCreateImage(vg, "Textures/room_event.png", 0)
+    imgRoomMonster = nvgCreateImage(vg, "Textures/room_monster.png", 0)
     imgRoomBase = nvgCreateImage(vg, "Textures/generated/rooms/fangjian_jichu_1024.png", 0)
     imgPropChestClosed = nvgCreateImage(vg, "Textures/generated/props/03_baoxiang_guan.png", 0)
     imgPropChestOpen = nvgCreateImage(vg, "Textures/generated/props/00_baoxiang_kai.png", 0)
@@ -585,21 +587,12 @@ function DungeonRoom.Draw(vg, w, h, context)
     end
     if cell and cell.exitId then roomBgImg = imgRoomExit end
 
-    if imgRoomBase >= 0 then
+    if roomBgImg >= 0 then
         nvgBeginPath(vg)
         nvgRect(vg, 0, 0, w, h)
         nvgFillColor(vg, nvgRGBA(bgR, bgG, bgB, 255))
         nvgFill(vg)
 
-        local bgSize = math.min(w, h)
-        local bgX = (w - bgSize) / 2
-        local bgY = (h - bgSize) / 2
-        local paint = nvgImagePattern(vg, bgX, bgY, bgSize, bgSize, 0, imgRoomBase, 1.0)
-        nvgBeginPath(vg)
-        nvgRect(vg, bgX, bgY, bgSize, bgSize)
-        nvgFillPaint(vg, paint)
-        nvgFill(vg)
-    elseif roomBgImg >= 0 then
         local bgSize = math.min(w, h)
         local bgX = (w - bgSize) / 2
         local bgY = (h - bgSize) / 2

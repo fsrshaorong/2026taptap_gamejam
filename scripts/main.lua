@@ -1500,6 +1500,10 @@ function HandleNanoVGRender(eventType, eventData)
         local roomType = cell and cell.roomType or "normal"
         local enemy = Combat.GetEnemyAny(p.x, p.y)
         local eventCompleted = EventSystem.IsCompleted(p.x, p.y)
+        local eventDef = nil
+        if roomType == "event" then
+            eventDef = EventSystem.GetEventDef(EventSystem.GetEventType(p.x, p.y))
+        end
         local interactHint = HUD.GetInteractHint({
             roomType = roomType,
             searchState = GetSearchState(),
@@ -1509,6 +1513,7 @@ function HandleNanoVGRender(eventType, eventData)
             playerPower = combatStatus.power,
             hasExit = cell and cell.exitId ~= nil,
             canTrade = roomType == "event" and not eventCompleted,
+            eventName = eventDef and eventDef.name or nil,
             tradeUnavailable = false,
             eventTraded = eventCompleted,
         })
