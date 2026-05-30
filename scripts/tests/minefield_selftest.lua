@@ -297,6 +297,7 @@ local function testJudgeModeManualMap()
             },
             exits = {
                 { id = "demo_exit", x = 7, y = 7 },
+                { id = "demo_hidden_exit", x = 1, y = 7, randomExit = true },
             },
             monsters = {
                 { x = 4, y = 4 },
@@ -322,6 +323,10 @@ local function testJudgeModeManualMap()
     assertEq(field:GetCell(6, 4).roomType, "event", "judge event room missing")
     assertEq(field:GetCell(7, 7).roomType, "exit", "judge exit room missing")
     assertEq(field:GetExits()[1].id, "demo_exit", "judge exit id mismatch")
+    assertEq(#field:GetVisibleExits(), 1, "judge hidden exit should start hidden")
+    assertEq(field:GetVisibleExits()[1].id, "demo_exit", "judge visible exit mismatch")
+    field:Reveal(1, 7)
+    assertEq(#field:GetVisibleExits(), 2, "judge hidden exit should become visible after reveal")
     assertAdjacency(field)
 end
 

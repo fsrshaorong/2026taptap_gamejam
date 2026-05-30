@@ -77,6 +77,33 @@ local imgBattleEnemy = -1
 -- 菜单子页面状态
 local menuPage = "main"  -- "main" | "equip" | "talent"
 
+local JUDGE_DEMO_MAP = {
+    width = 15,
+    height = 15,
+    spawn = { x = 8, y = 8 },
+    mines = {
+        { x = 4, y = 3 }, { x = 5, y = 3 }, { x = 10, y = 3 },
+        { x = 12, y = 4 }, { x = 3, y = 5 }, { x = 7, y = 5 },
+        { x = 11, y = 6 }, { x = 5, y = 7 }, { x = 13, y = 7 },
+        { x = 2, y = 9 }, { x = 6, y = 10 }, { x = 10, y = 10 },
+        { x = 14, y = 11 }, { x = 4, y = 12 }, { x = 9, y = 13 },
+        { x = 12, y = 14 },
+    },
+    exits = {
+        { id = "demo_visible_exit", x = 8, y = 2 },
+        { id = "demo_hidden_exit", x = 14, y = 8, randomExit = true },
+    },
+    monsters = {
+        { x = 6, y = 6 }, { x = 11, y = 8 }, { x = 7, y = 12 },
+    },
+    chests = {
+        { x = 4, y = 8 }, { x = 10, y = 12 },
+    },
+    events = {
+        { x = 9, y = 6 }, { x = 5, y = 11 },
+    },
+}
+
 local function setVisible(id, visible)
     if not uiRoot_ then return end
     local element = uiRoot_:FindById(id)
@@ -470,8 +497,17 @@ end
 -- 游戏逻辑
 -- ============================================================================
 
-function StartNewGame()
-    run = ExtractionRun.New({
+local function mergeConfig(base, override)
+    if override then
+        for key, value in pairs(override) do
+            base[key] = value
+        end
+    end
+    return base
+end
+
+function StartNewGame(override)
+    local config = mergeConfig({
         mode = "normal",
         width = 15,
         height = 15,
@@ -482,7 +518,9 @@ function StartNewGame()
         mineHitsAreFatal = false,
         revealOnMove = true,
         moveRequiresRevealed = false,
-    })
+    }, override)
+
+    run = ExtractionRun.New(config)
     minefield = run.minefield
 
     -- 标记出生格为已访问
@@ -551,6 +589,18 @@ function StartNewGame()
     if menu then menu:Hide() end
     setVisible("gameOverPanel", false)
     setVisible("winPanel", false)
+end
+
+function StartJudgeDemo()
+    StartNewGame({
+        mode = "judge",
+        seed = 20260530,
+        mineDensity = 0,
+        mineCount = 0,
+        randomExitCount = 0,
+        spawnSafeRadius = 0,
+        manualMap = JUDGE_DEMO_MAP,
+    })
 end
 
 function ShowFailurePanel(reason)
@@ -1419,6 +1469,13 @@ function CreateUI()
                         marginTop = 8,
                         onClick = function()
                             StartNewGame()
+                        end,
+                    },
+                    UI.Button {
+                        text = "评审演示",
+                        width = 180,
+                        onClick = function()
+                            StartJudgeDemo()
                         end,
                     },
                     UI.Panel {
