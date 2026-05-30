@@ -235,6 +235,36 @@ local function testFailureSalvage()
     assertEq(salvaged.bonus, 10, "part salvage bonus mismatch")
 end
 
+local function testSearchedChestState()
+    RunInventory.Reset()
+    local field = Minefield.New({
+        mode = "judge",
+        width = 5,
+        height = 5,
+        manualMap = {
+            spawn = { x = 2, y = 2 },
+            chests = {
+                { x = 3, y = 2 },
+            },
+        },
+    })
+    local run = ExtractionRun.New({
+        minefield = field,
+        moveRequiresRevealed = false,
+        revealOnMove = true,
+    })
+
+    local move = run:Move(1, 0)
+    assertTrue(move.ok, "move to chest room failed")
+    local before = RunInventory.GetSearchState(field, run)
+    assertTrue(before.canSearch and before.isChest, "chest should be searchable before search")
+
+    local searched = RunInventory.SearchCurrentRoom(field, run)
+    assertTrue(searched.ok, "chest search failed")
+    local after = RunInventory.GetSearchState(field, run)
+    assertTrue(after.searched and after.isChest, "searched chest should keep chest marker")
+end
+
 local function testNormalModeRandomGeneration()
     local sawDifferentSpawn = false
     for seed = 1, 25 do
@@ -278,6 +308,7 @@ local function testNormalModeRandomGeneration()
             local reveal = field:Reveal(exit.x, exit.y)
             assertTrue(reveal.ok, "normal exit reveal failed")
             assertEq(field:GetCellView(exit.x, exit.y).exitId, exit.id, "revealed normal exit should become visible")
+            assertTrue(field:GetCellView(exit.x, exit.y).randomExit, "revealed normal exit should keep randomExit marker")
         end
 
         assertEq(#field:GetVisibleExits(), 2, "revealed normal exits should be visible")
@@ -330,6 +361,7 @@ local function testJudgeModeManualMap()
     assertEq(field:GetVisibleExits()[1].id, "demo_exit", "judge visible exit mismatch")
     field:Reveal(1, 7)
     assertEq(#field:GetVisibleExits(), 2, "judge hidden exit should become visible after reveal")
+    assertTrue(field:GetCellView(1, 7).randomExit, "judge hidden exit should keep randomExit marker")
     assertAdjacency(field)
 end
 
@@ -343,6 +375,7 @@ local tests = {
     { name = "non-fatal mine room", fn = testNonFatalMineRoom },
     { name = "protocol progression", fn = testProtocolProgression },
     { name = "failure salvage", fn = testFailureSalvage },
+    { name = "searched chest state", fn = testSearchedChestState },
 }
 
 for _, test in ipairs(tests) do

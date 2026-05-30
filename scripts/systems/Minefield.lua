@@ -617,6 +617,7 @@ function Minefield:_PublicCell(cell, revealMines)
         adjacent = cell.revealed and cell.adjacent or nil,
         spawn = cell.spawn,
         exitId = visibleExitId,
+        randomExit = visibleExitId ~= nil and cell.randomExit == true,
         reserved = cell.reserved,
         path = cell.path,
         roomType = cell.revealed and cell.roomType or nil,

@@ -894,10 +894,12 @@ function MovePlayer(dx, dy)
                 end
             elseif result.status == "at_exit" then
                 local cell = minefield:GetCellView(p.x, p.y)
-                if cell and cell.exitId and string.find(cell.exitId, "random") then
-                    ShowMessage("发现隐藏撤离点!按 E 撤离.")
+                DungeonRoom.TriggerExitPulse()
+                MiniMap.SetHighlight({ { x = p.x, y = p.y } })
+                if cell and cell.randomExit then
+                    ShowMessage("发现隐藏撤离点! 信标已点亮, 按 E 撤离.")
                 else
-                    ShowMessage("你到达了撤离点!按 E 撤离.")
+                    ShowMessage("你到达了撤离点! 按 E 撤离.")
                 end
             else
                 -- 根据房型显示不同提示
@@ -975,14 +977,18 @@ function SearchCurrentRoom()
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
 
-    local msg = "搜索完成:金币 +" .. reward.gold
+    local msg = reward.isChest and ("宝箱开启! 金币 +" .. reward.gold) or ("搜索完成:金币 +" .. reward.gold)
     if reward.parts > 0 then
         msg = msg .. ", 零件 +" .. reward.parts
     end
     if powerUp > 0 then
         msg = msg .. ", 战斗力 +" .. powerUp
     end
-    ShowMessage(msg .. ".")
+    if reward.isChest then
+        ShowMessage(msg .. ". 稀有物资已回收!")
+    else
+        ShowMessage(msg .. ".")
+    end
 
     UpdateHUD()
 end

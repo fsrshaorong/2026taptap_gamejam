@@ -189,8 +189,13 @@ function MiniMap.Draw(vg, visibleMap, playerX, playerY, fieldWidth, fieldHeight)
             if cell.exitId then
                 nvgBeginPath(vg)
                 nvgRect(vg, cx, cy, cs - 1, cs - 1)
-                nvgStrokeColor(vg, nvgRGBA(100, 255, 100, 220))
-                nvgStrokeWidth(vg, 1.5)
+                if cell.randomExit then
+                    nvgStrokeColor(vg, nvgRGBA(255, 230, 80, 240))
+                    nvgStrokeWidth(vg, 2.2)
+                else
+                    nvgStrokeColor(vg, nvgRGBA(100, 255, 100, 220))
+                    nvgStrokeWidth(vg, 1.5)
+                end
                 nvgStroke(vg)
             end
 

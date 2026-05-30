@@ -360,10 +360,10 @@ local function drawSearchPoint(vg, layout, searchState)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
     if searchState.searched then
         nvgFillColor(vg, nvgRGBA(170, 160, 145, 180))
-        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, "已搜索")
+        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, searchState.isChest and "宝箱已开启" or "已搜索")
     else
         nvgFillColor(vg, nvgRGBA(255, 230, 140, 230))
-        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, "F 搜索")
+        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, searchState.isChest and "F 开启宝箱" or "F 搜索")
     end
 end
 
@@ -403,7 +403,13 @@ local function drawExitDevice(vg, layout, cell)
     nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(150, 255, 170, 255))
-    nvgText(vg, cx, y, "撤离装置")
+    nvgText(vg, cx, y, cell.randomExit and "隐藏撤离点" or "撤离装置")
+
+    if activePulse > 0 then
+        nvgFontSize(vg, 13)
+        nvgFillColor(vg, nvgRGBA(255, 235, 120, math.floor(255 * activePulse)))
+        nvgText(vg, cx, y + 42 - 10 * (1 - activePulse), "信标已点亮")
+    end
 end
 
 local function drawRoomGrid(vg, layout)

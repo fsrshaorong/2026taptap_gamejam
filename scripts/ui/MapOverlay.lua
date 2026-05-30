@@ -199,14 +199,23 @@ function MapOverlay.Draw(vg, screenW, screenH)
             if cell.exitId then
                 nvgBeginPath(vg)
                 nvgRect(vg, cx + 1, cy + 1, cs - 2, cs - 2)
-                nvgStrokeColor(vg, nvgRGBA(80, 255, 80, 240))
-                nvgStrokeWidth(vg, 2)
+                if cell.randomExit then
+                    nvgStrokeColor(vg, nvgRGBA(255, 220, 70, 255))
+                    nvgStrokeWidth(vg, 3)
+                else
+                    nvgStrokeColor(vg, nvgRGBA(80, 255, 80, 240))
+                    nvgStrokeWidth(vg, 2)
+                end
                 nvgStroke(vg)
                 -- E 标记
                 nvgFontFace(vg, "sans")
                 nvgFontSize(vg, cs * 0.4)
                 nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-                nvgFillColor(vg, nvgRGBA(80, 255, 80, 200))
+                if cell.randomExit then
+                    nvgFillColor(vg, nvgRGBA(255, 230, 95, 230))
+                else
+                    nvgFillColor(vg, nvgRGBA(80, 255, 80, 200))
+                end
                 nvgText(vg, cx + cs / 2, cy + cs / 2, "E")
             end
 
