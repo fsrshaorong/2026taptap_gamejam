@@ -1571,14 +1571,12 @@ function CreateUI()
             -- === 主菜单页 ===
             UI.Panel {
                 id = "menuPage_main",
-                width = "85%",
-                maxWidth = 380,
+                position = "absolute",
+                top = 0, left = 0, right = 0, bottom = 0,
                 padding = 32,
                 gap = 16,
-                backgroundColor = { 20, 25, 40, 240 },
-                borderRadius = 14,
-                borderWidth = 1,
-                borderColor = { 60, 80, 120, 120 },
+                backgroundColor = { 5, 8, 15, 245 },
+                justifyContent = "center",
                 alignItems = "center",
                 children = {
                     UI.Label {
