@@ -879,6 +879,140 @@ local function testConsumablePurchaseLoadoutAndRunUse()
     end)
 end
 
+local function testMainEntrySourceContract()
+    local oldPreload = package.preload["urhox-libs/UI"]
+    local oldLoaded = package.loaded["urhox-libs/UI"]
+    local buttons = {}
+
+    local function makeNode(spec)
+        spec = spec or {}
+        spec.visible = spec.visible ~= false
+        function spec:FindById(id)
+            if self.id == id then return self end
+            for _, child in ipairs(self.children or {}) do
+                if type(child) == "table" and child.FindById then
+                    local found = child:FindById(id)
+                    if found then return found end
+                end
+            end
+            return nil
+        end
+        function spec:Show() self.visible = true end
+        function spec:Hide() self.visible = false end
+        function spec:SetText(text) self.text = text end
+        function spec:AddChild(child)
+            self.children = self.children or {}
+            table.insert(self.children, child)
+        end
+        function spec:RemoveAllChildren() self.children = {} end
+        return spec
+    end
+
+    package.loaded["urhox-libs/UI"] = nil
+    package.preload["urhox-libs/UI"] = function()
+        return {
+            Panel = function(spec) return makeNode(spec) end,
+            Label = function(spec) return makeNode(spec) end,
+            Button = function(spec)
+                local node = makeNode(spec)
+                table.insert(buttons, node)
+                return node
+            end,
+            SetRoot = function(root) _G.__testUiRoot = root end,
+            Shutdown = function() end,
+        }
+    end
+
+    local chunk, loadErr = loadfile("scripts/main.lua")
+    assertTrue(chunk ~= nil, "main.lua should load: " .. tostring(loadErr))
+    local ok, runErr = pcall(chunk)
+    assertTrue(ok, "main.lua should initialize with UI stub: " .. tostring(runErr))
+
+    assertTrue(type(OpenMainMenu) == "function", "main menu wrapper should exist")
+    assertTrue(type(OpenDeployTerminal) == "function", "deploy terminal wrapper should exist")
+    assertTrue(type(ConfirmDeploy) == "function", "confirm deploy wrapper should exist")
+    assertTrue(type(StartNormalRun) == "function", "normal run wrapper should exist")
+    assertTrue(type(StartTutorialRun) == "function", "tutorial wrapper should exist")
+
+    CreateUI()
+
+    local directStartCount = 0
+    local oldStartNewGame = StartNewGame
+    local oldStartTutorial = StartTutorial
+    StartNewGame = function(_) directStartCount = directStartCount + 1 end
+    StartTutorial = function() error("UI should not call StartTutorial directly") end
+
+    local acceptButton = nil
+    for _, button in ipairs(buttons) do
+        if button.text == "接受工单" then
+            acceptButton = button
+            break
+        end
+    end
+    assertTrue(acceptButton ~= nil, "accept work order button should exist")
+    acceptButton.onClick()
+    assertEq(directStartCount, 0, "top-level accept should open deploy terminal, not start a run")
+
+    local tutorialButton = nil
+    for _, button in ipairs(buttons) do
+        if button.text == "展示工单" then
+            tutorialButton = button
+            break
+        end
+    end
+    assertTrue(tutorialButton ~= nil, "tutorial button should exist")
+    tutorialButton.onClick()
+    assertEq(directStartCount, 1, "tutorial should enter through StartTutorialRun config")
+
+    StartNewGame = oldStartNewGame
+    StartTutorial = oldStartTutorial
+    package.preload["urhox-libs/UI"] = oldPreload
+    package.loaded["urhox-libs/UI"] = oldLoaded
+end
+
+local function testEquipmentRequiresEquippedForBonus()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(200)
+
+        local boughtArmor = MetaProgress.BuyItem("armor")
+        assertTrue(boughtArmor, "armor purchase should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 0, "owned armor should not apply until equipped")
+
+        local equippedArmor = MetaProgress.ToggleEquip("armor")
+        assertTrue(equippedArmor, "armor equip should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "equipped armor should add max HP")
+
+        local boughtWhetstone = MetaProgress.BuyItem("whetstone")
+        assertTrue(boughtWhetstone, "whetstone purchase should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusPower, 0, "owned whetstone should not apply until equipped")
+
+        local equippedWhetstone = MetaProgress.ToggleEquip("whetstone")
+        assertTrue(equippedWhetstone, "whetstone equip should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusPower, 5, "equipped whetstone should add power")
+    end)
+end
+
+local function testConsumableLoadoutZeroDoesNotEnterRun()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(100)
+        local bought = MetaProgress.BuyConsumable("emergency_bandage", 2)
+        assertTrue(bought, "bandage purchase should succeed")
+
+        local ok, runLoadout = MetaProgress.ConsumeLoadoutForRun()
+        assertTrue(ok, "empty loadout consume should succeed")
+        assertEq(runLoadout.consumables.emergency_bandage, nil, "loadout=0 should carry no bandages")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 2, "loadout=0 should not consume stock")
+
+        MetaProgress.SetLoadoutConsumable("emergency_bandage", 2)
+        local ok2, runLoadout2 = MetaProgress.ConsumeLoadoutForRun()
+        assertTrue(ok2, "configured loadout should consume")
+        assertEq(runLoadout2.consumables.emergency_bandage, 2, "configured loadout should enter run")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "configured loadout should reduce stock")
+    end)
+end
+
 local function testMetaProgressGrowthEffectsStillApply()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
@@ -1457,6 +1591,9 @@ local tests = {
     { name = "meta progress load consumable and loadout defaults", fn = testMetaProgressLoadConsumableAndLoadoutDefaults },
     { name = "unified display and warehouse categories", fn = testUnifiedDisplayAndWarehouseCategories },
     { name = "consumable purchase loadout and run use", fn = testConsumablePurchaseLoadoutAndRunUse },
+    { name = "main entry source contract", fn = testMainEntrySourceContract },
+    { name = "equipment requires equipped for bonus", fn = testEquipmentRequiresEquippedForBonus },
+    { name = "consumable loadout zero does not enter run", fn = testConsumableLoadoutZeroDoesNotEnterRun },
     { name = "meta progress growth effects still apply", fn = testMetaProgressGrowthEffectsStillApply },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },
