@@ -1114,7 +1114,8 @@ function DoTrade()
     end
     local totals = RunInventory.GetTotals()
     if totals.parts < 1 then
-        ShowMessage("没有零件可以交易.")
+        DungeonRoom.TriggerTradePulse()
+        ShowMessage("旅商想要 1 个零件, 当前没有可交易零件.")
         return
     end
     local tradePrice = MetaProgress.GetTalentEffects().tradePrice
@@ -1341,6 +1342,8 @@ function HandleNanoVGRender(eventType, eventData)
             enemy = Combat.GetEnemyAny(p.x, p.y),
             combat = Combat.GetStatus(),
             eventTraded = tradedRooms[tradeKey] or false,
+            inventory = invStatus,
+            tradePrice = MetaProgress.GetTalentEffects().tradePrice,
             monsterFleeActive = monsterFleeActive,
             monsterFleeTimer = monsterFleeTimer,
         })
@@ -1372,13 +1375,16 @@ function HandleNanoVGRender(eventType, eventData)
         -- HUD: 底部交互栏
         local roomType = cell and cell.roomType or "normal"
         local enemy = Combat.GetEnemyAny(p.x, p.y)
+        local eventTraded = tradedRooms[tradeKey] or false
         local interactHint = HUD.GetInteractHint({
             roomType = roomType,
             searchState = GetSearchState(),
             hasEnemy = enemy ~= nil,
             enemyAlive = enemy and enemy.alive or false,
             hasExit = cell and cell.exitId ~= nil,
-            canTrade = roomType == "event" and not (tradedRooms[tradeKey] or false),
+            canTrade = roomType == "event" and not eventTraded and invTotals.parts > 0,
+            tradeUnavailable = roomType == "event" and not eventTraded and invTotals.parts <= 0,
+            eventTraded = eventTraded,
         })
 
         -- 计算撤离距离

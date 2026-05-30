@@ -765,6 +765,9 @@ function DungeonRoom.Draw(vg, w, h, context)
         local npcX = layout.x + layout.w * 0.5
         local npcY = layout.y + layout.h * 0.35
         local traded = context.eventTraded
+        local parts = (context.inventory and context.inventory.parts) or 0
+        local canTrade = not traded and parts > 0
+        local tradePrice = context.tradePrice or 15
         local tradeFlash = tradePulseTimer / TRADE_PULSE_DURATION
 
         if tradeFlash > 0 then
@@ -777,9 +780,9 @@ function DungeonRoom.Draw(vg, w, h, context)
         -- 小摊位
         nvgBeginPath(vg)
         nvgRoundedRect(vg, npcX - 44, npcY + 42, 88, 20, 4)
-        nvgFillColor(vg, traded and nvgRGBA(45, 55, 55, 170) or nvgRGBA(55, 115, 120, 220))
+        nvgFillColor(vg, traded and nvgRGBA(45, 55, 55, 170) or (canTrade and nvgRGBA(55, 115, 120, 220) or nvgRGBA(80, 70, 55, 210)))
         nvgFill(vg)
-        nvgStrokeColor(vg, traded and nvgRGBA(80, 95, 95, 130) or nvgRGBA(100, 220, 210, 190))
+        nvgStrokeColor(vg, traded and nvgRGBA(80, 95, 95, 130) or (canTrade and nvgRGBA(100, 220, 210, 190) or nvgRGBA(230, 170, 85, 190)))
         nvgStrokeWidth(vg, 1.5)
         nvgStroke(vg)
 
@@ -815,20 +818,31 @@ function DungeonRoom.Draw(vg, w, h, context)
         if traded then
             nvgFillColor(vg, nvgRGBA(120, 140, 140, 180))
             nvgText(vg, npcX, npcY + 24, "交易完成")
+        elseif not canTrade then
+            nvgFillColor(vg, nvgRGBA(235, 180, 90, 240))
+            nvgText(vg, npcX, npcY + 24, "需要零件")
+            nvgFontSize(vg, 12)
+            nvgFillColor(vg, nvgRGBA(230, 210, 170, 210))
+            nvgText(vg, npcX, npcY + 42, "1 零件 -> " .. tradePrice .. " 金币")
         else
             nvgFillColor(vg, nvgRGBA(100, 230, 240, 240))
             nvgText(vg, npcX, npcY + 24, "旅商")
             nvgFontSize(vg, 12)
             nvgFillColor(vg, nvgRGBA(180, 220, 220, 200))
-            nvgText(vg, npcX, npcY + 42, "按 T 交易")
+            nvgText(vg, npcX, npcY + 42, "T:1零件->" .. tradePrice .. "金")
         end
 
         if tradeFlash > 0 then
             nvgFontFace(vg, "sans")
             nvgFontSize(vg, 16)
             nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-            nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
-            nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "+金")
+            if traded then
+                nvgFillColor(vg, nvgRGBA(255, 220, 90, math.floor(255 * tradeFlash)))
+                nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "+金")
+            else
+                nvgFillColor(vg, nvgRGBA(255, 190, 90, math.floor(255 * tradeFlash)))
+                nvgText(vg, npcX + 54, npcY - 26 - 18 * (1 - tradeFlash), "缺零件")
+            end
         end
     end
 
