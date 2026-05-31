@@ -7,6 +7,7 @@ local MiniMap = require("ui.MiniMap")
 local Protocol = require("systems.Protocol")
 local GameText = require("systems.GameText")
 local UITheme = require("ui.UITheme")
+local TextBox = require("ui.TextBox")
 
 local HUD = {}
 
@@ -19,15 +20,15 @@ local LAYOUT = {
     sidebarWidthRatio = 0.28,
     sidebarMinW = 272,
     sidebarMaxW = 360,
-    sidebarPadding = 16,
+    sidebarPadding = 18,
 
     -- 底部栏
-    bottomBarH = 60,
+    bottomBarH = 62,
 
     -- 右上协议面板
-    protocolW = 196,
+    protocolW = 212,
     protocolH = 132,
-    protocolMargin = 16,
+    protocolMargin = 18,
 
     -- 面板样式
     panelBg = { 10, 14, 22, 200 },
@@ -109,50 +110,20 @@ local function drawPanel(vg, x, y, w, h, alpha, themeKey)
     nvgStroke(vg)
 end
 
-local function textShort(text, maxLen)
-    text = tostring(text or "")
-    maxLen = maxLen or 30
-    if utf8 and utf8.len then
-        local ok, len = pcall(utf8.len, text)
-        if ok and len and len > maxLen then
-            local byteIndex = utf8.offset(text, maxLen + 1)
-            if byteIndex then
-                return string.sub(text, 1, byteIndex - 1) .. "..."
-            end
-        elseif ok then
-            return text
-        end
-    end
-    return #text > maxLen and (string.sub(text, 1, maxLen) .. "...") or text
-end
-
 local function DrawTextBox(vg, text, x, y, w, h, opts)
-    opts = opts or {}
-    local padding = opts.padding or 0
-    local fontSize = opts.fontSize or 12
-    local maxChars = opts.maxChars or math.max(4, math.floor((w - padding * 2) / math.max(6, fontSize * 0.55)))
-    nvgSave(vg)
-    nvgScissor(vg, x, y, w, h)
-    nvgFontFace(vg, opts.fontFace or "sans")
-    nvgFontSize(vg, fontSize)
-    nvgTextAlign(vg, opts.align or (NVG_ALIGN_LEFT + NVG_ALIGN_TOP))
-    local color = opts.color or { 210, 220, 220, 230 }
-    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], color[4] or 230))
-    nvgText(vg, x + padding, y + padding, textShort(text, maxChars))
-    nvgResetScissor(vg)
-    nvgRestore(vg)
+    return TextBox.DrawTextBox(vg, text, x, y, w, h, opts)
 end
 
-local function drawSummaryRow(vg, x, y, row)
+local function drawSummaryRow(vg, x, y, row, width)
     UITheme.DrawIcon(row.iconKey or "item.placeholder", x, y, 15, {
         vg = vg,
         fill = { 20, 34, 40, 230 },
         border = { 94, 154, 154, 170 },
         radius = 3,
     })
-    DrawTextBox(vg, row.text, x + 20, y, 170, 17, {
+    DrawTextBox(vg, row.text, x + 20, y, math.max(120, (width or 200) - 20), 17, {
         fontSize = 12,
-        maxChars = 28,
+        lineLimit = 1,
         color = { 190, 210, 220, 230 },
     })
 end
@@ -213,15 +184,16 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     -- 标题: 区域扫描图
     nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 18)
-    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
-    nvgFillColor(vg, nvgRGBA(180, 200, 230, 255))
-    nvgText(vg, contentX, curY, GameText.hud.mapTitle)
+    DrawTextBox(vg, GameText.hud.mapTitle, contentX, curY, sb.w - pad * 2, 22, {
+        fontSize = 18,
+        lineLimit = 1,
+        color = { 180, 200, 230, 255 },
+    })
     curY = curY + 24
 
     -- 小地图(嵌入左侧栏, 随侧边栏宽度缩放)
     if context.visibleMap then
-        local mapW = math.min(sb.w - pad * 2, math.max(176, sb.h - 390))
+        local mapW = math.min(sb.w - pad * 2, math.max(168, sb.h - 398))
 
         -- 临时覆盖 MiniMap 参数
         local oldMapX = MiniMap.mapX
@@ -244,11 +216,17 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     end
 
     -- 图例
-    nvgFontSize(vg, 13)
-    nvgFillColor(vg, nvgRGBA(140, 150, 170, 200))
-    nvgText(vg, contentX, curY, GameText.hud.minesweeperRule1)
+    DrawTextBox(vg, GameText.hud.minesweeperRule1, contentX, curY, sb.w - pad * 2, 16, {
+        fontSize = 13,
+        lineLimit = 1,
+        color = { 140, 150, 170, 200 },
+    })
     curY = curY + 18
-    nvgText(vg, contentX, curY, GameText.hud.minesweeperRule2)
+    DrawTextBox(vg, GameText.hud.minesweeperRule2, contentX, curY, sb.w - pad * 2, 16, {
+        fontSize = 13,
+        lineLimit = 1,
+        color = { 140, 150, 170, 200 },
+    })
     curY = curY + 23
 
     -- 分隔线
@@ -271,9 +249,9 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     local hpRatio = maxHp > 0 and (hp / maxHp) or 0
 
     -- HP 条背景
-    local barW = math.max(128, sb.w - pad * 2 - 70)
+    local barW = math.max(118, sb.w - pad * 2 - 76)
     local barH = 14
-    local barX = contentX + 60
+    local barX = contentX + 62
     nvgFillColor(vg, nvgRGBA(255, 100, 100, 255))
     nvgText(vg, contentX, curY, GameText.hud.hp)
     nvgBeginPath(vg)
@@ -296,23 +274,36 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
 
     nvgFillColor(vg, nvgRGBA(255, 180, 60, 255))
-    nvgText(vg, contentX, curY, GameText.hud.power .. (combat.power or 10))
+    DrawTextBox(vg, GameText.hud.power .. (combat.power or 10), contentX, curY, sb.w - pad * 2, 18, {
+        fontSize = 16,
+        lineLimit = 1,
+        color = { 255, 180, 60, 255 },
+    })
     curY = curY + 21
 
     local inv = context.inventory or {}
-    nvgFillColor(vg, nvgRGBA(255, 230, 80, 255))
-    nvgText(vg, contentX, curY, GameText.hud.pendingGold .. (hud.pendingCurrency or inv.pendingGold or inv.gold or 0))
+    DrawTextBox(vg, GameText.hud.pendingGold .. (hud.pendingCurrency or inv.pendingGold or inv.gold or 0), contentX, curY, sb.w - pad * 2, 18, {
+        fontSize = 16,
+        lineLimit = 1,
+        color = { 255, 230, 80, 255 },
+    })
     curY = curY + 21
 
-    nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
-    nvgText(vg, contentX, curY, GameText.hud.parts .. (inv.parts or 0))
+    DrawTextBox(vg, GameText.hud.parts .. (inv.parts or 0), contentX, curY, sb.w - pad * 2, 18, {
+        fontSize = 16,
+        lineLimit = 1,
+        color = { 160, 210, 255, 255 },
+    })
     curY = curY + 21
 
     local consumables = hud.consumableCounts or inv.consumables or {}
     local bandageCount = consumables.emergency_bandage or 0
     if bandageCount > 0 then
-        nvgFillColor(vg, nvgRGBA(170, 230, 210, 255))
-        nvgText(vg, contentX, curY, "止血贴: x" .. bandageCount)
+        DrawTextBox(vg, "止血贴: x" .. bandageCount, contentX, curY, sb.w - pad * 2, 18, {
+            fontSize = 16,
+            lineLimit = 1,
+            color = { 170, 230, 210, 255 },
+        })
         curY = curY + 21
     end
 
@@ -321,8 +312,11 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     local rowText = "已锁定:" .. (hud.lockedCurrency or inv.safeGold or 0)
         .. "  回收物:" .. (inv.carriedItemCount or 0) .. "件"
         .. "  探索:" .. (context.exploredCount or 0) .. "格"
-    nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
-    nvgText(vg, contentX, curY, textShort(rowText, 34))
+    DrawTextBox(vg, rowText, contentX, curY, sb.w - pad * 2, 17, {
+        fontSize = 14,
+        lineLimit = 1,
+        color = { 180, 190, 210, 200 },
+    })
     nvgFontSize(vg, 16)
     curY = curY + 24
 
@@ -336,9 +330,11 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     curY = curY + 8
 
     -- 轻量作业包摘要
-    nvgFontSize(vg, 14)
-    nvgFillColor(vg, nvgRGBA(130, 220, 205, 245))
-    nvgText(vg, contentX, curY, "作业包摘要")
+    DrawTextBox(vg, "作业包摘要", contentX, curY, sb.w - pad * 2, 18, {
+        fontSize = 14,
+        lineLimit = 1,
+        color = { 130, 220, 205, 245 },
+    })
     curY = curY + 19
 
     nvgFontSize(vg, 12)
@@ -352,12 +348,15 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         table.insert(rows, { iconKey = "item.recovered.default", text = "暂无待结算回收物" })
     end
     for index = 1, math.min(3, #rows) do
-        drawSummaryRow(vg, contentX, curY, rows[index])
+        drawSummaryRow(vg, contentX, curY, rows[index], sb.w - pad * 2)
         curY = curY + 17
     end
     if #rows > 3 then
-        nvgFillColor(vg, nvgRGBA(150, 180, 186, 215))
-        nvgText(vg, contentX + 20, curY, "另有 " .. (#rows - 3) .. " 项")
+        DrawTextBox(vg, "另有 " .. (#rows - 3) .. " 项", contentX + 20, curY, sb.w - pad * 2 - 20, 17, {
+            fontSize = 12,
+            lineLimit = 1,
+            color = { 150, 180, 186, 215 },
+        })
     end
 end
 
@@ -396,10 +395,11 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
 
     -- 标题
     nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 11)
-    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
-    nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
-    nvgText(vg, p.x + 12, p.y + 10, GameText.protocol.panelTitle)
+    DrawTextBox(vg, GameText.protocol.panelTitle, p.x + 12, p.y + 10, p.w - 24, 14, {
+        fontSize = 11,
+        lineLimit = 1,
+        color = { 160, 170, 190, 220 },
+    })
 
     -- 大号等级数字
     local numScale = 1.0
@@ -412,16 +412,19 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     nvgText(vg, p.x + 12, p.y + 48, "协议 " .. tostring(level))
 
     -- 阶段名称
-    nvgFontSize(vg, 12)
-    nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
-    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 230))
-    nvgText(vg, p.x + p.w - 12, p.y + 39, PROTOCOL_TITLES[level] or "")
+    DrawTextBox(vg, PROTOCOL_TITLES[level] or "", p.x + 96, p.y + 39, p.w - 108, 16, {
+        fontSize = 12,
+        lineLimit = 1,
+        align = "right",
+        color = { color[1], color[2], color[3], 230 },
+    })
 
     -- 压力值
-    nvgFontSize(vg, 10)
-    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
-    nvgFillColor(vg, nvgRGBA(160, 170, 190, 180))
-    nvgText(vg, p.x + 12, p.y + 70, "封锁压力: " .. (protocolStatus.pressure or 0) .. " / " .. (protocolStatus.pressureMax or protocolStatus.maxPressure or 100))
+    DrawTextBox(vg, "封锁压力: " .. (protocolStatus.pressure or 0) .. " / " .. (protocolStatus.pressureMax or protocolStatus.maxPressure or 100), p.x + 12, p.y + 70, p.w - 24, 14, {
+        fontSize = 10,
+        lineLimit = 1,
+        color = { 160, 170, 190, 180 },
+    })
     local pressureRatio = math.max(0, math.min(1, (protocolStatus.pressure or 0) / math.max(1, protocolStatus.pressureMax or protocolStatus.maxPressure or 100)))
     nvgBeginPath(vg)
     nvgRoundedRect(vg, p.x + 12, p.y + 88, p.w - 24, 8, 3)
@@ -432,9 +435,11 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 245))
     nvgFill(vg)
 
-    nvgFontSize(vg, 10)
-    nvgFillColor(vg, nvgRGBA(172, 185, 192, 205))
-    nvgText(vg, p.x + 12, p.y + 106, PROTOCOL_DESCS[level] or "")
+    DrawTextBox(vg, PROTOCOL_DESCS[level] or "", p.x + 12, p.y + 104, p.w - 24, 22, {
+        fontSize = 10,
+        lineLimit = 2,
+        color = { 172, 185, 192, 205 },
+    })
 end
 
 -- ============================================================================
@@ -458,11 +463,12 @@ function HUD.DrawNearbyDanger(vg, layout, context)
         radius = 4,
     })
 
-    nvgFontFace(vg, "sans")
-    nvgFontSize(vg, 13)
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
-    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 245))
-    nvgText(vg, d.x + d.w / 2 + 16, d.y + d.h / 2, text)
+    DrawTextBox(vg, text, tagX + 12, d.y + 7, tagW - 24, d.h - 8, {
+        fontSize = 13,
+        lineLimit = 1,
+        align = "center",
+        color = { color[1], color[2], color[3], 245 },
+    })
 end
 
 -- ============================================================================
@@ -483,9 +489,12 @@ function HUD.DrawBottomBar(vg, layout, context)
     -- 中央: 当前交互提示
     local hint = context.interactHint or ""
     if hint ~= "" then
-        nvgFontSize(vg, 13)
-        nvgFillColor(vg, nvgRGBA(255, 240, 180, 255))
-        nvgText(vg, b.x + b.w / 2, b.y + 13, textShort(hint, 54))
+        DrawTextBox(vg, hint, b.x + 220, b.y + 6, b.w - 440, 18, {
+            fontSize = 13,
+            lineLimit = 1,
+            align = "center",
+            color = { 255, 240, 180, 255 },
+        })
     end
 
     local consumables = context.consumables or {}
@@ -498,11 +507,12 @@ function HUD.DrawBottomBar(vg, layout, context)
         { key = "T", image = "hud.key.t", label = "事件" },
         { key = "Q", image = "hud.key.q", label = "止血贴 x" .. bandageCount },
     }
-    local groupW = math.max(92, math.min(112, math.floor((b.w - 80) / #commands)))
+    local groupW = math.max(96, math.min(118, math.floor((b.w - 132) / #commands)))
     local totalW = #commands * groupW
     local startX = b.x + (b.w - totalW) / 2
     for index, command in ipairs(commands) do
         local x = startX + (index - 1) * groupW
+        local keyW = command.image and 20 or 36
         if command.image then
             UITheme.DrawImage(command.image, x, b.y + 31, 20, 20, {
                 vg = vg,
@@ -512,7 +522,7 @@ function HUD.DrawBottomBar(vg, layout, context)
             })
         else
             nvgBeginPath(vg)
-            nvgRoundedRect(vg, x, b.y + 31, 34, 20, 3)
+            nvgRoundedRect(vg, x, b.y + 31, keyW, 20, 3)
             nvgFillColor(vg, nvgRGBA(22, 34, 42, 230))
             nvgFill(vg)
             nvgStrokeColor(vg, nvgRGBA(100, 150, 160, 180))
@@ -520,12 +530,13 @@ function HUD.DrawBottomBar(vg, layout, context)
             nvgStroke(vg)
             nvgFontSize(vg, 9)
             nvgFillColor(vg, nvgRGBA(210, 226, 226, 240))
-            nvgText(vg, x + 17, b.y + 41, command.key)
+            nvgText(vg, x + keyW / 2, b.y + 41, command.key)
         end
-        nvgFontSize(vg, 10)
-        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
-        nvgFillColor(vg, nvgRGBA(164, 184, 192, 225))
-        nvgText(vg, x + (command.image and 26 or 40), b.y + 41, textShort(command.label, 8))
+        DrawTextBox(vg, command.label, x + keyW + 6, b.y + 34, groupW - keyW - 10, 16, {
+            fontSize = 10,
+            lineLimit = 1,
+            color = { 164, 184, 192, 225 },
+        })
     end
 
     -- 右侧: 撤离距离

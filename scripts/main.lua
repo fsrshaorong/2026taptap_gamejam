@@ -16,6 +16,7 @@ local MapOverlay = require("ui.MapOverlay")
 local HUD = require("ui.HUD")
 local UITheme = require("ui.UITheme")
 local UILayout = require("ui.UILayout")
+local TextBox = require("ui.TextBox")
 local DungeonRoom = require("scenes.DungeonRoom")
 local EventSystem = require("systems.EventSystem")
 local Tutorial = require("systems.Tutorial")
@@ -180,17 +181,36 @@ local DEPLOY_MODULES = {
 
 local DEPLOY_FILTERS = nil
 
-local DEPLOY_SAFE = 32
+local DEPLOY_SAFE = 28
 local DEPLOY_GAP = 24
-local DEPLOY_ROOT_PANEL = { x = 32, y = 24, w = 1472, h = 808 }
+local DEPLOY_ROOT_PANEL = { x = DEPLOY_SAFE, y = 32, w = 1536 - DEPLOY_SAFE * 2, h = 800 }
 local DEPLOY_SHELL = { x = DEPLOY_ROOT_PANEL.x, y = DEPLOY_ROOT_PANEL.y, w = DEPLOY_ROOT_PANEL.w, h = DEPLOY_ROOT_PANEL.h }
-local DEPLOY_BACK = { x = DEPLOY_ROOT_PANEL.x + 22, y = DEPLOY_ROOT_PANEL.y + 18, w = 146, h = 42 }
-local DEPLOY_NAV = { x = DEPLOY_ROOT_PANEL.x + 286, y = DEPLOY_ROOT_PANEL.y + 18, w = 876, h = 46 }
-local DEPLOY_CENTRAL = { x = DEPLOY_ROOT_PANEL.x + 28, y = DEPLOY_ROOT_PANEL.y + 104, w = 956, h = 668 }
-local DEPLOY_RIGHT_RAIL = { x = DEPLOY_ROOT_PANEL.x + 1024, y = DEPLOY_ROOT_PANEL.y + 104, w = 416, h = 668 }
-local DEPLOY_CARD_AREA = { x = DEPLOY_CENTRAL.x + 40, y = DEPLOY_CENTRAL.y + 142, w = 876, h = 336 }
-local DEPLOY_DETAIL = { x = DEPLOY_CENTRAL.x + 40, y = DEPLOY_CENTRAL.y + 528, w = 876, h = 112 }
-local DEPLOY_SUMMARY = { x = DEPLOY_RIGHT_RAIL.x + 24, y = DEPLOY_RIGHT_RAIL.y + 28, w = DEPLOY_RIGHT_RAIL.w - 48, h = 304 }
+local DEPLOY_TOP_BAR = { x = DEPLOY_ROOT_PANEL.x + 18, y = DEPLOY_ROOT_PANEL.y + 16, w = DEPLOY_ROOT_PANEL.w - 36, h = 52 }
+local DEPLOY_BACK = { x = DEPLOY_TOP_BAR.x, y = DEPLOY_TOP_BAR.y, w = 146, h = 42 }
+local DEPLOY_NAV = {
+    x = DEPLOY_ROOT_PANEL.x + 220,
+    y = DEPLOY_TOP_BAR.y,
+    w = DEPLOY_ROOT_PANEL.w - 244,
+    h = 46,
+}
+local DEPLOY_BREADCRUMB = { x = DEPLOY_NAV.x, y = DEPLOY_NAV.y + DEPLOY_NAV.h + 6, w = DEPLOY_NAV.w, h = 24 }
+local DEPLOY_RIGHT_RAIL = {
+    x = DEPLOY_ROOT_PANEL.x + DEPLOY_ROOT_PANEL.w - 20 - 392,
+    y = DEPLOY_ROOT_PANEL.y + 88,
+    w = 392,
+    h = 680,
+}
+local DEPLOY_CENTRAL = {
+    x = DEPLOY_ROOT_PANEL.x + 20,
+    y = DEPLOY_RIGHT_RAIL.y,
+    w = DEPLOY_RIGHT_RAIL.x - DEPLOY_GAP - (DEPLOY_ROOT_PANEL.x + 20) - 4,
+    h = DEPLOY_RIGHT_RAIL.h,
+}
+local DEPLOY_TITLE_AREA = { x = DEPLOY_CENTRAL.x + 24, y = DEPLOY_CENTRAL.y + 18, w = DEPLOY_CENTRAL.w - 48, h = 42 }
+local DEPLOY_FILTER_BAR = { x = DEPLOY_CENTRAL.x + 24, y = DEPLOY_CENTRAL.y + 74, w = DEPLOY_CENTRAL.w - 48, h = 34 }
+local DEPLOY_CARD_AREA = { x = DEPLOY_CENTRAL.x + 24, y = DEPLOY_CENTRAL.y + 130, w = DEPLOY_CENTRAL.w - 48, h = 330 }
+local DEPLOY_DETAIL = { x = DEPLOY_CENTRAL.x + 24, y = DEPLOY_CENTRAL.y + 506, w = DEPLOY_CENTRAL.w - 48, h = 126 }
+local DEPLOY_SUMMARY = { x = DEPLOY_RIGHT_RAIL.x + 22, y = DEPLOY_RIGHT_RAIL.y + 24, w = DEPLOY_RIGHT_RAIL.w - 44, h = 316 }
 local DEPLOY_CONFIRM = { w = 217, h = 74 }
 DEPLOY_CONFIRM.x = math.floor(DEPLOY_RIGHT_RAIL.x + (DEPLOY_RIGHT_RAIL.w - DEPLOY_CONFIRM.w) / 2)
 DEPLOY_CONFIRM.y = DEPLOY_RIGHT_RAIL.y + DEPLOY_RIGHT_RAIL.h - DEPLOY_CONFIRM.h - 28
@@ -202,16 +222,20 @@ local DEPLOY_LAYOUT = {
     gap = DEPLOY_GAP,
     rootPanel = DEPLOY_ROOT_PANEL,
     shell = DEPLOY_SHELL,
+    topBar = DEPLOY_TOP_BAR,
     back = DEPLOY_BACK,
     nav = DEPLOY_NAV,
+    breadcrumb = DEPLOY_BREADCRUMB,
     central = DEPLOY_CENTRAL,
     rightRail = DEPLOY_RIGHT_RAIL,
+    titleArea = DEPLOY_TITLE_AREA,
+    filterBar = DEPLOY_FILTER_BAR,
     cardArea = DEPLOY_CARD_AREA,
     detail = DEPLOY_DETAIL,
-    cardW = 270,
-    cardH = 160,
+    cardW = math.floor((DEPLOY_CARD_AREA.w - 18 * 2) / 3),
+    cardH = 156,
     cardGap = 18,
-    rowGap = 16,
+    rowGap = 18,
     columns = 3,
     rowsVisible = 2,
     summary = DEPLOY_SUMMARY,
@@ -219,11 +243,11 @@ local DEPLOY_LAYOUT = {
 }
 
 local DEPLOY_CARD_ACTION_LAYOUT = {
-    left = 10,
+    right = 12,
     top = 126,
-    w = 54,
+    w = 58,
     h = 24,
-    gap = 5,
+    gap = 6,
 }
 
 local JUDGE_DEMO_MAP = {
@@ -295,10 +319,14 @@ function GetDeployTerminalLayoutInfo()
         gap = DEPLOY_LAYOUT.gap,
         rootPanel = DEPLOY_LAYOUT.rootPanel,
         shell = DEPLOY_LAYOUT.shell,
+        topBar = DEPLOY_LAYOUT.topBar,
         back = DEPLOY_LAYOUT.back,
         nav = DEPLOY_LAYOUT.nav,
+        breadcrumb = DEPLOY_LAYOUT.breadcrumb,
         central = DEPLOY_LAYOUT.central,
         rightRail = DEPLOY_LAYOUT.rightRail,
+        titleArea = DEPLOY_LAYOUT.titleArea,
+        filterBar = DEPLOY_LAYOUT.filterBar,
         cardArea = DEPLOY_LAYOUT.cardArea,
         detail = DEPLOY_LAYOUT.detail,
         summary = DEPLOY_LAYOUT.summary,
@@ -838,22 +866,22 @@ local function talentFilterTag(talent)
     return "all"
 end
 
-local function textShort(text, maxLen)
-    text = tostring(text or "")
-    maxLen = maxLen or 34
-    if utf8 and utf8.len then
-        local ok, len = pcall(utf8.len, text)
-        if ok and len and len > maxLen then
-            local byteIndex = utf8.offset(text, maxLen + 1)
-            if byteIndex then
-                return string.sub(text, 1, byteIndex - 1) .. "..."
-            end
-        elseif ok then
-            return text
-        end
-    end
-    if #text <= maxLen then return text end
-    return string.sub(text, 1, maxLen) .. "..."
+local function DrawTextBox(text, x, y, w, h, opts)
+    opts = opts or {}
+    return TextBox.FitText(text, {
+        maxWidth = opts.maxWidth or w,
+        padding = opts.padding or 0,
+        fontSize = opts.fontSize or 12,
+        lineLimit = opts.lineLimit or 1,
+        ellipsis = opts.ellipsis,
+    })
+end
+
+local function fitDeployText(text, w, fontSize, lineLimit)
+    return DrawTextBox(text, 0, 0, w, (fontSize or 12) * (lineLimit or 1) + 6, {
+        fontSize = fontSize or 12,
+        lineLimit = lineLimit or 1,
+    })
 end
 
 local function cardKey(card)
@@ -879,9 +907,10 @@ end
 
 function RefreshDeploySummaryPanel()
     local lines = getDeploySummaryLines()
-    setLabelText("deploySummaryEquipmentLabel", lines.equipment)
-    setLabelText("deploySummaryConsumableLabel", lines.consumable)
-    setLabelText("deploySummaryEffectLabel", lines.effects)
+    local lineW = DEPLOY_LAYOUT.summary.w - 36
+    setLabelText("deploySummaryEquipmentLabel", fitDeployText(lines.equipment, lineW, 12, 2))
+    setLabelText("deploySummaryConsumableLabel", fitDeployText(lines.consumable, lineW, 12, 2))
+    setLabelText("deploySummaryEffectLabel", fitDeployText(lines.effects, lineW, 11, 3))
 end
 
 local function makeCard(module, item, opts)
@@ -896,9 +925,10 @@ local function makeCard(module, item, opts)
         id = item.id,
         title = item.name or item.id,
         icon = DisplayIconText(item),
-        typeLine = typeName .. " - " .. rarityName,
+        typeLine = typeName .. " · " .. rarityName,
         effect = display.shortEffect or opts.effect or "",
         desc = display.shortDescription or opts.desc or "",
+        fullDesc = item.description or item.desc or display.shortDescription or opts.desc or "",
         countLine = countLine,
         status = status,
         item = item,
@@ -950,8 +980,6 @@ local function buildRequisitionCards()
                 countLine = "拥有 x" .. owned .. " / 价格 " .. (item.price or 0) .. " 结算币",
                 status = status,
                 actions = {
-                    { text = "-", action = "noop" },
-                    { text = "+", action = "noop" },
                     { text = buttonText, action = item.type == "equipment" and "equip_or_buy" or "buy" },
                 },
             }))
@@ -1008,7 +1036,7 @@ local function buildRecoveryCards()
             table.insert(cards, makeCard("recovery", display, {
                 countLine = "估值 " .. (display.value or 0),
                 status = "最近带回",
-                actions = { { text = "查看", action = "select" } },
+                actions = {},
                 recent = true,
             }))
         end
@@ -1026,7 +1054,7 @@ local function buildRecoveryCards()
         }, {
             countLine = "带回批次 " .. summary.totalExtractionsWithItems,
             status = "记录中",
-            actions = { { text = "查看", action = "select" } },
+            actions = {},
         }))
     end
     return cards
@@ -1044,9 +1072,10 @@ local function buildTalentCards()
                 title = item.name,
                 icon = "*",
                 iconImage = DeployIconImage(item),
-                typeLine = (talent.direction or "天赋") .. " / " .. (TALENT_BRANCH_LABELS[item.branch] or "其它"),
+                typeLine = (talent.direction or "天赋") .. " · " .. (TALENT_BRANCH_LABELS[item.branch] or "其它"),
                 effect = item.display.shortEffect,
                 desc = item.display.shortDescription,
+                fullDesc = item.description or talent.desc or item.display.shortDescription,
                 countLine = "Lv." .. (unlocked and "1" or "0") .. "/1",
                 status = item.display.statusText,
                 item = item,
@@ -1066,13 +1095,27 @@ local function buildDeployCards(module)
     return buildTalentCards()
 end
 
-local function getDeployActionButtonRect(cardRect, actionIndex)
+local function getDeployActionButtonMetrics(actionCount)
     local layout = DEPLOY_CARD_ACTION_LAYOUT
+    actionCount = math.max(1, actionCount or 1)
+    local totalW = actionCount * layout.w + (actionCount - 1) * layout.gap
     return {
-        x = cardRect.x + layout.left + (actionIndex - 1) * (layout.w + layout.gap),
-        y = cardRect.y + layout.top,
+        totalW = totalW,
+        left = DEPLOY_LAYOUT.cardW - layout.right - totalW,
+        top = layout.top,
         w = layout.w,
         h = layout.h,
+        gap = layout.gap,
+    }
+end
+
+local function getDeployActionButtonRect(card, cardRect, actionIndex)
+    local metrics = getDeployActionButtonMetrics(#(card.actions or {}))
+    return {
+        x = cardRect.x + metrics.left + (actionIndex - 1) * (metrics.w + metrics.gap),
+        y = cardRect.y + metrics.top,
+        w = metrics.w,
+        h = metrics.h,
     }
 end
 
@@ -1094,7 +1137,7 @@ end
 
 local function addDeployActionRects(card, cardRect, visibleIndex, scrollIndex)
     for actionIndex, action in ipairs(card.actions or {}) do
-        local rect = getDeployActionButtonRect(cardRect, actionIndex)
+        local rect = getDeployActionButtonRect(card, cardRect, actionIndex)
         local key = cardKey(card)
         table.insert(deployTerminal.actionRects, makeDeployInteractiveRect(rect, {
             module = card.module,
@@ -1111,7 +1154,7 @@ end
 
 local function makeDeployActionButton(card, action)
     return UI.Button {
-        text = action.text,
+        text = fitDeployText(action.text, DEPLOY_CARD_ACTION_LAYOUT.w - 6, 11, 1),
         width = DEPLOY_CARD_ACTION_LAYOUT.w,
         height = DEPLOY_CARD_ACTION_LAYOUT.h,
         variant = action.variant or "default",
@@ -1123,10 +1166,18 @@ end
 
 local function makeDeployCard(card, index)
     local selected = deployTerminal.selectedKey == cardKey(card)
-    local cardThemeKey = card.disabled and "deploy.card.disabled" or (selected and "deploy.card.selected" or "deploy.card.normal")
     local actions = {}
+    local actionMetrics = getDeployActionButtonMetrics(#(card.actions or {}))
+    local lineW = DEPLOY_LAYOUT.cardW - 24
+    local titleW = DEPLOY_LAYOUT.cardW - 58
     if #card.actions == 0 then
-        table.insert(actions, UI.Label { text = card.status or "", fontSize = 11, fontColor = { 160, 185, 190, 220 } })
+        table.insert(actions, UI.Label {
+            text = fitDeployText(card.status or "", DEPLOY_CARD_ACTION_LAYOUT.w * 2, 11, 1),
+            width = DEPLOY_CARD_ACTION_LAYOUT.w * 2,
+            height = DEPLOY_CARD_ACTION_LAYOUT.h,
+            fontSize = 11,
+            fontColor = { 160, 185, 190, 220 },
+        })
     else
         for _, action in ipairs(card.actions) do
             table.insert(actions, makeDeployActionButton(card, action))
@@ -1135,13 +1186,13 @@ local function makeDeployCard(card, index)
     return UI.Panel {
         width = DEPLOY_LAYOUT.cardW,
         height = DEPLOY_LAYOUT.cardH,
-        padding = 10,
+        padding = 12,
         gap = 4,
-        backgroundImage = UITheme.GetRegisteredPath(cardThemeKey),
+        clip = true,
         backgroundColor = selected and { 42, 72, 82, 225 } or { 22, 31, 42, 218 },
         borderRadius = 6,
         borderWidth = selected and 2 or 1,
-        borderColor = selected and { 214, 174, 86, 240 } or { 70, 74, 70, 150 },
+        borderColor = selected and { 214, 174, 86, 240 } or { 74, 79, 72, 150 },
         children = {
             UI.Panel {
                 flexDirection = "row",
@@ -1150,31 +1201,32 @@ local function makeDeployCard(card, index)
                 width = "100%",
                 children = {
                     UI.Panel {
-                        width = 28,
-                        height = 28,
+                        width = 30,
+                        height = 30,
                         backgroundImage = card.iconImage,
                         backgroundColor = { 28, 48, 56, 180 },
                         borderRadius = 4,
                     },
                     UI.Label {
-                        text = textShort(card.title, 18),
-                        width = 210,
+                        text = fitDeployText(card.title, titleW, 14, 1),
+                        width = titleW,
+                        height = 20,
                         fontSize = 14,
                         fontColor = selected and { 228, 252, 245, 255 } or { 210, 232, 238, 245 },
                     },
                 },
             },
-            UI.Label { text = textShort(card.typeLine, 30), width = 248, fontSize = 11, fontColor = { 160, 190, 200, 230 } },
-            UI.Label { text = textShort(card.effect ~= "" and card.effect or card.desc, 30), width = 248, fontSize = 11, fontColor = { 218, 226, 194, 235 } },
-            UI.Label { text = textShort(card.countLine, 30), width = 248, fontSize = 10, fontColor = { 220, 194, 126, 230 } },
-            UI.Label { text = textShort(card.status, 30), width = 248, fontSize = 10, fontColor = { 135, 225, 176, 230 } },
+            UI.Label { text = fitDeployText(card.typeLine, lineW, 11, 1), width = lineW, height = 16, fontSize = 11, fontColor = { 160, 190, 200, 230 } },
+            UI.Label { text = fitDeployText(card.effect ~= "" and card.effect or card.desc, lineW, 11, 1), width = lineW, height = 16, fontSize = 11, fontColor = { 218, 226, 194, 235 } },
+            UI.Label { text = fitDeployText(card.countLine, lineW, 10, 1), width = lineW, height = 15, fontSize = 10, fontColor = { 220, 194, 126, 230 } },
+            UI.Label { text = fitDeployText(card.status, lineW, 10, 1), width = lineW, height = 15, fontSize = 10, fontColor = { 135, 225, 176, 230 } },
             UI.Panel {
                 position = "absolute",
-                left = DEPLOY_CARD_ACTION_LAYOUT.left,
-                top = DEPLOY_CARD_ACTION_LAYOUT.top,
-                height = DEPLOY_CARD_ACTION_LAYOUT.h,
+                left = #card.actions == 0 and 12 or actionMetrics.left,
+                top = actionMetrics.top,
+                height = actionMetrics.h,
                 flexDirection = "row",
-                gap = DEPLOY_CARD_ACTION_LAYOUT.gap,
+                gap = actionMetrics.gap,
                 children = actions,
             },
         },
@@ -1194,9 +1246,19 @@ local function refreshDeployDetails()
         end
     end
     if selected then
-        if title then title:SetText("当前选中: " .. (selected.title or "")) end
-        detail:SetText((selected.typeLine or "") .. " | " .. (selected.effect or "") .. " | " .. (selected.desc or "") .. " | " .. (selected.countLine or ""))
-        if status then status:SetText("状态: " .. (selected.status or "可查看")) end
+        if title then
+            title:SetText(fitDeployText("当前选中: " .. (selected.title or ""), DEPLOY_LAYOUT.detail.w - 24, 13, 1))
+        end
+        local detailText = table.concat({
+            selected.typeLine or "",
+            selected.effect or "",
+            selected.fullDesc or selected.desc or "",
+            selected.countLine or "",
+        }, " | ")
+        detail:SetText(fitDeployText(detailText, DEPLOY_LAYOUT.detail.w - 24, 11, 3))
+        if status then
+            status:SetText(fitDeployText("状态: " .. (selected.status or "已选中"), DEPLOY_LAYOUT.detail.w - 24, 11, 1))
+        end
     else
         if title then title:SetText("当前选中: 暂无") end
         detail:SetText("点击卡片查看效果与状态。滚轮只作用于中央卡片区。")
@@ -1275,14 +1337,17 @@ function HandleDeployCardAction(action)
         return OnSellWarehouseItem(item.id, action.count or 1)
     elseif actionType == "equip" or actionType == "equip_or_buy" then
         OnEquipItemClick(item.id)
+        RefreshDeployModulePage(card.module)
     elseif actionType == "buy" then
         OnBuyConsumable(item.id, 1)
+        RefreshDeployModulePage(card.module)
     elseif actionType == "loadout_inc" then
         return OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) + 1, { refresh = "current" })
     elseif actionType == "loadout_dec" then
         return OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) - 1, { refresh = "current" })
     elseif actionType == "unlock" and card.talent then
         OnTalentClick(card.talent.id)
+        RefreshDeployModulePage(card.module)
     else
         RefreshDeployModulePage(deployTerminal.module)
     end
@@ -1376,15 +1441,16 @@ function RefreshDeployModulePage(module)
     local filterBar = uiRoot_ and uiRoot_:FindById("deployFilterBar")
     if filterBar then
         filterBar:RemoveAllChildren()
-        local filterX = DEPLOY_LAYOUT.central.x + 40
-        local filterY = DEPLOY_LAYOUT.central.y + 78
-        local filterGap = 7
+        local filterX = DEPLOY_LAYOUT.filterBar.x
+        local filterY = DEPLOY_LAYOUT.filterBar.y
+        local filterW = 74
+        local filterGap = 8
         for index, filter in ipairs(DEPLOY_FILTERS[module] or DEPLOY_FILTERS.talent) do
             local active = deployTerminal.filter == filter.id
             table.insert(deployTerminal.filterRects, makeDeployInteractiveRect({
-                x = filterX + (index - 1) * (58 + filterGap),
+                x = filterX + (index - 1) * (filterW + filterGap),
                 y = filterY,
-                w = 58,
+                w = filterW,
                 h = 26,
             }, {
                 module = module,
@@ -1392,8 +1458,8 @@ function RefreshDeployModulePage(module)
                 actionType = "filter",
             }))
             filterBar:AddChild(UI.Button {
-                text = filter.label,
-                width = 58,
+                text = fitDeployText(filter.label, filterW - 8, 11, 1),
+                width = filterW,
                 height = 26,
                 backgroundImage = UITheme.GetRegisteredPath(active and "deploy.filter.active" or "deploy.filter.inactive"),
                 borderWidth = active and 2 or 1,
@@ -3977,7 +4043,7 @@ function CreateUI()
                 id = "menuPage_deployOverview",
                 visible = false,
                 position = "absolute",
-                top = 1, left = -1, right = 1, bottom = -1,
+                top = 0, left = 0, right = 0, bottom = 0,
                 backgroundColor = { 6, 10, 14, 245 },
                 children = {
                     UI.Panel {
@@ -3986,11 +4052,10 @@ function CreateUI()
                         top = DEPLOY_LAYOUT.shell.y,
                         width = DEPLOY_LAYOUT.shell.w,
                         height = DEPLOY_LAYOUT.shell.h,
-                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.background"),
                         backgroundColor = { 12, 22, 28, 238 },
                         borderRadius = 10,
-                        borderWidth = 2,
-                        borderColor = { 70, 74, 70, 190 },
+                        borderWidth = 1,
+                        borderColor = { 62, 66, 58, 190 },
                     },
                     UI.Panel {
                         position = "absolute",
@@ -4002,10 +4067,10 @@ function CreateUI()
                     },
                     UI.Panel {
                         position = "absolute",
-                        left = DEPLOY_LAYOUT.nav.x - 18,
-                        top = DEPLOY_LAYOUT.nav.y + DEPLOY_LAYOUT.nav.h + 6,
-                        width = DEPLOY_LAYOUT.nav.w + 36,
-                        height = 24,
+                        left = DEPLOY_LAYOUT.breadcrumb.x,
+                        top = DEPLOY_LAYOUT.breadcrumb.y,
+                        width = DEPLOY_LAYOUT.breadcrumb.w,
+                        height = DEPLOY_LAYOUT.breadcrumb.h,
                         backgroundColor = { 18, 35, 42, 245 },
                         borderWidth = 1,
                         borderColor = { 78, 76, 64, 190 },
@@ -4014,8 +4079,8 @@ function CreateUI()
                         id = "deployActiveTabLabel",
                         text = "当前页签 / 天赋",
                         position = "absolute",
-                        left = DEPLOY_LAYOUT.nav.x + 12,
-                        top = DEPLOY_LAYOUT.nav.y + DEPLOY_LAYOUT.nav.h + 12,
+                        left = DEPLOY_LAYOUT.breadcrumb.x + 12,
+                        top = DEPLOY_LAYOUT.breadcrumb.y + 6,
                         fontSize = 11,
                         fontColor = { 164, 218, 216, 245 },
                     },
@@ -4053,7 +4118,6 @@ function CreateUI()
                         height = DEPLOY_LAYOUT.central.h,
                         padding = 22,
                         gap = 8,
-                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.main"),
                         backgroundColor = { 18, 26, 36, 232 },
                         borderRadius = 8,
                         borderWidth = 1,
@@ -4073,28 +4137,27 @@ function CreateUI()
                         top = DEPLOY_LAYOUT.central.y,
                         width = DEPLOY_LAYOUT.central.w,
                         height = DEPLOY_LAYOUT.central.h,
-                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.main"),
                         backgroundColor = { 12, 20, 28, 246 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 70, 74, 70, 160 },
+                        borderColor = { 62, 66, 58, 170 },
+                        clip = true,
                         children = {
                             UI.Panel {
                                 position = "absolute",
-                                left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x,
-                                top = 22,
-                                width = DEPLOY_LAYOUT.cardArea.w,
-                                height = 42,
+                                left = DEPLOY_LAYOUT.titleArea.x - DEPLOY_LAYOUT.central.x,
+                                top = DEPLOY_LAYOUT.titleArea.y - DEPLOY_LAYOUT.central.y,
+                                width = DEPLOY_LAYOUT.titleArea.w,
+                                height = DEPLOY_LAYOUT.titleArea.h,
                                 flexDirection = "row",
                                 justifyContent = "space-between",
                                 alignItems = "center",
-                                width = "100%",
                                 children = {
                                     UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, width = 220, fontColor = { 210, 238, 245, 255 } },
                                     UI.Label { id = "deployModuleMetaLabel", text = GameText.meta.account .. "0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
                                 },
                             },
-                            UI.Panel { id = "deployFilterBar", position = "absolute", flexDirection = "row", flexWrap = "wrap", gap = 7, width = DEPLOY_LAYOUT.cardArea.w, height = 44, left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x, top = 78, children = {} },
+                            UI.Panel { id = "deployFilterBar", position = "absolute", flexDirection = "row", flexWrap = "wrap", gap = 8, width = DEPLOY_LAYOUT.filterBar.w, height = DEPLOY_LAYOUT.filterBar.h, left = DEPLOY_LAYOUT.filterBar.x - DEPLOY_LAYOUT.central.x, top = DEPLOY_LAYOUT.filterBar.y - DEPLOY_LAYOUT.central.y, children = {} },
                             UI.Panel { id = "deployCardGrid", position = "absolute", gap = DEPLOY_LAYOUT.rowGap, width = DEPLOY_LAYOUT.cardArea.w, height = DEPLOY_LAYOUT.cardArea.h, left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x, top = DEPLOY_LAYOUT.cardArea.y - DEPLOY_LAYOUT.central.y, children = {} },
                             UI.Panel {
                                 position = "absolute",
@@ -4107,14 +4170,15 @@ function CreateUI()
                                 backgroundColor = { 10, 18, 25, 238 },
                                 borderRadius = 4,
                                 borderWidth = 1,
-                                borderColor = { 70, 74, 70, 170 },
+                                borderColor = { 78, 76, 64, 170 },
+                                clip = true,
                                 children = {
-                                    UI.Label { id = "deployCardDetailTitleLabel", text = "当前选中: 暂无", fontSize = 13, fontColor = { 206, 238, 232, 245 } },
-                                    UI.Label { id = "deployCardDetailLabel", text = "点击卡片查看效果与状态。滚轮只作用于中央卡片区。", fontSize = 11, fontColor = { 160, 190, 200, 230 } },
-                                    UI.Label { id = "deployCardDetailStatusLabel", text = "状态: 等待选择", fontSize = 11, fontColor = { 210, 190, 128, 235 } },
+                                    UI.Label { id = "deployCardDetailTitleLabel", text = "当前选中: 暂无", width = DEPLOY_LAYOUT.detail.w - 24, height = 18, fontSize = 13, fontColor = { 206, 238, 232, 245 } },
+                                    UI.Label { id = "deployCardDetailLabel", text = "点击卡片查看效果与状态。滚轮只作用于中央卡片区。", width = DEPLOY_LAYOUT.detail.w - 24, height = 54, fontSize = 11, fontColor = { 160, 190, 200, 230 } },
+                                    UI.Label { id = "deployCardDetailStatusLabel", text = "状态: 等待选择", width = DEPLOY_LAYOUT.detail.w - 24, height = 18, fontSize = 11, fontColor = { 210, 190, 128, 235 } },
                                 },
                             },
-                            UI.Label { id = "deployScrollLabel", position = "absolute", text = "滚动 0/0", fontSize = 10, width = 76, height = 31, left = 820, top = 118, fontColor = { 120, 158, 170, 220 } },
+                            UI.Label { id = "deployScrollLabel", position = "absolute", text = "滚动 0/0", fontSize = 10, width = 76, height = 24, left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x + DEPLOY_LAYOUT.cardArea.w - 76, top = DEPLOY_LAYOUT.filterBar.y - DEPLOY_LAYOUT.central.y + 7, fontColor = { 120, 158, 170, 220 } },
                         },
                     },
                     UI.Panel {
@@ -4145,26 +4209,26 @@ function CreateUI()
                         width = DEPLOY_LAYOUT.summary.w,
                         height = DEPLOY_LAYOUT.summary.h,
                         padding = 18,
-                        gap = 8,
+                        gap = 10,
                         backgroundImage = UITheme.GetRegisteredPath("deploy.panel.summary"),
                         backgroundColor = { 10, 20, 28, 242 },
                         borderRadius = 8,
                         borderWidth = 1,
                         borderColor = { 78, 76, 64, 155 },
+                        clip = true,
                         children = {
-                            UI.Label { text = "出勤摘要 / 待命", fontSize = 16, left = 21, top = 1, fontColor = { 210, 240, 230, 255 } },
-                            UI.Label { id = "deploySummaryEquipmentLabel", text = "装备: 未配置作业装备", fontSize = 12, left = 20, top = 1, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { id = "deploySummaryConsumableLabel", text = "消耗品: 未携带作业消耗品", fontSize = 12, left = 22, top = 3, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 本局无额外加成", fontSize = 11, left = 23, top = 11, fontColor = { 150, 190, 175, 220 } },
+                            UI.Label { text = "出勤摘要", width = DEPLOY_LAYOUT.summary.w - 36, height = 22, fontSize = 16, fontColor = { 210, 240, 230, 255 } },
+                            UI.Label { id = "deploySummaryEquipmentLabel", text = "装备: 未配置作业装备", width = DEPLOY_LAYOUT.summary.w - 36, height = 34, fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryConsumableLabel", text = "消耗品: 未携带作业消耗品", width = DEPLOY_LAYOUT.summary.w - 36, height = 34, fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 本局无额外加成", width = DEPLOY_LAYOUT.summary.w - 36, height = 58, fontSize = 11, fontColor = { 150, 190, 175, 220 } },
                         },
                     },
                     UI.Panel {
                         position = "absolute",
-                        left = DEPLOY_LAYOUT.rightRail.x + 12,
+                        left = DEPLOY_LAYOUT.rightRail.x + 18,
                         top = DEPLOY_LAYOUT.confirm.y - 28,
-                        width = DEPLOY_LAYOUT.rightRail.w - 24,
+                        width = DEPLOY_LAYOUT.rightRail.w - 36,
                         height = DEPLOY_LAYOUT.confirm.h + 56,
-                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.background"),
                         backgroundColor = { 12, 24, 29, 238 },
                         borderRadius = 8,
                         borderWidth = 1,
