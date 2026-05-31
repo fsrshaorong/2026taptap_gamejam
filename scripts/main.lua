@@ -3492,24 +3492,7 @@ function CreateUI()
                     },
                 },
             },
-            UI.Panel {
-                id = "terminalNavOverlay",
-                position = "absolute",
-                left = 18,
-                top = 18,
-                width = 150,
-                gap = 8,
-                padding = 12,
-                backgroundColor = { 10, 18, 28, 225 },
-                borderRadius = 10,
-                borderWidth = 1,
-                borderColor = { 100, 180, 220, 120 },
-                children = {
-                    UI.Button { text = "接受工单", variant = "primary", height = 38, onClick = function() OpenDeployTerminal() end },
-                    UI.Button { text = "展示工单", height = 30, onClick = function() OpenTutorial() end },
-                    UI.Button { text = "调整终端", height = 30, onClick = function() OpenSettingsTerminal() end },
-                },
-            },
+
         }
     }
 
