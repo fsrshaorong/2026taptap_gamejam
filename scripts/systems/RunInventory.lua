@@ -216,23 +216,61 @@ local function copyConsumables(consumables)
     return copied
 end
 
+local RUN_ICON_KEYS = {
+    emergency_bandage = "item.consumable.emergency_bandage",
+}
+
+local function getRunIconKey(def)
+    if not def then return "item.placeholder" end
+    if RUN_ICON_KEYS[def.id] then return RUN_ICON_KEYS[def.id] end
+    if def.type == "consumable" then return "item.consumable.default" end
+    return "item.recovered.default"
+end
+
+local function makeRunDisplayAdapter(item)
+    local value = item.baseValue or item.value or 0
+    local category = item.category or (item.type == "consumable" and "consumable" or "recovered")
+    item.category = category
+    item.branch = item.branch or category
+    item.kind = item.kind or item.type or "relic"
+    item.iconKey = item.iconKey or getRunIconKey(item)
+    item.display = {
+        iconKey = item.iconKey,
+        category = category,
+        rarity = item.rarity or "common",
+        typeLabel = item.typeName or "异常回收物",
+        rarityLabel = item.rarityName or "一般",
+        shortEffect = item.effectText or "",
+        shortDescription = item.description or "",
+        valueText = value > 0 and tostring(value) or "",
+        priceText = "",
+        statusText = item.statusText or "",
+        primaryAction = item.primaryAction,
+        secondaryAction = item.secondaryAction,
+        disabledReason = item.disabledReason,
+    }
+    return item
+end
+
 function RunInventory.GetItemDisplayData(itemId)
     local def = RunInventory.GetItemDef(itemId) or {}
-    return {
+    return makeRunDisplayAdapter({
         id = itemId,
-        name = def.name or tostring(itemId or "unknown_item"),
+        name = def.name or "未知物品",
         type = def.type or "relic",
-        typeName = def.typeName or "Recovered item",
+        typeName = def.typeName or "异常回收物",
+        category = def.type == "consumable" and "consumable" or "recovered",
         rarity = def.rarity or "common",
-        rarityName = def.rarityName or "Common",
+        rarityName = def.rarityName or "一般",
         icon = def.icon or "",
+        iconKey = def.iconKey,
         value = itemBaseValue(def),
         baseValue = itemBaseValue(def),
         effectText = def.effectText,
         description = def.description or "",
         source = "recovered",
         unique = def.unique == true,
-    }
+    })
 end
 
 function RunInventory.SetConsumables(consumables)
@@ -627,6 +665,62 @@ function RunInventory.GetTotals()
         consumables = RunInventory.GetConsumables(),
         searchedRooms = RunInventory.GetSearchedCount(),
         failureSalvage = RunInventory.failureSalvage,
+    }
+end
+
+function RunInventory.GetHUDSummary(context)
+    context = context or {}
+    local totals = RunInventory.GetTotals()
+    local recoveredItems = {}
+    for _, stack in ipairs(totals.carriedItems or {}) do
+        local item = RunInventory.GetItemDisplayData(stack.itemId)
+        table.insert(recoveredItems, {
+            iconKey = item.display.iconKey,
+            name = item.name,
+            count = stack.count or 1,
+            text = item.name .. " x" .. (stack.count or 1),
+        })
+    end
+
+    local consumables = {}
+    for itemId, count in pairs(totals.consumables or {}) do
+        local item = RunInventory.GetItemDisplayData(itemId)
+        table.insert(consumables, {
+            iconKey = item.display.iconKey,
+            name = item.name,
+            count = count,
+            text = item.name .. " x" .. count,
+        })
+    end
+    table.sort(consumables, function(a, b) return a.name < b.name end)
+
+    local protocol = context.protocol or {}
+    local nearbyMineRisk = context.nearbyMineRisk or 0
+    local mineRiskState = context.mineRiskState
+    if not mineRiskState then
+        if context.mineTriggered then
+            mineRiskState = "danger"
+        elseif nearbyMineRisk >= 3 then
+            mineRiskState = "warning"
+        else
+            mineRiskState = "normal"
+        end
+    end
+
+    return {
+        pendingCurrency = totals.pendingGold or 0,
+        lockedCurrency = totals.safeGold or 0,
+        recoveredItems = recoveredItems,
+        recoveredItemCount = totals.carriedItemCount or 0,
+        consumables = consumables,
+        consumableCounts = totals.consumables or {},
+        equipmentEffects = context.equipmentEffects or {},
+        protocolLevel = protocol.level or 5,
+        protocolStatus = protocol.description or "",
+        pressure = protocol.pressure or 0,
+        pressureMax = protocol.maxPressure or 100,
+        nearbyMineRisk = nearbyMineRisk,
+        mineRiskState = mineRiskState,
     }
 end
 

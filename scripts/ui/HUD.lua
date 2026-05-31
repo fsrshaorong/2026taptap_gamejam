@@ -91,8 +91,15 @@ end
 -- 面板绘制工具
 -- ============================================================================
 
-local function drawPanel(vg, x, y, w, h, alpha)
+local function drawPanel(vg, x, y, w, h, alpha, themeKey)
     alpha = alpha or LAYOUT.panelBg[4]
+    if themeKey and UITheme.DrawImage(themeKey, x, y, w, h, {
+        vg = vg,
+        alpha = alpha / 255,
+        fallback = false,
+    }) then
+        return
+    end
     nvgBeginPath(vg)
     nvgRoundedRect(vg, x, y, w, h, LAYOUT.panelRadius)
     nvgFillColor(vg, nvgRGBA(LAYOUT.panelBg[1], LAYOUT.panelBg[2], LAYOUT.panelBg[3], alpha))
@@ -100,6 +107,34 @@ local function drawPanel(vg, x, y, w, h, alpha)
     nvgStrokeColor(vg, nvgRGBA(LAYOUT.panelBorder[1], LAYOUT.panelBorder[2], LAYOUT.panelBorder[3], LAYOUT.panelBorder[4]))
     nvgStrokeWidth(vg, 1)
     nvgStroke(vg)
+end
+
+local function textShort(text, maxLen)
+    text = tostring(text or "")
+    maxLen = maxLen or 30
+    if utf8 and utf8.len then
+        local ok, len = pcall(utf8.len, text)
+        if ok and len and len > maxLen then
+            local byteIndex = utf8.offset(text, maxLen + 1)
+            if byteIndex then
+                return string.sub(text, 1, byteIndex - 1) .. "..."
+            end
+        elseif ok then
+            return text
+        end
+    end
+    return #text > maxLen and (string.sub(text, 1, maxLen) .. "...") or text
+end
+
+local function drawSummaryRow(vg, x, y, row)
+    UITheme.DrawIcon(row.iconKey or "item.placeholder", x, y, 15, {
+        vg = vg,
+        fill = { 20, 34, 40, 230 },
+        border = { 94, 154, 154, 170 },
+        radius = 3,
+    })
+    nvgFillColor(vg, nvgRGBA(190, 210, 220, 230))
+    nvgText(vg, x + 20, y + 1, textShort(row.text, 30))
 end
 
 -- ============================================================================
@@ -149,11 +184,12 @@ HUD.lastProtocolLevel = nil
 ---@param context table { visibleMap, playerX, playerY, fieldWidth, fieldHeight, combat, inventory, protocol, message, exploredCount }
 function HUD.DrawLeftSidebar(vg, layout, context)
     local sb = layout.sidebar
-    drawPanel(vg, sb.x, sb.y, sb.w, sb.h, 210)
+    drawPanel(vg, sb.x, sb.y, sb.w, sb.h, 210, "hud.panel.left")
 
     local pad = LAYOUT.sidebarPadding
     local contentX = sb.x + pad
     local curY = sb.y + pad
+    local hud = context.hud or {}
 
     -- 标题: 区域扫描图
     nvgFontFace(vg, "sans")
@@ -165,7 +201,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     -- 小地图(嵌入左侧栏, 随侧边栏宽度缩放)
     if context.visibleMap then
-        local mapW = sb.w - pad * 2
+        local mapW = math.min(sb.w - pad * 2, math.max(176, sb.h - 390))
 
         -- 临时覆盖 MiniMap 参数
         local oldMapX = MiniMap.mapX
@@ -245,14 +281,14 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     local inv = context.inventory or {}
     nvgFillColor(vg, nvgRGBA(255, 230, 80, 255))
-    nvgText(vg, contentX, curY, GameText.hud.pendingGold .. (inv.pendingGold or inv.gold or 0))
+    nvgText(vg, contentX, curY, GameText.hud.pendingGold .. (hud.pendingCurrency or inv.pendingGold or inv.gold or 0))
     curY = curY + 21
 
     nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
     nvgText(vg, contentX, curY, GameText.hud.parts .. (inv.parts or 0))
     curY = curY + 21
 
-    local consumables = inv.consumables or {}
+    local consumables = hud.consumableCounts or inv.consumables or {}
     local bandageCount = consumables.emergency_bandage or 0
     if bandageCount > 0 then
         nvgFillColor(vg, nvgRGBA(170, 230, 210, 255))
@@ -262,7 +298,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
     -- 已锁定 / 回收物 / 已探索 一行显示
     nvgFontSize(vg, 14)
-    local rowText = "已锁定:" .. (inv.safeGold or 0)
+    local rowText = "已锁定:" .. (hud.lockedCurrency or inv.safeGold or 0)
         .. "  回收物:" .. (inv.carriedItemCount or 0) .. "件"
         .. "  探索:" .. (context.exploredCount or 0) .. "格"
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
@@ -286,22 +322,23 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     curY = curY + 19
 
     nvgFontSize(vg, 12)
-    local carried = inv.carriedItems or {}
-    if #carried == 0 then
-        nvgFillColor(vg, nvgRGBA(150, 170, 180, 210))
-        nvgText(vg, contentX, curY, "[回收] 暂无待结算回收物")
-        curY = curY + 17
-    else
-        for index = 1, math.min(2, #carried) do
-            local stack = carried[index]
-            local def = stack.def or {}
-            nvgFillColor(vg, nvgRGBA(190, 210, 220, 230))
-            nvgText(vg, contentX, curY, "[回收] " .. (def.name or stack.itemId or "回收物") .. " x" .. (stack.count or 1))
-            curY = curY + 17
-        end
+    local rows = {}
+    for _, row in ipairs(hud.consumables or {}) do table.insert(rows, row) end
+    for _, row in ipairs(hud.recoveredItems or {}) do table.insert(rows, row) end
+    for _, effect in ipairs(hud.equipmentEffects or {}) do
+        table.insert(rows, { iconKey = "item.equipment.default", text = effect })
     end
-    nvgFillColor(vg, nvgRGBA(170, 220, 205, 225))
-    nvgText(vg, contentX, curY, "[消耗] 应急止血贴 x" .. bandageCount)
+    if #rows == 0 then
+        table.insert(rows, { iconKey = "item.recovered.default", text = "暂无待结算回收物" })
+    end
+    for index = 1, math.min(3, #rows) do
+        drawSummaryRow(vg, contentX, curY, rows[index])
+        curY = curY + 17
+    end
+    if #rows > 3 then
+        nvgFillColor(vg, nvgRGBA(150, 180, 186, 215))
+        nvgText(vg, contentX + 20, curY, "另有 " .. (#rows - 3) .. " 项")
+    end
 end
 
 -- ============================================================================
@@ -315,7 +352,7 @@ end
 ---@param dt number
 function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     local p = layout.protocol
-    local level = protocolStatus.level or 5
+    local level = protocolStatus.protocolLevel or protocolStatus.level or 5
     local color = PROTOCOL_COLORS[level] or { 180, 180, 180 }
 
     -- 降级闪烁
@@ -335,7 +372,7 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     end
 
     -- 面板背景
-    drawPanel(vg, p.x, p.y, p.w, p.h, 220)
+    drawPanel(vg, p.x, p.y, p.w, p.h, 220, "hud.panel.protocol")
 
     -- 标题
     nvgFontFace(vg, "sans")
@@ -364,8 +401,8 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     nvgFontSize(vg, 10)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(160, 170, 190, 180))
-    nvgText(vg, p.x + 12, p.y + 70, "封锁压力: " .. (protocolStatus.pressure or 0) .. " / " .. (protocolStatus.maxPressure or 100))
-    local pressureRatio = math.max(0, math.min(1, (protocolStatus.pressure or 0) / math.max(1, protocolStatus.maxPressure or 100)))
+    nvgText(vg, p.x + 12, p.y + 70, "封锁压力: " .. (protocolStatus.pressure or 0) .. " / " .. (protocolStatus.pressureMax or protocolStatus.maxPressure or 100))
+    local pressureRatio = math.max(0, math.min(1, (protocolStatus.pressure or 0) / math.max(1, protocolStatus.pressureMax or protocolStatus.maxPressure or 100)))
     nvgBeginPath(vg)
     nvgRoundedRect(vg, p.x + 12, p.y + 88, p.w - 24, 8, 3)
     nvgFillColor(vg, nvgRGBA(36, 45, 52, 230))
@@ -386,24 +423,26 @@ end
 
 function HUD.DrawNearbyDanger(vg, layout, context)
     local d = layout.danger
-    local adjacent = context.adjacent or 0
-    local triggered = context.roomType == "mine"
-    local color = triggered and { 255, 100, 78 } or (adjacent >= 3 and { 255, 120, 78 } or { 246, 204, 112 })
+    local adjacent = context.nearbyMineRisk or context.adjacent or 0
+    local state = context.mineRiskState or (context.roomType == "mine" and "danger") or (adjacent >= 3 and "warning") or "normal"
+    local triggered = state == "danger"
+    local color = triggered and { 255, 100, 78 } or (state == "warning" and { 255, 154, 78 } or { 176, 204, 176 })
     local text = triggered and "周围雷险: 已触发" or (GameText.hud.nearbyDanger .. adjacent)
+    local tagX = d.x + d.w / 2 - 110
+    local tagW = 220
 
-    nvgBeginPath(vg)
-    nvgRoundedRect(vg, d.x + d.w / 2 - 88, d.y, 176, d.h, 4)
-    nvgFillColor(vg, nvgRGBA(16, 24, 29, adjacent > 0 and 220 or 170))
-    nvgFill(vg)
-    nvgStrokeColor(vg, nvgRGBA(color[1], color[2], color[3], adjacent > 0 and 190 or 110))
-    nvgStrokeWidth(vg, 1)
-    nvgStroke(vg)
+    UITheme.DrawImage("hud.tag.mineRisk." .. state, tagX, d.y, tagW, d.h, {
+        vg = vg,
+        fill = { 16, 24, 29, adjacent > 0 and 220 or 170 },
+        border = { color[1], color[2], color[3], adjacent > 0 and 190 or 110 },
+        radius = 4,
+    })
 
     nvgFontFace(vg, "sans")
     nvgFontSize(vg, 13)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 245))
-    nvgText(vg, d.x + d.w / 2, d.y + d.h / 2, text)
+    nvgText(vg, d.x + d.w / 2 + 16, d.y + d.h / 2, text)
 end
 
 -- ============================================================================
@@ -416,7 +455,7 @@ end
 ---@param context table { interactHint, exitDistance, exitDirection }
 function HUD.DrawBottomBar(vg, layout, context)
     local b = layout.bottom
-    drawPanel(vg, b.x, b.y, b.w, b.h, 210)
+    drawPanel(vg, b.x, b.y, b.w, b.h, 210, "hud.bottomBar")
 
     nvgFontFace(vg, "sans")
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
@@ -429,13 +468,15 @@ function HUD.DrawBottomBar(vg, layout, context)
         nvgText(vg, b.x + b.w / 2, b.y + 15, hint)
     end
 
+    local consumables = context.consumables or {}
+    local bandageCount = consumables.emergency_bandage or 0
     local commands = {
         { key = "WASD", label = "移动" },
-        { key = "M", image = "hud_key_m", label = "扫描图" },
-        { key = "F", image = "hud_key_f", label = "搜索/攻击" },
-        { key = "E", image = "hud_key_e", label = "撤离" },
-        { key = "T", image = "hud_key_t", label = "事件" },
-        { key = "Q", image = "hud_key_q", label = "止血贴" },
+        { key = "M", image = "hud.key.m", label = "扫描图" },
+        { key = "F", image = "hud.key.f", label = "搜索/攻击" },
+        { key = "E", image = "hud.key.e", label = "撤离" },
+        { key = "T", image = "hud.key.t", label = "事件" },
+        { key = "Q", image = "hud.key.q", label = "止血贴 x" .. bandageCount },
     }
     local groupW = 112
     local totalW = #commands * groupW

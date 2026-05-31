@@ -241,16 +241,88 @@ local function copyRecoveryItem(item)
     }
 end
 
+local DISPLAY_ICON_KEYS = {
+    armor = "item.equipment.armor",
+    whetstone = "item.equipment.whetstone",
+    medkit = "item.equipment.medkit",
+    compass = "item.equipment.compass",
+    backpack = "item.equipment.backpack",
+    insulated_gloves = "item.equipment.insulated_gloves",
+    emergency_bandage = "item.consumable.emergency_bandage",
+}
+
+local DISPLAY_DEFAULT_ICON_KEYS = {
+    equipment = "item.equipment.default",
+    consumable = "item.consumable.default",
+    recovered = "item.recovered.default",
+    relic = "item.recovered.default",
+    tool = "item.recovered.default",
+    record = "item.recovered.default",
+    talent = "item.talent.default",
+}
+
+local function getDisplayCategory(item)
+    local category = item.category
+    if category and category ~= "" and category ~= "数值" and category ~= "机制" then
+        return category
+    end
+    if item.source == "recovered" or item.type == "relic" or item.type == "tool" or item.type == "record" then
+        return "recovered"
+    end
+    if item.type == "equipment" or item.type == "consumable" or item.type == "talent" then
+        return item.type
+    end
+    return "other"
+end
+
+local function getDisplayIconKey(item)
+    return item.iconKey
+        or DISPLAY_ICON_KEYS[item.id]
+        or DISPLAY_DEFAULT_ICON_KEYS[getDisplayCategory(item)]
+        or DISPLAY_DEFAULT_ICON_KEYS[item.type]
+        or "item.placeholder"
+end
+
+local function refreshDisplayAdapter(item)
+    local value = toNonNegativeNumber(item.baseValue or item.value)
+    local price = toNonNegativeNumber(item.price)
+    local category = getDisplayCategory(item)
+    item.category = category
+    item.kind = item.kind or item.type or "unknown"
+    item.branch = item.branch or category
+    item.iconKey = getDisplayIconKey(item)
+    item.display = {
+        iconKey = item.iconKey,
+        category = category,
+        rarity = item.rarity or "common",
+        typeLabel = item.typeName or "物品",
+        rarityLabel = item.rarityName or "一般",
+        shortEffect = item.effectText or "",
+        shortDescription = item.description or item.desc or "",
+        valueText = value > 0 and tostring(value) or "",
+        priceText = price > 0 and (tostring(price) .. " 结算币") or "",
+        statusText = item.statusText or "",
+        primaryAction = item.primaryAction,
+        secondaryAction = item.secondaryAction,
+        disabledReason = item.disabledReason,
+    }
+    return item
+end
+
 local function copyDisplayData(item)
     item = item or {}
-    return {
+    local copied = {
         id = item.id or item.itemId or "",
         name = item.name or item.id or item.itemId or "",
         type = item.type or "unknown",
-        typeName = item.typeName or item.category or "物品",
+        typeName = item.typeName or "物品",
+        category = item.category,
+        branch = item.branch,
+        kind = item.kind,
         rarity = item.rarity or "common",
         rarityName = item.rarityName or "一般",
         icon = item.icon or "",
+        iconKey = item.iconKey,
         value = toNonNegativeNumber(item.baseValue or item.value),
         baseValue = toNonNegativeNumber(item.baseValue or item.value),
         price = toNonNegativeNumber(item.price),
@@ -266,7 +338,12 @@ local function copyDisplayData(item)
         isEquipped = item.isEquipped == true,
         loadoutCount = toNonNegativeNumber(item.loadoutCount),
         owned = item.owned == true,
+        statusText = item.statusText,
+        primaryAction = item.primaryAction,
+        secondaryAction = item.secondaryAction,
+        disabledReason = item.disabledReason,
     }
+    return refreshDisplayAdapter(copied)
 end
 
 local function displayFromMetaItem(item)
@@ -275,10 +352,13 @@ local function displayFromMetaItem(item)
         id = item.id,
         name = item.name,
         type = item.type or "equipment",
-        typeName = item.typeName or item.category or "作业装备",
+        typeName = item.typeName or "作业装备",
+        category = "equipment",
+        branch = item.category or "其它",
         rarity = item.rarity or "logistics",
         rarityName = item.rarityName or "后勤",
         icon = item.icon or "[EQP]",
+        iconKey = item.iconKey,
         value = item.value or item.price or 0,
         price = item.price or item.value or 0,
         effectText = item.effectText or item.desc,
@@ -295,9 +375,11 @@ local function displayFromConsumable(item)
         name = item.name,
         type = "consumable",
         typeName = item.typeName or "作业消耗品",
+        category = "consumable",
         rarity = item.rarity or "common",
         rarityName = item.rarityName or "一般",
         icon = item.icon or "[USE]",
+        iconKey = item.iconKey,
         value = item.value or 0,
         price = item.price or item.value or 0,
         effectText = item.effectText or item.desc,
@@ -315,9 +397,11 @@ local function displayFromStack(stack, source)
         name = def.name or stack.name or stack.itemId or stack.id,
         type = def.type or stack.type or "relic",
         typeName = def.typeName or stack.typeName or "异常回收物",
+        category = "recovered",
         rarity = def.rarity or stack.rarity or "common",
         rarityName = def.rarityName or stack.rarityName or "一般",
         icon = def.icon or stack.icon or "",
+        iconKey = def.iconKey or stack.iconKey,
         value = def.baseValue or def.value or stack.baseValue or stack.value or 0,
         baseValue = def.baseValue or def.value or stack.baseValue or stack.value or 0,
         price = def.price or stack.price or 0,
@@ -626,6 +710,39 @@ function MetaProgress.GetShopItemDisplayData(itemId)
     return MetaProgress.GetUnifiedItemDisplayData(itemId, "shop")
 end
 
+function MetaProgress.GetDisplayAdapter(item)
+    return refreshDisplayAdapter(item or {})
+end
+
+function MetaProgress.GetTalentDisplayData(talentId)
+    local talent = MetaProgress.GetTalentDef(talentId)
+    if not talent then return nil end
+    local branch = "event"
+    if talent.id == "talent_map" then
+        branch = "explore"
+    elseif talent.id == "talent_mine" or talent.id == "talent_monster" then
+        branch = "survival"
+    elseif talent.id == "talent_extract" then
+        branch = "profit"
+    end
+    return copyDisplayData({
+        id = talent.id,
+        name = talent.name,
+        type = "talent",
+        typeName = "回收资历",
+        category = "talent",
+        branch = branch,
+        rarity = "common",
+        rarityName = "一般",
+        iconKey = "item.talent.default",
+        value = talent.price,
+        price = talent.price,
+        effectText = talent.desc,
+        description = MetaProgress.HasTalent(talent.id) and "当前效果已生效" or "解锁后在正式局生效",
+        statusText = MetaProgress.HasTalent(talent.id) and "已解锁" or ("解锁费用 " .. talent.price .. " 结算币"),
+    })
+end
+
 function MetaProgress.GetOwnedCount(itemId, source)
     data.warehouse = normalizeWarehouse(data.warehouse)
     data.consumables = normalizeConsumables(data.consumables)
@@ -665,7 +782,7 @@ function MetaProgress.GetUnifiedItemDisplayData(itemId, source)
     if not display then
         display = copyDisplayData({
             id = itemId,
-            name = tostring(itemId or "未知物品"),
+            name = "未知物品",
             type = "unknown",
             typeName = "未知",
             source = source or "unknown",
@@ -689,7 +806,14 @@ function MetaProgress.GetUnifiedItemDisplayData(itemId, source)
     display.canBuy = (display.type == "equipment" and not MetaProgress.OwnsItem(display.id))
         or (display.type == "consumable" and getConsumableDef(display.id) ~= nil)
     display.canUse = display.type == "consumable" and (display.count or 0) > 0
-    return display
+    if display.isEquipped then
+        display.statusText = "已装备"
+    elseif (display.loadoutCount or 0) > 0 then
+        display.statusText = "已带入 x" .. display.loadoutCount
+    elseif display.owned then
+        display.statusText = "已拥有"
+    end
+    return refreshDisplayAdapter(display)
 end
 
 function MetaProgress.CanSellItem(itemId)
@@ -841,7 +965,7 @@ function MetaProgress.GetWarehouseItemDisplayData(itemId)
     display.canSell = MetaProgress.CanSellItem(itemId)
     display.canEquip = MetaProgress.CanEquipItem(itemId)
     display.canUse = MetaProgress.CanUseItem(itemId)
-    return display
+    return refreshDisplayAdapter(display)
 end
 
 -- ============================================================================
@@ -1112,9 +1236,28 @@ function MetaProgress.GetLoadoutSummary()
         totalConsumables = totalConsumables + count
         table.insert(consumableNames, display.name .. " x" .. count)
     end
+    local effects = {}
+    local equipBonus = MetaProgress.GetEquipBonus()
+    local talentEffects = MetaProgress.GetTalentEffects()
+    if equipBonus.bonusHP > 0 then table.insert(effects, "生命 +" .. equipBonus.bonusHP) end
+    if equipBonus.bonusPower > 0 then table.insert(effects, "战斗力 +" .. equipBonus.bonusPower) end
+    if equipBonus.mineImmunity then table.insert(effects, "首次雷险免疫") end
+    if equipBonus.showExitHint then table.insert(effects, "撤离信标提示") end
+    if equipBonus.searchBonus > 0 then table.insert(effects, "搜索收益 +" .. equipBonus.searchBonus .. "%") end
+    if talentEffects.mineDmgReduce > 0 then table.insert(effects, "雷险伤害 -" .. talentEffects.mineDmgReduce) end
+    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "抢救条款 +" .. talentEffects.failureGoldBonus) end
+    local emptyEquipmentHint = "未配置作业装备"
+    local emptyConsumablesHint = "未携带作业消耗品"
+    local emptyEffectsHint = "本局无额外加成"
     return {
-        equipmentText = #names > 0 and table.concat(names, " / ") or "无",
-        consumableText = #consumableNames > 0 and table.concat(consumableNames, " / ") or "无",
+        equipmentText = #names > 0 and table.concat(names, " / ") or emptyEquipmentHint,
+        consumableText = #consumableNames > 0 and table.concat(consumableNames, " / ") or emptyConsumablesHint,
+        consumablesText = #consumableNames > 0 and table.concat(consumableNames, " / ") or emptyConsumablesHint,
+        effects = effects,
+        effectsText = #effects > 0 and table.concat(effects, " / ") or emptyEffectsHint,
+        emptyEquipmentHint = emptyEquipmentHint,
+        emptyConsumablesHint = emptyConsumablesHint,
+        emptyEffectsHint = emptyEffectsHint,
         consumableCount = totalConsumables,
     }
 end

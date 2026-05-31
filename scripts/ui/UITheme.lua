@@ -12,6 +12,74 @@ local registry = {}
 local images = {}
 local currentVg = nil
 
+local DEFAULT_ASSETS = {
+    ["deploy.panel.main"] = "ui/deploy/ui_panel_deploy_main_blank.png",
+    ["deploy.panel.summary"] = "ui/deploy/ui_panel_deploy_summary_blank.png",
+    ["deploy.panel.background"] = "ui/common/ui_panel_terminal_main.png",
+    ["deploy.button.confirm"] = "ui/deploy/ui_button_confirm_deploy_large.png",
+    ["deploy.button.return"] = "ui/deploy/ui_button_back_main.png",
+    ["deploy.tab.active"] = "ui/deploy/ui_frame_highlight.png",
+    ["deploy.tab.inactive"] = "ui/common/ui_button_blank_dark.png",
+    ["deploy.card.normal"] = "ui/common/ui_button_blank_dark.png",
+    ["deploy.card.selected"] = "ui/deploy/ui_frame_highlight.png",
+    ["deploy.card.disabled"] = "ui/common/ui_button_blank_dark.png",
+    ["deploy.filter.active"] = "ui/deploy/ui_frame_highlight.png",
+    ["deploy.filter.inactive"] = "ui/common/ui_button_blank_dark.png",
+    ["deploy.divider.warning"] = "ui/common/ui_bar_blank_dark.png",
+    ["deploy.scrollbar"] = "ui/common/ui_scrollbar_vertical.png",
+
+    ["hud.panel.left"] = "ui/hud/ui_panel_left.png",
+    ["hud.panel.protocol"] = "ui/hud/ui_panel_protocol.png",
+    ["hud.tag.mineRisk.normal"] = "ui/hud/ui_mine_risk_tag.png",
+    ["hud.tag.mineRisk.warning"] = "ui/hud/ui_mine_risk_tag.png",
+    ["hud.tag.mineRisk.danger"] = "ui/hud/ui_mine_risk_tag.png",
+    ["hud.bottomBar"] = "ui/hud/ui_bottom_bar.png",
+    ["hud.keyPrompt"] = "ui/common/ui_button_blank_dark.png",
+    ["hud.icon.backpack"] = "ui/hud/ui_icon_backpack.png",
+    ["hud.bar.frame"] = "ui/hud/ui_bar_frame.png",
+    ["hud.bar.warning"] = "ui/hud/ui_bar_warning.png",
+    ["hud.key.q"] = "ui/keys/ui_key_q.png",
+    ["hud.key.e"] = "ui/keys/ui_key_e.png",
+    ["hud.key.f"] = "ui/keys/ui_key_f.png",
+    ["hud.key.m"] = "ui/keys/ui_key_m.png",
+    ["hud.key.t"] = "ui/keys/ui_key_t.png",
+
+    ["item.equipment.default"] = "item_equipment/item_equipment_goggles.png",
+    ["item.equipment.armor"] = "ui/deploy/ui_icon_armor.png",
+    ["item.equipment.whetstone"] = "item_equipment/item_equipment_flashlight.png",
+    ["item.equipment.medkit"] = "item_consumable/item_consumable_medkit.png",
+    ["item.equipment.compass"] = "ui/deploy/ui_icon_compass.png",
+    ["item.equipment.backpack"] = "ui/deploy/ui_icon_backpack.png",
+    ["item.equipment.insulated_gloves"] = "item_equipment/item_equipment_goggles.png",
+    ["item.consumable.default"] = "item_consumable/item_consumable_medkit.png",
+    ["item.consumable.emergency_bandage"] = "ui/deploy/ui_icon_bandage.png",
+    ["item.recovered.default"] = "item_recovered/item_recovered_ore.png",
+    ["item.talent.default"] = "ui/deploy/ui_frame_highlight.png",
+    ["item.currency.settlement"] = "ui/common/ui_icon_account_gold.png",
+    ["item.placeholder"] = "ui/deploy/ui_frame_highlight.png",
+}
+
+local ITEM_ICON_KEYS = {
+    armor = "item.equipment.armor",
+    whetstone = "item.equipment.whetstone",
+    medkit = "item.equipment.medkit",
+    compass = "item.equipment.compass",
+    backpack = "item.equipment.backpack",
+    insulated_gloves = "item.equipment.insulated_gloves",
+    emergency_bandage = "item.consumable.emergency_bandage",
+}
+
+local DEFAULT_ICON_KEYS = {
+    equipment = "item.equipment.default",
+    consumable = "item.consumable.default",
+    recovered = "item.recovered.default",
+    relic = "item.recovered.default",
+    tool = "item.recovered.default",
+    record = "item.recovered.default",
+    talent = "item.talent.default",
+    currency = "item.currency.settlement",
+}
+
 local function canLoad()
     return type(nvgCreateImage) == "function"
 end
@@ -46,6 +114,46 @@ end
 
 function UITheme.Register(key, path)
     registry[key] = path
+end
+
+function UITheme.RegisterDefaults()
+    for key, path in pairs(DEFAULT_ASSETS) do
+        UITheme.Register(key, path)
+    end
+end
+
+function UITheme.GetRegisteredPath(key)
+    return registry[key]
+end
+
+function UITheme.ResolveIconPath(iconKey)
+    local resolvedKey = iconKey
+    if not registry[resolvedKey] then
+        resolvedKey = "item.placeholder"
+    end
+    return registry[resolvedKey], resolvedKey
+end
+
+function UITheme.GetItemIconKey(item)
+    item = item or {}
+    local display = item.display or {}
+    local requestedKey = display.iconKey or item.iconKey
+    if requestedKey and registry[requestedKey] then
+        return requestedKey
+    end
+
+    local itemId = item.id or item.itemId
+    local mappedKey = ITEM_ICON_KEYS[itemId]
+    if mappedKey and registry[mappedKey] then
+        return mappedKey
+    end
+
+    local category = display.category or item.category
+    local fallbackKey = DEFAULT_ICON_KEYS[category]
+        or DEFAULT_ICON_KEYS[item.type]
+        or DEFAULT_ICON_KEYS[item.source]
+        or "item.placeholder"
+    return registry[fallbackKey] and fallbackKey or "item.placeholder"
 end
 
 function UITheme.SetContext(vg)
@@ -115,5 +223,17 @@ function UITheme.DrawImageButton(key, x, y, w, h, opts)
     opts.border = opts.border or (opts.hot and { 160, 230, 230, 230 } or { 90, 160, 190, 150 })
     return UITheme.DrawImage(key, x, y, w, h, opts)
 end
+
+function UITheme.DrawIcon(iconKey, x, y, size, opts)
+    local resolvedKey = iconKey
+    if type(iconKey) == "table" then
+        resolvedKey = UITheme.GetItemIconKey(iconKey)
+    elseif not registry[resolvedKey] then
+        resolvedKey = "item.placeholder"
+    end
+    return UITheme.DrawImage(resolvedKey, x, y, size, size, opts)
+end
+
+UITheme.RegisterDefaults()
 
 return UITheme

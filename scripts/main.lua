@@ -176,20 +176,32 @@ local DEPLOY_MODULES = {
 
 local DEPLOY_FILTERS = nil
 
+local DEPLOY_SAFE = 32
+local DEPLOY_GAP = 24
+local DEPLOY_RIGHT_RAIL = { x = 1154, y = 128, w = 350, h = 704 }
+local DEPLOY_CONFIRM = { w = 217, h = 74 }
+DEPLOY_CONFIRM.x = math.floor(DEPLOY_RIGHT_RAIL.x + (DEPLOY_RIGHT_RAIL.w - DEPLOY_CONFIRM.w) / 2)
+DEPLOY_CONFIRM.y = DEPLOY_RIGHT_RAIL.y + DEPLOY_RIGHT_RAIL.h - DEPLOY_CONFIRM.h - 28
+
 local DEPLOY_LAYOUT = {
     baseW = 1536,
     baseH = 864,
-    back = { x = 24, y = 22, w = 146, h = 42 },
-    nav = { x = 356, y = 22, w = 892, h = 46 },
-    central = { x = 212, y = 140, w = 934, h = 648 },
-    cardArea = { x = 244, y = 288, w = 812, h = 338 },
-    cardW = 236,
-    cardH = 142,
-    cardGap = 22,
+    safe = DEPLOY_SAFE,
+    gap = DEPLOY_GAP,
+    shell = { x = 176, y = 96, w = 1328, h = 736 },
+    back = { x = 32, y = 24, w = 146, h = 42 },
+    nav = { x = 330, y = 24, w = 876, h = 46 },
+    central = { x = 196, y = 128, w = 932, h = 688 },
+    rightRail = DEPLOY_RIGHT_RAIL,
+    cardArea = { x = 224, y = 270, w = 876, h = 336 },
+    cardW = 270,
+    cardH = 160,
+    cardGap = 18,
+    rowGap = 16,
     columns = 3,
     rowsVisible = 2,
-    summary = { x = 1158, y = 142, w = 350, h = 262 },
-    confirm = { x = 1232, y = 730, w = 217, h = 74 },
+    summary = { x = 1166, y = 148, w = 326, h = 286 },
+    confirm = DEPLOY_CONFIRM,
 }
 
 local JUDGE_DEMO_MAP = {
@@ -257,9 +269,13 @@ end
 
 function GetDeployTerminalLayoutInfo()
     return {
+        safe = DEPLOY_LAYOUT.safe,
+        gap = DEPLOY_LAYOUT.gap,
+        shell = DEPLOY_LAYOUT.shell,
         back = DEPLOY_LAYOUT.back,
         nav = DEPLOY_LAYOUT.nav,
         central = DEPLOY_LAYOUT.central,
+        rightRail = DEPLOY_LAYOUT.rightRail,
         cardArea = DEPLOY_LAYOUT.cardArea,
         summary = DEPLOY_LAYOUT.summary,
         confirm = DEPLOY_LAYOUT.confirm,
@@ -318,14 +334,7 @@ function Start()
         return
     end
     nvgCreateFont(nvgScene, "sans", "Fonts/FusionPixel.otf")
-    UITheme.Register("deploy_panel_main", "ui/deploy/ui_panel_deploy_main_blank.png")
-    UITheme.Register("deploy_panel_summary", "ui/deploy/ui_panel_deploy_summary_blank.png")
-    UITheme.Register("deploy_confirm", "ui/deploy/ui_button_confirm_deploy_large.png")
-    UITheme.Register("hud_key_q", "ui/keys/ui_key_q.png")
-    UITheme.Register("hud_key_e", "ui/keys/ui_key_e.png")
-    UITheme.Register("hud_key_f", "ui/keys/ui_key_f.png")
-    UITheme.Register("hud_key_m", "ui/keys/ui_key_m.png")
-    UITheme.Register("hud_key_t", "ui/keys/ui_key_t.png")
+    UITheme.RegisterDefaults()
     UITheme.LoadRegistered(nvgScene)
     imgBattlePlayer = nvgCreateImage(nvgScene, "Textures/generated/characters/huanxiong/frames/00_front_idle.png", 0)
     imgBattleEnemy = nvgCreateImage(nvgScene, "Textures/enemy_slime.png", 0)
@@ -628,21 +637,8 @@ local function DisplayIconText(item)
 end
 
 local function DeployIconImage(item)
-    local id = item and item.id or ""
-    local itemType = item and item.type or ""
-    if id == "armor" or id == "insulated_gloves" or id == "whetstone" or itemType == "equipment" then
-        return "ui/deploy/ui_icon_armor.png"
-    end
-    if id == "compass" then
-        return "ui/deploy/ui_icon_compass.png"
-    end
-    if id == "backpack" then
-        return "ui/deploy/ui_icon_backpack.png"
-    end
-    if id == "emergency_bandage" or itemType == "consumable" then
-        return "ui/deploy/ui_icon_bandage.png"
-    end
-    return "ui/deploy/ui_frame_highlight.png"
+    local iconKey = UITheme.GetItemIconKey(item)
+    return UITheme.ResolveIconPath(iconKey)
 end
 
 DEPLOY_FILTERS = {
@@ -700,13 +696,28 @@ local DEPLOY_MODULE_NAV_IDS = {
     talent = "deployNavTalentButton",
 }
 
+local DEPLOY_MODULE_NAV_ASSETS = {
+    warehouse = { image = "ui/deploy/ui_button_nav_warehouse.png", w = 116 },
+    requisition = { image = "ui/deploy/ui_button_nav_requisition.png", w = 111 },
+    loadout = { image = "ui/deploy/ui_button_nav_loadout.png", w = 106 },
+    recovery = { image = "ui/deploy/ui_button_nav_recovery.png", w = 128 },
+    talent = { image = "ui/deploy/ui_button_nav_talent_selected.png", w = 171 },
+}
+
+local TALENT_BRANCH_LABELS = {
+    survival = "生存",
+    explore = "探索",
+    profit = "收益",
+    event = "事件",
+}
+
 local function setLabelText(id, text)
     local label = uiRoot_ and uiRoot_:FindById(id)
     if label then label:SetText(text or "") end
 end
 
 local function getRarity(item)
-    local rarity = item and item.rarity or "common"
+    local rarity = item and item.display and item.display.rarity or (item and item.rarity) or "common"
     if rarity == "logistics" then return "common" end
     if rarity == "uncommon" then return "rare" end
     if rarity == "" then return "common" end
@@ -715,9 +726,10 @@ end
 
 local function itemMatchesDeployFilter(item, filter)
     if not item or filter == "all" then return true end
-    if filter == "equipment" then return item.type == "equipment" end
-    if filter == "consumable" then return item.type == "consumable" end
-    if filter == "recovered" then return item.source == "recovered" or item.type == "relic" end
+    local category = item.display and item.display.category or item.category or "other"
+    if filter == "equipment" then return category == "equipment" end
+    if filter == "consumable" then return category == "consumable" end
+    if filter == "recovered" then return category == "recovered" end
     if filter == "recent" then return item.recent == true end
     local rarity = getRarity(item)
     if filter == "common" then return rarity == "common" end
@@ -768,24 +780,10 @@ end
 
 local function getDeploySummaryLines()
     local summary = MetaProgress.GetTerminalSummary()
-    local equipBonus = MetaProgress.GetEquipBonus()
-    local talentEffects = MetaProgress.GetTalentEffects()
-    local effects = {}
-    if equipBonus.bonusHP > 0 then table.insert(effects, "HP+" .. equipBonus.bonusHP) end
-    if equipBonus.bonusPower > 0 then table.insert(effects, "战力+" .. equipBonus.bonusPower) end
-    if equipBonus.mineImmunity then table.insert(effects, "首雷免疫") end
-    if equipBonus.showExitHint then table.insert(effects, "罗盘提示") end
-    if equipBonus.searchBonus > 0 then table.insert(effects, "搜索+" .. equipBonus.searchBonus) end
-    if talentEffects.mineDmgReduce > 0 then table.insert(effects, "雷伤-" .. talentEffects.mineDmgReduce) end
-    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "抢救条款+" .. talentEffects.failureGoldBonus) end
-    local equipmentText = summary.loadout.equipmentText
-    if equipmentText == "无" then equipmentText = "未配置作业装备" end
-    local consumableText = summary.loadout.consumableText
-    if consumableText == "无" then consumableText = "未携带作业消耗品" end
     return {
-        equipment = "装备: " .. equipmentText,
-        consumable = "消耗品: " .. consumableText,
-        effects = "本局效果: " .. (#effects > 0 and table.concat(effects, " / ") or "本局无额外加成"),
+        equipment = "装备: " .. summary.loadout.equipmentText,
+        consumable = "消耗品: " .. summary.loadout.consumablesText,
+        effects = "本局效果: " .. summary.loadout.effectsText,
     }
 end
 
@@ -798,9 +796,10 @@ end
 
 local function makeCard(module, item, opts)
     opts = opts or {}
-    local typeName = item.typeName or item.category or opts.typeName or "物品"
-    local rarityName = item.rarityName or opts.rarityName or "一般"
-    local status = opts.status or ""
+    local display = item.display or MetaProgress.GetDisplayAdapter(item).display
+    local typeName = display.typeLabel or opts.typeName or "物品"
+    local rarityName = display.rarityLabel or opts.rarityName or "一般"
+    local status = opts.status or display.statusText or ""
     local countLine = opts.countLine or ""
     return {
         module = module,
@@ -808,8 +807,8 @@ local function makeCard(module, item, opts)
         title = item.name or item.id,
         icon = DisplayIconText(item),
         typeLine = typeName .. " - " .. rarityName,
-        effect = item.effectText or item.desc or opts.effect or "",
-        desc = item.description or item.desc or opts.desc or "",
+        effect = display.shortEffect or opts.effect or "",
+        desc = display.shortDescription or opts.desc or "",
         countLine = countLine,
         status = status,
         item = item,
@@ -913,6 +912,7 @@ local function buildRecoveryCards()
             value = item.value or 0,
             description = "最近带回记录",
         }
+        MetaProgress.GetDisplayAdapter(display)
         display.recent = true
         if itemMatchesDeployFilter(display, deployTerminal.filter) then
             table.insert(cards, makeCard("recovery", display, {
@@ -947,17 +947,19 @@ local function buildTalentCards()
     for _, talent in ipairs(MetaProgress.TALENTS) do
         if deployTerminal.filter == "all" or talentFilterTag(talent) == deployTerminal.filter then
             local unlocked = MetaProgress.HasTalent(talent.id)
+            local item = MetaProgress.GetTalentDisplayData(talent.id)
             table.insert(cards, {
                 module = "talent",
                 id = talent.id,
-                title = talent.name,
+                title = item.name,
                 icon = "*",
-                iconImage = "ui/deploy/ui_frame_highlight.png",
-                typeLine = (talent.direction or "天赋") .. " / " .. talentFilterTag(talent),
-                effect = talent.desc,
-                desc = unlocked and "当前效果已生效" or "解锁后在正式局生效",
+                iconImage = DeployIconImage(item),
+                typeLine = (talent.direction or "天赋") .. " / " .. (TALENT_BRANCH_LABELS[item.branch] or "其它"),
+                effect = item.display.shortEffect,
+                desc = item.display.shortDescription,
                 countLine = "Lv." .. (unlocked and "1" or "0") .. "/1",
-                status = unlocked and "已解锁" or ("解锁费用 " .. talent.price .. " 结算币"),
+                status = item.display.statusText,
+                item = item,
                 talent = talent,
                 actions = unlocked and {} or { { text = "解锁", action = "unlock" } },
             })
@@ -988,6 +990,7 @@ end
 
 local function makeDeployCard(card, index)
     local selected = deployTerminal.selectedKey == cardKey(card)
+    local cardThemeKey = card.disabled and "deploy.card.disabled" or (selected and "deploy.card.selected" or "deploy.card.normal")
     local actions = {}
     if #card.actions == 0 then
         table.insert(actions, UI.Label { text = card.status or "", fontSize = 11, fontColor = { 160, 185, 190, 220 } })
@@ -1001,6 +1004,7 @@ local function makeDeployCard(card, index)
         height = DEPLOY_LAYOUT.cardH,
         padding = 10,
         gap = 4,
+        backgroundImage = UITheme.GetRegisteredPath(cardThemeKey),
         backgroundColor = selected and { 42, 72, 82, 225 } or { 22, 31, 42, 218 },
         borderRadius = 6,
         borderWidth = selected and 2 or 1,
@@ -1021,7 +1025,7 @@ local function makeDeployCard(card, index)
                     },
                     UI.Label {
                         text = textShort(card.title, 18),
-                        width = 176,
+                        width = 210,
                         fontSize = 14,
                         fontColor = selected and { 228, 252, 245, 255 } or { 210, 232, 238, 245 },
                     },
@@ -1071,12 +1075,18 @@ local function refreshDeployModuleNav()
     nav:RemoveAllChildren()
     for _, item in ipairs(DEPLOY_MODULES) do
         local moduleId = item.id
+        local asset = DEPLOY_MODULE_NAV_ASSETS[moduleId]
+        local active = deployTerminal.module == moduleId
         nav:AddChild(UI.Button {
             id = DEPLOY_MODULE_NAV_IDS[moduleId],
-            text = item.label,
-            width = 134,
-            height = 40,
-            variant = deployTerminal.module == moduleId and "primary" or "default",
+            text = "",
+            width = asset.w,
+            height = 42,
+            backgroundImage = asset.image,
+            backgroundColor = active and { 62, 104, 106, 245 } or { 20, 30, 36, 220 },
+            borderWidth = active and 2 or 1,
+            borderColor = active and { 220, 180, 88, 245 } or { 78, 120, 132, 170 },
+            variant = active and "primary" or "default",
             onClick = function() OpenDeployModule(moduleId) end,
         })
     end
@@ -1148,11 +1158,15 @@ function RefreshDeployModulePage(module)
     if filterBar then
         filterBar:RemoveAllChildren()
         for _, filter in ipairs(DEPLOY_FILTERS[module] or DEPLOY_FILTERS.talent) do
+            local active = deployTerminal.filter == filter.id
             filterBar:AddChild(UI.Button {
                 text = filter.label,
                 width = 58,
                 height = 26,
-                variant = deployTerminal.filter == filter.id and "primary" or "default",
+                backgroundImage = UITheme.GetRegisteredPath(active and "deploy.filter.active" or "deploy.filter.inactive"),
+                borderWidth = active and 2 or 1,
+                borderColor = active and { 214, 174, 86, 245 } or { 76, 116, 128, 170 },
+                variant = active and "primary" or "default",
                 onClick = function() SetDeployFilter(filter.id) end,
             })
         end
@@ -1176,7 +1190,7 @@ function RefreshDeployModulePage(module)
                 local row = math.floor(visibleIndex / DEPLOY_LAYOUT.columns)
                 local rect = {
                     x = DEPLOY_LAYOUT.cardArea.x + col * (DEPLOY_LAYOUT.cardW + DEPLOY_LAYOUT.cardGap),
-                    y = DEPLOY_LAYOUT.cardArea.y + row * (DEPLOY_LAYOUT.cardH + 18),
+                    y = DEPLOY_LAYOUT.cardArea.y + row * (DEPLOY_LAYOUT.cardH + DEPLOY_LAYOUT.rowGap),
                     w = DEPLOY_LAYOUT.cardW,
                     h = DEPLOY_LAYOUT.cardH,
                     key = cardKey(deployTerminal.cards[i]),
@@ -3507,6 +3521,13 @@ function HandleNanoVGRender(eventType, eventData)
         end
         local combatStatus = Combat.GetStatus()
         local invTotals = RunInventory.GetTotals()
+        local protocolStatus = Protocol.GetStatus()
+        local hudSummary = RunInventory.GetHUDSummary({
+            protocol = protocolStatus,
+            nearbyMineRisk = cell and cell.adjacent or 0,
+            mineTriggered = cell and cell.roomType == "mine",
+            equipmentEffects = MetaProgress.GetLoadoutSummary().effects,
+        })
         local invStatus = {
             gold = invTotals.gold,
             pendingGold = invTotals.pendingGold,
@@ -3516,6 +3537,7 @@ function HandleNanoVGRender(eventType, eventData)
             carriedItemValue = invTotals.carriedItemValue,
             carriedItems = invTotals.carriedItems,
             consumables = invTotals.consumables,
+            hud = hudSummary,
         }
 
         -- 中央游戏区(带偏移和裁剪)
@@ -3554,11 +3576,12 @@ function HandleNanoVGRender(eventType, eventData)
             message = message,
             adjacent = cell and cell.adjacent or 0,
             roomType = cell and cell.roomType or "normal",
+            hud = hudSummary,
         })
-        HUD.DrawProtocolPanel(nvgScene, hudLayout, Protocol.GetStatus(), dt)
+        HUD.DrawProtocolPanel(nvgScene, hudLayout, hudSummary, dt)
         HUD.DrawNearbyDanger(nvgScene, hudLayout, {
-            adjacent = cell and cell.adjacent or 0,
-            roomType = cell and cell.roomType or "normal",
+            nearbyMineRisk = hudSummary.nearbyMineRisk,
+            mineRiskState = hudSummary.mineRiskState,
         })
 
         -- HUD: 底部交互栏
@@ -3699,10 +3722,11 @@ function CreateUI()
                 children = {
                     UI.Panel {
                         position = "absolute",
-                        left = 188,
-                        top = 104,
-                        width = 1330,
-                        height = 716,
+                        left = DEPLOY_LAYOUT.shell.x,
+                        top = DEPLOY_LAYOUT.shell.y,
+                        width = DEPLOY_LAYOUT.shell.w,
+                        height = DEPLOY_LAYOUT.shell.h,
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.background"),
                         backgroundColor = { 12, 22, 28, 238 },
                         borderRadius = 10,
                         borderWidth = 2,
@@ -3710,17 +3734,17 @@ function CreateUI()
                     },
                     UI.Panel {
                         position = "absolute",
-                        left = 204,
-                        top = 120,
-                        width = 1298,
+                        left = DEPLOY_LAYOUT.shell.x + 16,
+                        top = DEPLOY_LAYOUT.shell.y + 16,
+                        width = DEPLOY_LAYOUT.shell.w - 32,
                         height = 8,
                         backgroundColor = { 178, 116, 52, 180 },
                     },
                     UI.Panel {
                         position = "absolute",
-                        left = 330,
-                        top = 66,
-                        width = 944,
+                        left = DEPLOY_LAYOUT.nav.x - 18,
+                        top = DEPLOY_LAYOUT.nav.y + DEPLOY_LAYOUT.nav.h + 6,
+                        width = DEPLOY_LAYOUT.nav.w + 36,
                         height = 24,
                         backgroundColor = { 18, 35, 42, 245 },
                         borderWidth = 1,
@@ -3730,8 +3754,8 @@ function CreateUI()
                         id = "deployActiveTabLabel",
                         text = "当前页签 / 天赋",
                         position = "absolute",
-                        left = 360,
-                        top = 72,
+                        left = DEPLOY_LAYOUT.nav.x + 12,
+                        top = DEPLOY_LAYOUT.nav.y + DEPLOY_LAYOUT.nav.h + 12,
                         fontSize = 11,
                         fontColor = { 164, 218, 216, 245 },
                     },
@@ -3743,7 +3767,7 @@ function CreateUI()
                         top = DEPLOY_LAYOUT.back.y,
                         width = DEPLOY_LAYOUT.back.w,
                         height = DEPLOY_LAYOUT.back.h,
-                        backgroundImage = "ui/deploy/ui_button_back_main.png",
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.button.return"),
                         onClick = function() BackToMainMenu() end,
                     },
                     UI.Panel {
@@ -3769,7 +3793,7 @@ function CreateUI()
                         height = DEPLOY_LAYOUT.central.h,
                         padding = 22,
                         gap = 8,
-                        backgroundImage = "ui/deploy/ui_panel_deploy_main_blank.png",
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.main"),
                         backgroundColor = { 18, 26, 36, 232 },
                         borderRadius = 8,
                         borderWidth = 1,
@@ -3789,32 +3813,35 @@ function CreateUI()
                         top = DEPLOY_LAYOUT.central.y,
                         width = DEPLOY_LAYOUT.central.w,
                         height = DEPLOY_LAYOUT.central.h,
-                        padding = 22,
-                        gap = 8,
-                        backgroundImage = "ui/deploy/ui_panel_deploy_main_blank.png",
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.main"),
                         backgroundColor = { 12, 20, 28, 246 },
                         borderRadius = 8,
                         borderWidth = 1,
                         borderColor = { 90, 160, 210, 160 },
                         children = {
                             UI.Panel {
+                                position = "absolute",
+                                left = 28,
+                                top = 22,
+                                width = 876,
+                                height = 42,
                                 flexDirection = "row",
                                 justifyContent = "space-between",
                                 alignItems = "center",
                                 width = "100%",
                                 children = {
-                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, width = 67, left = 63, fontColor = { 210, 238, 245, 255 } },
+                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, width = 220, fontColor = { 210, 238, 245, 255 } },
                                     UI.Label { id = "deployModuleMetaLabel", text = GameText.meta.account .. "0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
                                 },
                             },
-                            UI.Panel { id = "deployFilterBar", flexDirection = "row", flexWrap = "wrap", gap = 7, width = "87.2%", left = 67, children = {} },
-                            UI.Panel { id = "deployCardGrid", gap = 12, width = "87.9%", height = 325, left = 60, top = 5, children = {} },
+                            UI.Panel { id = "deployFilterBar", position = "absolute", flexDirection = "row", flexWrap = "wrap", gap = 7, width = 876, height = 44, left = 28, top = 78, children = {} },
+                            UI.Panel { id = "deployCardGrid", position = "absolute", gap = DEPLOY_LAYOUT.rowGap, width = DEPLOY_LAYOUT.cardArea.w, height = DEPLOY_LAYOUT.cardArea.h, left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x, top = DEPLOY_LAYOUT.cardArea.y - DEPLOY_LAYOUT.central.y, children = {} },
                             UI.Panel {
                                 position = "absolute",
                                 left = 28,
-                                top = 522,
+                                top = 548,
                                 width = 878,
-                                height = 96,
+                                height = 112,
                                 padding = 12,
                                 gap = 4,
                                 backgroundColor = { 10, 18, 25, 238 },
@@ -3827,7 +3854,7 @@ function CreateUI()
                                     UI.Label { id = "deployCardDetailStatusLabel", text = "状态: 等待选择", fontSize = 11, fontColor = { 210, 190, 128, 235 } },
                                 },
                             },
-                            UI.Label { id = "deployScrollLabel", text = "滚动 0/0", fontSize = 10, width = 68, height = 31, left = 780, top = 15, fontColor = { 120, 158, 170, 220 } },
+                            UI.Label { id = "deployScrollLabel", position = "absolute", text = "滚动 0/0", fontSize = 10, width = 76, height = 31, left = 820, top = 118, fontColor = { 120, 158, 170, 220 } },
                         },
                     },
                     UI.Panel {
@@ -3839,7 +3866,7 @@ function CreateUI()
                         height = DEPLOY_LAYOUT.summary.h,
                         padding = 18,
                         gap = 8,
-                        backgroundImage = "ui/deploy/ui_panel_deploy_summary_blank.png",
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.summary"),
                         backgroundColor = { 14, 24, 32, 232 },
                         borderRadius = 8,
                         borderWidth = 1,
@@ -3859,7 +3886,7 @@ function CreateUI()
                         height = DEPLOY_LAYOUT.summary.h,
                         padding = 18,
                         gap = 8,
-                        backgroundImage = "ui/deploy/ui_panel_deploy_summary_blank.png",
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.summary"),
                         backgroundColor = { 10, 20, 28, 242 },
                         borderRadius = 8,
                         borderWidth = 1,
@@ -3873,10 +3900,11 @@ function CreateUI()
                     },
                     UI.Panel {
                         position = "absolute",
-                        left = 1208,
-                        top = 704,
-                        width = 266,
-                        height = 120,
+                        left = DEPLOY_LAYOUT.rightRail.x + 12,
+                        top = DEPLOY_LAYOUT.confirm.y - 28,
+                        width = DEPLOY_LAYOUT.rightRail.w - 24,
+                        height = DEPLOY_LAYOUT.confirm.h + 56,
+                        backgroundImage = UITheme.GetRegisteredPath("deploy.panel.background"),
                         backgroundColor = { 12, 24, 29, 238 },
                         borderRadius = 8,
                         borderWidth = 1,
@@ -3884,9 +3912,9 @@ function CreateUI()
                     },
                     UI.Panel {
                         position = "absolute",
-                        left = 1138,
-                        top = 750,
-                        width = 86,
+                        left = DEPLOY_LAYOUT.central.x + DEPLOY_LAYOUT.central.w + 6,
+                        top = DEPLOY_LAYOUT.confirm.y + math.floor(DEPLOY_LAYOUT.confirm.h / 2),
+                        width = DEPLOY_LAYOUT.rightRail.x - (DEPLOY_LAYOUT.central.x + DEPLOY_LAYOUT.central.w) + 24,
                         height = 5,
                         backgroundColor = { 176, 116, 50, 190 },
                     },
@@ -3902,7 +3930,7 @@ function CreateUI()
                                 variant = "primary",
                                 width = DEPLOY_LAYOUT.confirm.w,
                                 height = DEPLOY_LAYOUT.confirm.h,
-                                backgroundImage = "ui/deploy/ui_button_confirm_deploy_large.png",
+                                backgroundImage = UITheme.GetRegisteredPath("deploy.button.confirm"),
                                 onClick = function() ConfirmDeploy() end,
                             },
                         },

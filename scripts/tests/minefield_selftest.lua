@@ -820,7 +820,11 @@ local function testMetaProgressLoadConsumableAndLoadoutDefaults()
     }, function()
         MetaProgress.Load()
         assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "old save should default consumable stock")
-        assertEq(MetaProgress.GetLoadoutSummary().consumableCount, 0, "old save should default loadout")
+        local loadoutSummary = MetaProgress.GetLoadoutSummary()
+        assertEq(loadoutSummary.consumableCount, 0, "old save should default loadout")
+        assertEq(loadoutSummary.equipmentText, loadoutSummary.emptyEquipmentHint, "old save should explain empty equipment")
+        assertEq(loadoutSummary.consumablesText, loadoutSummary.emptyConsumablesHint, "old save should explain empty consumables")
+        assertEq(loadoutSummary.effectsText, loadoutSummary.emptyEffectsHint, "old save should explain empty effects")
         assertEq(MetaProgress.GetTerminalSummary().inventory.gold, 25, "terminal summary should read old save gold")
     end)
 end
@@ -849,6 +853,13 @@ local function testUnifiedDisplayAndWarehouseCategories()
         assertEq(equipment.type, "equipment", "equipment display type mismatch")
         assertEq(consumable.type, "consumable", "consumable display type mismatch")
         assertEq(consumable.count, 2, "consumable display should show stock")
+        assertEq(recovered.display.category, "recovered", "recovered adapter category mismatch")
+        assertEq(equipment.display.category, "equipment", "equipment adapter category mismatch")
+        assertEq(consumable.display.category, "consumable", "consumable adapter category mismatch")
+        assertTrue(equipment.display.iconKey ~= "", "equipment adapter should expose icon key")
+        assertTrue(consumable.display.iconKey ~= "", "consumable adapter should expose icon key")
+        assertTrue(type(consumable.display.typeLabel) == "string", "display adapter should expose type label")
+        assertTrue(type(consumable.display.rarityLabel) == "string", "display adapter should expose rarity label")
 
         local equipmentList = MetaProgress.GetWarehouseDisplayList({ category = "equipment" })
         assertTrue(#equipmentList >= 1, "equipment category should show old equipment")
@@ -861,6 +872,28 @@ local function testUnifiedDisplayAndWarehouseCategories()
             assertTrue(not item.canSell, "consumable category should not be sellable")
         end
     end)
+end
+
+local function testRunInventoryHUDSummary()
+    RunInventory.Reset()
+    RunInventory.AddPendingGold(18)
+    RunInventory.AddSafeGold(7)
+    RunInventory.AddCarriedItem("static_lens", 1, "search")
+    RunInventory.AddConsumable("emergency_bandage", 2)
+    local summary = RunInventory.GetHUDSummary({
+        protocol = { level = 4, pressure = 12, maxPressure = 100, description = "轻度警戒" },
+        nearbyMineRisk = 3,
+        equipmentEffects = { "生命 +20" },
+    })
+    assertEq(summary.pendingCurrency, 18, "hud summary pending currency")
+    assertEq(summary.lockedCurrency, 7, "hud summary locked currency")
+    assertEq(summary.protocolLevel, 4, "hud summary protocol level")
+    assertEq(summary.pressure, 12, "hud summary pressure")
+    assertEq(summary.mineRiskState, "warning", "hud summary mine risk state")
+    assertEq(#summary.recoveredItems, 1, "hud summary recovered row")
+    assertEq(#summary.consumables, 1, "hud summary consumable row")
+    assertTrue(summary.recoveredItems[1].iconKey ~= "", "hud recovered row should expose icon key")
+    assertTrue(summary.consumables[1].iconKey ~= "", "hud consumable row should expose icon key")
 end
 
 local function testConsumablePurchaseLoadoutAndRunUse()
@@ -940,6 +973,12 @@ local function testUILayoutRoundTrip()
 end
 
 local function testUIThemeMissingImageSafe()
+    UITheme.RegisterDefaults()
+    assertEq(UITheme.GetRegisteredPath("deploy.panel.main"), "ui/deploy/ui_panel_deploy_main_blank.png", "deploy panel registry path")
+    assertEq(UITheme.GetRegisteredPath("hud.panel.left"), "ui/hud/ui_panel_left.png", "hud panel registry path")
+    assertEq(UITheme.GetItemIconKey({ id = "emergency_bandage", type = "consumable" }), "item.consumable.emergency_bandage", "consumable icon resolution")
+    local recoveredPath = UITheme.ResolveIconPath(UITheme.GetItemIconKey({ id = "static_lens", type = "relic", source = "recovered" }))
+    assertEq(recoveredPath, "item_recovered/item_recovered_ore.png", "recovered icon fallback path")
     assertTrue(UITheme.LoadImage("missing_test_asset", "ui/missing/nope.png") == false, "missing image should not load")
     assertTrue(UITheme.Has("missing_test_asset") == false, "missing image should not be reported as present")
     assertTrue(UITheme.GetImage("missing_test_asset") == -1, "missing image should use sentinel")
@@ -1103,6 +1142,31 @@ local function testMainEntrySourceContract()
     assertEq(navBar.top, layout.nav.y, "deploy nav y should be fixed")
     assertEq(layout.columns, 3, "deploy card grid should use three columns")
     assertEq(layout.rowsVisible, 2, "deploy card grid should expose two visible rows before scrolling")
+    assertTrue(layout.rightRail.x + layout.rightRail.w <= 1536 - layout.safe, "right rail should stay inside safe area")
+    assertTrue(layout.confirm.x + layout.confirm.w <= 1536 - layout.safe, "confirm deploy should stay inside safe area")
+    assertTrue(layout.central.x + layout.central.w < layout.rightRail.x - layout.gap, "central display should keep right rail gap")
+    assertTrue(layout.summary.x + layout.summary.w <= 1536 - layout.safe, "summary should stay inside safe area")
+    assertTrue(layout.nav.x + layout.nav.w <= 1536 - layout.safe, "tab bar should stay inside safe area")
+    assertEq(layout.confirm.x, math.floor(layout.rightRail.x + (layout.rightRail.w - layout.confirm.w) / 2), "confirm deploy should be centered in right rail")
+    assertEq(layout.confirm.y, layout.rightRail.y + layout.rightRail.h - layout.confirm.h - 28, "confirm deploy should be anchored in right rail")
+
+    local layoutCases = {
+        { w = 1536, h = 864 },
+        { w = 1920, h = 1080 },
+        { w = 1600, h = 900 },
+        { w = 1366, h = 768 },
+        { w = 1280, h = 720 },
+    }
+    for _, c in ipairs(layoutCases) do
+        UILayout.SetViewport(c.w, c.h)
+        local confirmX, confirmY, confirmW, confirmH = UILayout.ToScreen(layout.confirm.x, layout.confirm.y, layout.confirm.w, layout.confirm.h)
+        assertTrue(confirmX >= 0 and confirmY >= 0, "confirm deploy should start on screen at " .. c.w .. "x" .. c.h)
+        assertTrue(confirmX + confirmW <= c.w and confirmY + confirmH <= c.h, "confirm deploy should fit screen at " .. c.w .. "x" .. c.h)
+        local cardX, cardY = UILayout.ToScreen(layout.cardArea.x + 3, layout.cardArea.y + 3)
+        local logicX, logicY = UILayout.ToLogic(cardX, cardY)
+        assertTrue(UILayout.ContainsLogic(logicX, logicY, layout.cardArea), "card hotspot should round trip at " .. c.w .. "x" .. c.h)
+    end
+    UILayout.SetViewport(1536, 864)
 
     for _, module in ipairs(GetDeployTerminalModules()) do
         RefreshDeployModulePage(module.id)
@@ -1772,6 +1836,7 @@ local tests = {
     { name = "display adapters protect equipment and consumables", fn = testDisplayAdaptersProtectEquipmentAndConsumables },
     { name = "meta progress load consumable and loadout defaults", fn = testMetaProgressLoadConsumableAndLoadoutDefaults },
     { name = "unified display and warehouse categories", fn = testUnifiedDisplayAndWarehouseCategories },
+    { name = "run inventory hud summary adapter", fn = testRunInventoryHUDSummary },
     { name = "consumable purchase loadout and run use", fn = testConsumablePurchaseLoadoutAndRunUse },
     { name = "ui layout round trip", fn = testUILayoutRoundTrip },
     { name = "ui theme missing image safe", fn = testUIThemeMissingImageSafe },
