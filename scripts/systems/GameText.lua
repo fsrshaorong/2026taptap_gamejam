@@ -301,4 +301,206 @@ GameText.meta = {
     appraise = "后勤部正在估价。请不要晃动它。"
 }
 
+-- ============================================================================
+-- 固定坐标教程弹窗定义
+-- ============================================================================
+
+GameText.tutorial.popupDefs = {
+    spawn_intro = {
+        title = "新员工说明",
+        body = table.concat({
+            "欢迎入职灰尾回收。",
+            "",
+            "你是封锁区临时回收员。",
+            "本次目标是读取区域扫描图，",
+            "避开雷险，搜刮物资，",
+            "并找到撤离信标。",
+            "",
+            "调度台 A-7：",
+            "公司建议你带回物资。",
+            "更建议你带回自己。"
+        }, "\n"),
+        blocking = true,
+        once = true,
+        roomScoped = false,
+        confirmText = "开始作业",
+    },
+
+    number_rule = {
+        title = "区域扫描图",
+        body = table.concat({
+            "房间数字表示周围 8 个区域中的",
+            "雷险数量。",
+            "",
+            "上下左右和斜向都会计入数字。",
+            "异常体、物资、事件和撤离信标",
+            "不计入该数字。",
+            "",
+            "调度台 A-7：",
+            "数字通常不会骗人。",
+            "公司系统另行计算。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+    },
+
+    mine_rule = {
+        title = "雷险区",
+        body = table.concat({
+            "雷险区会造成伤害，",
+            "并提高封锁压力。",
+            "",
+            "封锁压力升高时，",
+            "五四三二一撤离协议可能下降。",
+            "",
+            "已触发的雷险会被记录，",
+            "再次经过不会重复触发。",
+            "",
+            "调度台 A-7：",
+            "协议下降不是惩罚。",
+            "只是公司提前声明提醒过你。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+        showAfterRoomEffect = true,
+    },
+
+    event_rule = {
+        title = "狐狸旅商",
+        body = table.concat({
+            "旅商可以将异常回收物",
+            "折价出售为已锁定收益。",
+            "",
+            "已锁定收益即使作业失败",
+            "也会保留。",
+            "",
+            "调度台 A-7：",
+            "公司不会知道，大概。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+    },
+
+    monster_rule = {
+        title = "异常体区域",
+        body = table.concat({
+            "异常体区域可以绕行，",
+            "也可以清理。",
+            "",
+            "靠近后按 F 攻击。",
+            "清理异常体会获得奖励，",
+            "但也会提高封锁压力。",
+            "",
+            "调度台 A-7：",
+            "高收益区和高事故区",
+            "通常是同一个地方。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+    },
+
+    chest_rule = {
+        title = "物资箱",
+        body = table.concat({
+            "发现物资箱时，按 F 开启。",
+            "",
+            "物资箱通常比普通搜索",
+            "更有价值，",
+            "但收益仍需成功撤离后结算。",
+            "",
+            "调度台 A-7：",
+            "箱子归你，风险也归你。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+    },
+
+    map_rule = {
+        title = "区域扫描图操作",
+        body = table.concat({
+            "按 M 打开区域扫描图。",
+            "",
+            "你可以查看已探索区域，",
+            "也可以标记怀疑存在雷险的位置。",
+            "",
+            "点击已探索区域，",
+            "可以回传到对应房间。",
+            "",
+            "调度台 A-7：",
+            "回头不是失败。失联才是。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+    },
+
+    mine_review = {
+        title = "雷险复查",
+        body = table.concat({
+            "再次遇到雷险时，",
+            "先观察周围数字。",
+            "",
+            "如果路线风险过高，",
+            "可以打开区域扫描图重新规划，",
+            "或回传到已探索区域。",
+            "",
+            "调度台 A-7：",
+            "第二次踩中同类风险时，",
+            "系统会将其归类为经验不足。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+        showAfterRoomEffect = true,
+    },
+
+    route_rule = {
+        title = "路线规划",
+        body = table.concat({
+            "区域扫描图可以帮助你",
+            "重新规划路线。",
+            "",
+            "已探索区域可以点击回传，",
+            "适合在协议下降后调整路径。",
+            "",
+            "调度台 A-7：",
+            "合理返程不影响绩效。",
+            "失联会。"
+        }, "\n"),
+        blocking = false,
+        once = false,
+        roomScoped = true,
+    },
+
+    exit_goal = {
+        title = "撤离信标",
+        body = table.concat({
+            "到达撤离信标后，",
+            "按 E 打开撤离确认。",
+            "",
+            "成功撤离会结算待结算收益，",
+            "并带回回收包中的异常回收物。",
+            "",
+            "五四三二一撤离协议",
+            "表示当前封锁区风险。",
+            "协议数字越低，",
+            "调度台越不建议继续深入。",
+            "",
+            "调度台 A-7：",
+            "撤离是建议。",
+            "不撤离是自主选择。",
+            "相关条款已说明。"
+        }, "\n"),
+        blocking = true,
+        once = true,
+        roomScoped = false,
+        confirmText = "我知道了",
+    },
+}
+
 return GameText

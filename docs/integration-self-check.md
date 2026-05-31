@@ -20,6 +20,12 @@
 - 成功结算：成功入账 `pendingGold + safeGold`，回收物入仓库。
 - 局外商店：接入策划价格，并新增无贴图依赖的 `绝缘套` 装备占位。
 - 教程/HUD/协议/事件 P0 文案：已接入 `GameText.lua`，保留部分原型 UI 文案未做大段 P1/P2 扩写。
+- **新手教程系统（v2 固定坐标弹窗）**：完全重写为坐标驱动，不再是步骤状态机。
+  - `Tutorial.lua`：核心改为 `OnEnterRoom(x,y)` → 查 `roomPopups` 映射 → 显示对应弹窗。
+  - `GameText.lua`：新增 `popupDefs` 表（10 条弹窗定义：spawn_intro / number_rule / mine_rule / event_rule / monster_rule / chest_rule / map_rule / mine_review / route_rule / exit_goal）。
+  - `main.lua`：`MovePlayer` 成功后调用 `OnEnterRoom` + `FlushPendingPopup`；`TeleportTo` 同理；`StartTutorialRun` 触发出生点弹窗；按键/鼠标处理中检查 `IsInputLocked` / `HasBlockingPopup` 实现输入锁。
+  - `HUD.lua`：新增 `DrawTutorialPopup`（阻塞=居中遮罩大面板；非阻塞=底部小面板）。
+  - 旧接口 `HandleClick` / `NotifyAction` / `GetCurrentStep` 等保留为 no-op，不影响其他系统。
 
 ## 明确保留
 
@@ -41,24 +47,4 @@
 - 失败时确认待结算币不入账，自动带回最高价值物品。
 - 连续击败怪物确认战力最多因击杀成长 `+5`，且怪物奖励不会重复发放。
 - 祭坛连续献祭确认 HP 消耗递增，且 HP 不足时不能献祭。
-- 成功撤离确认局外结算币只增加 `pendingGold + safeGold` 一次，回收物入仓库一次。
-
-## 文案复查接入补充
-
-### 已完成
-
-- 主标题统一为《灰尾回收》。
-- 副标题统一为“扫雷、搜刮，然后尽量完整地撤离。”。
-- 协议 5~1 文案改为公司式建议口吻，移除命令式返程表达。
-- HUD 术语统一为“区域扫描图 / 周围雷险 / 待结算 / 已锁定 / 回收物 / 回收包 / 撤离协议 / 撤离信标”。
-- 教程补充“斜向计入但不能直接移动”“特殊房不计入数字”“雷险不会重复触发”等规则说明。
-- 旅商文案改为“狐狸旅商”，并说明出售收益为已锁定收益。
-- 怪物名称由奇幻敌人改为旧设施残留系异常体。
-- 成功结算改为“作业完成”，失败结算改为“信号中断”。
-- 局外账户显示为“结算币”。
-
-### 未完成 / TODO
-
-- 旧“保险金”机制仍沿用为失败时额外结算币奖励，赛后应改为失败额外保护物资。
-- “绝缘套”已有雷险减伤机制和占位显示，赛后可补齐更完整的装备表现。
-- 如部分主菜单文字来自图片资源，本轮不新增美术资源，仅修改代码文本。
+- 成功撤离确认全局金币只增加 `pendingGold + safeGold` 一次，回收物入仓库一次。

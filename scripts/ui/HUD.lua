@@ -612,6 +612,146 @@ function HUD.DrawTutorialDialog(vg, screenW, screenH, step)
 end
 
 -- ============================================================================
+-- 教程弹窗（新系统: 阻塞居中 / 非阻塞底部）
+-- ============================================================================
+
+--- 简易多行文本绘制（按 \n 分割）
+---@param vg userdata
+---@param x number
+---@param y number
+---@param lineHeight number
+---@param lines string
+local function drawMultilineText(vg, x, y, lineHeight, lines)
+    local lineNum = 0
+    for line in (lines .. "\n"):gmatch("(.-)\n") do
+        nvgText(vg, x, y + lineNum * lineHeight, line)
+        lineNum = lineNum + 1
+    end
+    return lineNum
+end
+
+--- 绘制教程弹窗（新系统）
+---@param vg userdata
+---@param screenW number
+---@param screenH number
+---@param popup table  Tutorial.GetActivePopup() 返回的弹窗定义
+function HUD.DrawTutorialPopup(vg, screenW, screenH, popup)
+    if not popup then return end
+
+    if popup.blocking then
+        -- ========== 阻塞弹窗: 半透明遮罩 + 居中大面板 ==========
+        -- 遮罩
+        nvgBeginPath(vg)
+        nvgRect(vg, 0, 0, screenW, screenH)
+        nvgFillColor(vg, nvgRGBA(0, 0, 0, 140))
+        nvgFill(vg)
+
+        -- 面板尺寸
+        local panelW = math.min(screenW * 0.75, 440)
+        local padX = 28
+        local padTop = 24
+        local padBot = 20
+        local titleSize = 18
+        local bodySize = 14
+        local lineH = bodySize * 1.55
+        local confirmSize = 13
+
+        -- 预计算正文行数
+        local bodyLines = 0
+        if popup.body then
+            for _ in (popup.body .. "\n"):gmatch("(.-)\n") do
+                bodyLines = bodyLines + 1
+            end
+        end
+
+        local panelH = padTop + titleSize + 12 + (bodyLines * lineH) + 18 + confirmSize + padBot
+        local px = (screenW - panelW) / 2
+        local py = (screenH - panelH) / 2
+
+        -- 面板背景
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, px, py, panelW, panelH, 12)
+        nvgFillColor(vg, nvgRGBA(18, 24, 38, 240))
+        nvgFill(vg)
+        nvgStrokeColor(vg, nvgRGBA(80, 170, 230, 200))
+        nvgStrokeWidth(vg, 1.5)
+        nvgStroke(vg)
+
+        -- 标题
+        local titleY = py + padTop + titleSize / 2
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, titleSize)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(100, 200, 255, 255))
+        nvgText(vg, screenW / 2, titleY, popup.title or "提示")
+
+        -- 正文
+        local bodyY = titleY + titleSize / 2 + 14
+        nvgFontSize(vg, bodySize)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(230, 240, 255, 240))
+        if popup.body then
+            drawMultilineText(vg, px + padX, bodyY, lineH, popup.body)
+        end
+
+        -- 确认提示（底部居中，脉冲动画）
+        local pulse = (math.sin(os.clock() * 3.5) + 1) * 0.5
+        local confirmY = py + panelH - padBot - confirmSize / 2
+        nvgFontSize(vg, confirmSize)
+        nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(180, 220, 255, math.floor(140 + 115 * pulse)))
+        local confirmText = popup.confirmText or "[ 点击 / Enter 继续 ]"
+        nvgText(vg, screenW / 2, confirmY, confirmText)
+    else
+        -- ========== 非阻塞弹窗: 底部小面板 ==========
+        local panelW = math.min(screenW * 0.7, 400)
+        local padX = 20
+        local padY = 14
+        local titleSize = 14
+        local bodySize = 12.5
+        local lineH = bodySize * 1.5
+
+        -- 预计算正文行数
+        local bodyLines = 0
+        if popup.body then
+            for _ in (popup.body .. "\n"):gmatch("(.-)\n") do
+                bodyLines = bodyLines + 1
+            end
+        end
+
+        local panelH = padY + titleSize + 8 + (bodyLines * lineH) + padY
+        local px = (screenW - panelW) / 2
+        local py = screenH - panelH - 24
+
+        -- 面板背景（半透明，不阻挡游戏操作）
+        nvgBeginPath(vg)
+        nvgRoundedRect(vg, px, py, panelW, panelH, 8)
+        nvgFillColor(vg, nvgRGBA(12, 18, 28, 200))
+        nvgFill(vg)
+        nvgStrokeColor(vg, nvgRGBA(70, 140, 190, 150))
+        nvgStrokeWidth(vg, 1.0)
+        nvgStroke(vg)
+
+        -- 标题
+        local titleY = py + padY + titleSize / 2
+        nvgFontFace(vg, "sans")
+        nvgFontSize(vg, titleSize)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(80, 190, 240, 240))
+        nvgText(vg, px + padX, titleY, popup.title or "提示")
+
+        -- 正文
+        local bodyY = titleY + titleSize / 2 + 8
+        nvgFontSize(vg, bodySize)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
+        nvgFillColor(vg, nvgRGBA(210, 225, 245, 220))
+        if popup.body then
+            drawMultilineText(vg, px + padX, bodyY, lineH, popup.body)
+        end
+    end
+end
+
+-- ============================================================================
 -- 居中播报(Toast)
 -- ============================================================================
 

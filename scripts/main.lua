@@ -25,7 +25,7 @@ local Tutorial = require("systems.Tutorial")
 -- ============================================================================
 
 ---@type userdata
-local nvgScene = nil
+nvgScene = nil
 local uiRoot_ = nil
 
 local screenW = 0
@@ -1956,6 +1956,9 @@ function StartTutorialRun()
     config.skipLoadout = true
     StartNewGame(config)
     Tutorial.Start()
+    -- 触发出生点教程弹窗
+    local spawn = minefield:GetSpawn()
+    Tutorial.OnEnterRoom(spawn.x, spawn.y, nil, "spawn")
     ShowMessage("训练工单:不消耗后勤物资,不登记回收记录。")
 end
 
@@ -2315,6 +2318,7 @@ end
 function MoveScenePlayer(dx, dy, dt)
     if phase ~= PHASE.PLAYING then return end
     if not run then return end
+    if Tutorial.IsInputLocked() then return end
 
     local cpW, cpH = GetCenterAreaPhysSize()
     local p = run:GetPlayer()
@@ -2489,6 +2493,14 @@ function MovePlayer(dx, dy)
         end
     end
 
+    -- 教程：通知进入新房间（移动成功时）
+    if result.ok and Tutorial.IsActive() then
+        local tp = result.player or run:GetPlayer()
+        Tutorial.OnEnterRoom(tp.x, tp.y, nil, "move")
+        -- 对于 showAfterRoomEffect 的弹窗（如踩雷房），房间效果已处理完毕，现在显示
+        Tutorial.FlushPendingPopup()
+    end
+
     RefreshMapData()
     UpdateHUD()
 end
@@ -2597,6 +2609,12 @@ function TeleportTo(x, y)
     phase = PHASE.PLAYING
     RefreshMapData()
     UpdateHUD()
+
+    -- 教程：通知传送到新房间
+    if Tutorial.IsActive() then
+        Tutorial.OnEnterRoom(x, y, nil, "teleport")
+        Tutorial.FlushPendingPopup()
+    end
 end
 
 --- 撤离确认
@@ -3549,10 +3567,9 @@ function HandleNanoVGRender(eventType, eventData)
         MapOverlay.Draw(nvgScene, w, h)
     end
 
-    -- 教程对话框(绘制在游戏内容上层)
-    if Tutorial.IsActive() then
-        local step = Tutorial.GetCurrentStep()
-        HUD.DrawTutorialDialog(nvgScene, w, h, step)
+    -- 教程弹窗(绘制在游戏内容上层)
+    if Tutorial.HasPopup() then
+        HUD.DrawTutorialPopup(nvgScene, w, h, Tutorial.GetActivePopup())
     end
 
     -- 居中播报(始终绘制在最上层)
@@ -4737,6 +4754,22 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
+    -- 教程阻塞弹窗：Enter/Space 确认
+    if Tutorial.HasBlockingPopup() then
+        if key == KEY_RETURN or key == KEY_SPACE then
+            Tutorial.ConfirmPopup()
+            -- 教程结束后回到菜单
+            if not Tutorial.IsActive() then
+                ReturnToMenu()
+                ShowMessage("教程完成! 可以开始正式探索了.")
+            end
+        end
+        return  -- 阻塞弹窗期间吞掉所有按键
+    end
+
+    -- 教程输入锁定中，阻止游戏操作
+    if Tutorial.IsInputLocked() then return end
+
     -- ESC 打开设置面板
     if key == KEY_ESCAPE then
         phase = PHASE.SETTINGS
@@ -4803,17 +4836,19 @@ function HandleMouseDown(eventType, eventData)
     local mx = eventData["X"]:GetInt() / dpr
     local my = eventData["Y"]:GetInt() / dpr
 
-    -- 教程对话框点击(优先消耗)
-    if button == MOUSEB_LEFT and Tutorial.IsActive() then
-        if Tutorial.HandleClick() then
-            -- 教程完成后回到菜单
-            if not Tutorial.IsActive() then
-                ReturnToMenu()
-                ShowMessage("教程完成! 可以开始正式探索了.")
-            end
-            return
+    -- 教程阻塞弹窗点击确认（优先消耗）
+    if button == MOUSEB_LEFT and Tutorial.HasBlockingPopup() then
+        Tutorial.ConfirmPopup()
+        -- 教程结束后回到菜单
+        if not Tutorial.IsActive() then
+            ReturnToMenu()
+            ShowMessage("教程完成! 可以开始正式探索了.")
         end
+        return
     end
+
+    -- 教程输入锁定中，阻止鼠标操作
+    if Tutorial.IsInputLocked() then return end
 
     -- 放大地图交互
     if phase == PHASE.MAP_OPEN then
