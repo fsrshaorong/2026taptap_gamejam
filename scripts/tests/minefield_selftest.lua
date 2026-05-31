@@ -1035,6 +1035,22 @@ local function testMainEntrySourceContract()
         return out
     end
 
+    local function visibleIds()
+        local out = {}
+        local function collect(node, inheritedVisible)
+            if not node then return end
+            local visible = inheritedVisible and node.visible ~= false
+            if visible and node.id then
+                out[node.id] = true
+            end
+            for _, child in ipairs(node.children or {}) do
+                collect(child, visible)
+            end
+        end
+        collect(_G.__testUiRoot, true)
+        return out
+    end
+
     local mainButtons = visibleButtons()
     assertTrue(mainButtons["接受工单"] == nil, "main should not show top-left accept button")
     assertTrue(mainButtons["展示工单"] == nil, "main should not show top-left tutorial button")
@@ -1051,13 +1067,13 @@ local function testMainEntrySourceContract()
     OpenDeployTerminal()
     assertEq(directStartCount, 0, "top-level accept should open deploy terminal, not start a run")
 
-    local deployButtons = visibleButtons()
-    assertTrue(deployButtons["后勤仓库"] ~= nil, "deploy should show warehouse entry")
-    assertTrue(deployButtons["后勤申领"] ~= nil, "deploy should show requisition entry")
-    assertTrue(deployButtons["出勤配置"] ~= nil, "deploy should show loadout entry")
-    assertTrue(deployButtons["回收资历"] ~= nil, "deploy should show recovery entry")
-    assertTrue(deployButtons["确认出发"] ~= nil, "deploy should show confirm deploy")
-    assertTrue(deployButtons["返回主界面"] ~= nil, "deploy should show return to main")
+    local deployIds = visibleIds()
+    assertTrue(deployIds["deployNavWarehouseButton"] ~= nil, "deploy should keep warehouse entry hit target")
+    assertTrue(deployIds["deployNavRequisitionButton"] ~= nil, "deploy should keep requisition entry hit target")
+    assertTrue(deployIds["deployNavLoadoutButton"] ~= nil, "deploy should keep loadout entry hit target")
+    assertTrue(deployIds["deployNavRecoveryButton"] ~= nil, "deploy should keep recovery entry hit target")
+    assertTrue(deployIds["deployConfirmButton"] ~= nil, "deploy should keep confirm deploy hit target")
+    assertTrue(deployIds["deployBackButton"] ~= nil, "deploy should keep return to main hit target")
     assertEq(_G.__testUiRoot:FindById("menuPage_deployOverview").visible, true, "accept should open deploy overview")
 
     local deployPageNode = _G.__testUiRoot:FindById("menuPage_deployOverview")
