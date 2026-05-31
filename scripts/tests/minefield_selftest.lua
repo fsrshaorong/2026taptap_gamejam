@@ -752,6 +752,10 @@ local function testMetaProgressWarehouseSellAndProtection()
         assertEq(MetaProgress.GetGold(), goldBefore + 16, "selling should increase gold")
         assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 2, "selling should reduce warehouse count")
 
+        local zeroSold, zeroReason = MetaProgress.SellWarehouseItem("static_lens", 0)
+        assertTrue(not zeroSold, "zero-count sale should fail")
+        assertEq(zeroReason, "invalid_count", "zero-count sale should return invalid_count")
+
         local tooMany = MetaProgress.SellWarehouseItem("static_lens", 99)
         assertTrue(not tooMany, "selling more than owned should fail")
         assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 2, "failed sale should not reduce count")
@@ -1176,6 +1180,56 @@ local function testMainEntrySourceContract()
         assertEq(moduleLayout.hitRectCount, expectedVisibleCards, "visible card hit rects should match central grid")
         assertEq(#(_G.__testUiRoot:FindById("deployFilterBar").children or {}), #GetDeployTerminalFilters(module.id), "filter bar should match module filters")
     end
+
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddWarehouseItems({
+            { id = "ui_static_lens", name = "UI Static Lens", type = "relic", typeName = "Recovered item", value = 16, count = 2, source = "recovered" },
+            { id = "ui_dim_capacitor", name = "UI Dim Capacitor", type = "relic", typeName = "Recovered item", value = 9, count = 1, source = "recovered" },
+            { id = "ui_echo_wire", name = "UI Echo Wire", type = "tool", typeName = "Recovered item", value = 7, count = 1, source = "recovered" },
+            { id = "ui_black_sand", name = "UI Black Sand", type = "record", typeName = "Recovered item", value = 5, count = 1, source = "recovered" },
+            { id = "ui_glass_tag", name = "UI Glass Tag", type = "relic", typeName = "Recovered item", value = 4, count = 1, source = "recovered" },
+            { id = "ui_cold_coin", name = "UI Cold Coin", type = "tool", typeName = "Recovered item", value = 3, count = 1, source = "recovered" },
+            { id = "ui_spare_signal", name = "UI Spare Signal", type = "record", typeName = "Recovered item", value = 2, count = 1, source = "recovered" },
+        }, "recovered")
+        RefreshDeployModulePage("warehouse")
+        SetDeployFilter("recovered")
+
+        local warehouseLayout = GetDeployTerminalLayoutInfo()
+        local rects = GetDeployTerminalHitRects()
+        assertTrue(warehouseLayout.actionRectCount > 0, "warehouse cards should expose action hit rects")
+        assertTrue(#rects.actions > 0, "debug action rect copy should include sell buttons")
+
+        local sellRect = nil
+        for _, rect in ipairs(rects.actions) do
+            if rect.action == "sell" then
+                sellRect = rect
+                break
+            end
+        end
+        assertTrue(sellRect ~= nil, "warehouse should register a sell action rect")
+        assertTrue(UILayout.ContainsLogic(sellRect.x + 1, sellRect.y + 1, layout.cardArea), "sell rect should be inside card area")
+        assertEq(sellRect.w, 54, "sell click rect width should match button visual width")
+        assertEq(sellRect.h, 24, "sell click rect height should match button visual height")
+
+        local beforeGold = MetaProgress.GetGold()
+        local beforeCount = MetaProgress.GetWarehouseItemCount(sellRect.itemId)
+        local dispatched, dispatchResult = HandleDeployCardClickAt(sellRect.x + 1, sellRect.y + 1)
+        assertTrue(dispatched, "clicking sell rect should dispatch")
+        assertTrue(dispatchResult and dispatchResult.gold and dispatchResult.gold > 0, "sell dispatch should return sale receipt")
+        assertEq(MetaProgress.GetGold(), beforeGold + dispatchResult.gold, "UI sell dispatch should increase gold")
+        assertEq(MetaProgress.GetWarehouseItemCount(sellRect.itemId), beforeCount - 1, "UI sell dispatch should reduce warehouse count")
+
+        RefreshDeployModulePage("warehouse")
+        SetDeployFilter("all")
+        ScrollDeployCards(1)
+        local scrolledLayout = GetDeployTerminalLayoutInfo()
+        local scrolledRects = GetDeployTerminalHitRects()
+        assertTrue(scrolledLayout.actionRectCount > 0, "scrolled warehouse should keep action rects")
+        for _, rect in ipairs(scrolledRects.actions) do
+            assertTrue(UILayout.ContainsLogic(rect.x + 1, rect.y + 1, layout.cardArea), "scrolled action rect should stay in card area")
+        end
+    end)
 
     local function assertNoAbsoluteBackgrounds(node)
         if not node then return end

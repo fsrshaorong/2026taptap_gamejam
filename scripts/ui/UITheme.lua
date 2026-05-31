@@ -174,7 +174,7 @@ end
 local function drawFallback(vg, x, y, w, h, opts)
     opts = opts or {}
     local fill = opts.fill or { 20, 28, 38, 220 }
-    local border = opts.border or { 90, 160, 190, 150 }
+    local border = opts.border or { 70, 74, 70, 150 }
     local radius = opts.radius or 6
     nvgBeginPath(vg)
     nvgRoundedRect(vg, x, y, w, h, radius)
@@ -219,8 +219,8 @@ end
 
 function UITheme.DrawImageButton(key, x, y, w, h, opts)
     opts = opts or {}
-    opts.fill = opts.fill or (opts.hot and { 35, 78, 96, 230 } or { 18, 28, 40, 230 })
-    opts.border = opts.border or (opts.hot and { 160, 230, 230, 230 } or { 90, 160, 190, 150 })
+    opts.fill = opts.fill or (opts.hot and { 62, 54, 36, 230 } or { 18, 24, 28, 230 })
+    opts.border = opts.border or (opts.hot and { 214, 174, 86, 230 } or { 70, 74, 70, 150 })
     return UITheme.DrawImage(key, x, y, w, h, opts)
 end
 

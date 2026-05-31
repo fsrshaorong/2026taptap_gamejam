@@ -19,19 +19,19 @@ local LAYOUT = {
     sidebarWidthRatio = 0.28,
     sidebarMinW = 272,
     sidebarMaxW = 360,
-    sidebarPadding = 12,
+    sidebarPadding = 14,
 
     -- 底部栏
-    bottomBarH = 68,
+    bottomBarH = 60,
 
     -- 右上协议面板
     protocolW = 196,
     protocolH = 132,
-    protocolMargin = 10,
+    protocolMargin = 14,
 
     -- 面板样式
     panelBg = { 10, 14, 22, 200 },
-    panelBorder = { 50, 70, 110, 140 },
+    panelBorder = { 60, 64, 58, 140 },
     panelRadius = 6,
 }
 
@@ -424,9 +424,9 @@ end
 function HUD.DrawNearbyDanger(vg, layout, context)
     local d = layout.danger
     local adjacent = context.nearbyMineRisk or context.adjacent or 0
-    local state = context.mineRiskState or (context.roomType == "mine" and "danger") or (adjacent >= 3 and "warning") or "normal"
+    local state = context.mineRiskState or (context.roomType == "mine" and "danger") or (adjacent >= 2 and "warning") or "normal"
     local triggered = state == "danger"
-    local color = triggered and { 255, 100, 78 } or (state == "warning" and { 255, 154, 78 } or { 176, 204, 176 })
+    local color = triggered and { 255, 100, 78 } or (state == "warning" and { 230, 166, 72 } or { 160, 190, 166 })
     local text = triggered and "周围雷险: 已触发" or (GameText.hud.nearbyDanger .. adjacent)
     local tagX = d.x + d.w / 2 - 110
     local tagW = 220
@@ -465,7 +465,7 @@ function HUD.DrawBottomBar(vg, layout, context)
     if hint ~= "" then
         nvgFontSize(vg, 13)
         nvgFillColor(vg, nvgRGBA(255, 240, 180, 255))
-        nvgText(vg, b.x + b.w / 2, b.y + 15, hint)
+        nvgText(vg, b.x + b.w / 2, b.y + 13, textShort(hint, 54))
     end
 
     local consumables = context.consumables or {}
@@ -478,13 +478,13 @@ function HUD.DrawBottomBar(vg, layout, context)
         { key = "T", image = "hud.key.t", label = "事件" },
         { key = "Q", image = "hud.key.q", label = "止血贴 x" .. bandageCount },
     }
-    local groupW = 112
+    local groupW = math.max(92, math.min(112, math.floor((b.w - 80) / #commands)))
     local totalW = #commands * groupW
     local startX = b.x + (b.w - totalW) / 2
     for index, command in ipairs(commands) do
         local x = startX + (index - 1) * groupW
         if command.image then
-            UITheme.DrawImage(command.image, x, b.y + 36, 20, 20, {
+            UITheme.DrawImage(command.image, x, b.y + 31, 20, 20, {
                 vg = vg,
                 fill = { 22, 34, 42, 230 },
                 border = { 100, 150, 160, 180 },
@@ -492,7 +492,7 @@ function HUD.DrawBottomBar(vg, layout, context)
             })
         else
             nvgBeginPath(vg)
-            nvgRoundedRect(vg, x, b.y + 36, 34, 20, 3)
+            nvgRoundedRect(vg, x, b.y + 31, 34, 20, 3)
             nvgFillColor(vg, nvgRGBA(22, 34, 42, 230))
             nvgFill(vg)
             nvgStrokeColor(vg, nvgRGBA(100, 150, 160, 180))
@@ -500,12 +500,12 @@ function HUD.DrawBottomBar(vg, layout, context)
             nvgStroke(vg)
             nvgFontSize(vg, 9)
             nvgFillColor(vg, nvgRGBA(210, 226, 226, 240))
-            nvgText(vg, x + 17, b.y + 46, command.key)
+            nvgText(vg, x + 17, b.y + 41, command.key)
         end
         nvgFontSize(vg, 10)
         nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
         nvgFillColor(vg, nvgRGBA(164, 184, 192, 225))
-        nvgText(vg, x + (command.image and 26 or 40), b.y + 46, command.label)
+        nvgText(vg, x + (command.image and 26 or 40), b.y + 41, textShort(command.label, 8))
     end
 
     -- 右侧: 撤离距离
@@ -514,7 +514,7 @@ function HUD.DrawBottomBar(vg, layout, context)
         nvgFontSize(vg, 11)
         nvgFillColor(vg, nvgRGBA(100, 255, 150, 230))
         local dirText = context.exitDirection or ""
-        nvgText(vg, b.x + b.w - 14, b.y + 15,
+        nvgText(vg, b.x + b.w - 14, b.y + 13,
             "撤离信标 " .. dirText .. " 距离 " .. context.exitDistance)
     end
 end

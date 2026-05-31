@@ -163,6 +163,7 @@ local deployTerminal = {
     selectedKey = nil,
     cards = {},
     hitRects = {},
+    actionRects = {},
 }
 local currentRunConfig = nil
 
@@ -188,6 +189,7 @@ local DEPLOY_LAYOUT = {
     baseH = 864,
     safe = DEPLOY_SAFE,
     gap = DEPLOY_GAP,
+    rootPanel = { x = 0, y = 0, w = 1536, h = 864 },
     shell = { x = 176, y = 96, w = 1328, h = 736 },
     back = { x = 32, y = 24, w = 146, h = 42 },
     nav = { x = 330, y = 24, w = 876, h = 46 },
@@ -202,6 +204,14 @@ local DEPLOY_LAYOUT = {
     rowsVisible = 2,
     summary = { x = 1166, y = 148, w = 326, h = 286 },
     confirm = DEPLOY_CONFIRM,
+}
+
+local DEPLOY_CARD_ACTION_LAYOUT = {
+    left = 10,
+    top = 126,
+    w = 54,
+    h = 24,
+    gap = 5,
 }
 
 local JUDGE_DEMO_MAP = {
@@ -271,6 +281,7 @@ function GetDeployTerminalLayoutInfo()
     return {
         safe = DEPLOY_LAYOUT.safe,
         gap = DEPLOY_LAYOUT.gap,
+        rootPanel = DEPLOY_LAYOUT.rootPanel,
         shell = DEPLOY_LAYOUT.shell,
         back = DEPLOY_LAYOUT.back,
         nav = DEPLOY_LAYOUT.nav,
@@ -285,7 +296,27 @@ function GetDeployTerminalLayoutInfo()
         filter = deployTerminal.filter,
         cardCount = #(deployTerminal.cards or {}),
         hitRectCount = #(deployTerminal.hitRects or {}),
+        actionRectCount = #(deployTerminal.actionRects or {}),
     }
+end
+
+function GetDeployTerminalHitRects()
+    local copy = { cards = {}, actions = {} }
+    for _, rect in ipairs(deployTerminal.hitRects or {}) do
+        table.insert(copy.cards, {
+            x = rect.x, y = rect.y, w = rect.w, h = rect.h,
+            key = rect.key,
+        })
+    end
+    for _, rect in ipairs(deployTerminal.actionRects or {}) do
+        table.insert(copy.actions, {
+            x = rect.x, y = rect.y, w = rect.w, h = rect.h,
+            key = rect.key,
+            action = rect.action,
+            itemId = rect.itemId,
+        })
+    end
+    return copy
 end
 
 function GetDeployTerminalModules()
@@ -976,11 +1007,31 @@ local function buildDeployCards(module)
     return buildTalentCards()
 end
 
+local function getDeployActionButtonRect(cardRect, actionIndex)
+    local layout = DEPLOY_CARD_ACTION_LAYOUT
+    return {
+        x = cardRect.x + layout.left + (actionIndex - 1) * (layout.w + layout.gap),
+        y = cardRect.y + layout.top,
+        w = layout.w,
+        h = layout.h,
+    }
+end
+
+local function addDeployActionRects(card, cardRect)
+    for actionIndex, action in ipairs(card.actions or {}) do
+        local rect = getDeployActionButtonRect(cardRect, actionIndex)
+        rect.key = cardKey(card)
+        rect.action = action.action
+        rect.itemId = card.item and card.item.id or card.id
+        table.insert(deployTerminal.actionRects, rect)
+    end
+end
+
 local function makeDeployActionButton(card, action)
     return UI.Button {
         text = action.text,
-        width = 54,
-        height = 24,
+        width = DEPLOY_CARD_ACTION_LAYOUT.w,
+        height = DEPLOY_CARD_ACTION_LAYOUT.h,
         variant = action.variant or "default",
         onClick = function()
             OnDeployCardAction(cardKey(card), action.action)
@@ -1008,7 +1059,7 @@ local function makeDeployCard(card, index)
         backgroundColor = selected and { 42, 72, 82, 225 } or { 22, 31, 42, 218 },
         borderRadius = 6,
         borderWidth = selected and 2 or 1,
-        borderColor = selected and { 150, 235, 230, 240 } or { 72, 126, 150, 150 },
+        borderColor = selected and { 214, 174, 86, 240 } or { 70, 74, 70, 150 },
         children = {
             UI.Panel {
                 flexDirection = "row",
@@ -1036,7 +1087,15 @@ local function makeDeployCard(card, index)
             UI.Label { text = textShort(card.desc, 34), fontSize = 10, fontColor = { 154, 168, 178, 215 } },
             UI.Label { text = textShort(card.countLine, 34), fontSize = 10, fontColor = { 220, 194, 126, 230 } },
             UI.Label { text = textShort(card.status, 34), fontSize = 10, fontColor = { 135, 225, 176, 230 } },
-            UI.Panel { flexDirection = "row", gap = 5, children = actions },
+            UI.Panel {
+                position = "absolute",
+                left = DEPLOY_CARD_ACTION_LAYOUT.left,
+                top = DEPLOY_CARD_ACTION_LAYOUT.top,
+                height = DEPLOY_CARD_ACTION_LAYOUT.h,
+                flexDirection = "row",
+                gap = DEPLOY_CARD_ACTION_LAYOUT.gap,
+                children = actions,
+            },
         },
     }
 end
@@ -1085,7 +1144,7 @@ local function refreshDeployModuleNav()
             backgroundImage = asset.image,
             backgroundColor = active and { 62, 104, 106, 245 } or { 20, 30, 36, 220 },
             borderWidth = active and 2 or 1,
-            borderColor = active and { 220, 180, 88, 245 } or { 78, 120, 132, 170 },
+            borderColor = active and { 220, 180, 88, 245 } or { 70, 74, 70, 170 },
             variant = active and "primary" or "default",
             onClick = function() OpenDeployModule(moduleId) end,
         })
@@ -1097,32 +1156,64 @@ function SelectDeployCard(key)
     RefreshDeployModulePage(deployTerminal.module)
 end
 
-function OnDeployCardAction(key, action)
+local function findDeployCard(key, itemId)
     local card = nil
     for _, c in ipairs(deployTerminal.cards or {}) do
-        if cardKey(c) == key then
+        local item = c.item or {}
+        if (key and cardKey(c) == key) or (itemId and item.id == itemId) then
             card = c
             break
         end
     end
-    if not card then return end
-    deployTerminal.selectedKey = key
+    return card
+end
+
+function HandleDeployCardAction(action)
+    action = action or {}
+    local actionType = action.type or action.action
+    local card = findDeployCard(action.key, action.itemId)
+    if not card then return false, "card_not_found" end
+    deployTerminal.selectedKey = cardKey(card)
     local item = card.item or {}
-    if action == "sell" then
-        OnSellWarehouseItem(item.id, 1)
-    elseif action == "equip" or action == "equip_or_buy" then
+    if actionType == "sell" then
+        return OnSellWarehouseItem(item.id, action.count or 1)
+    elseif actionType == "equip" or actionType == "equip_or_buy" then
         OnEquipItemClick(item.id)
-    elseif action == "buy" then
+    elseif actionType == "buy" then
         OnBuyConsumable(item.id, 1)
-    elseif action == "loadout_inc" then
+    elseif actionType == "loadout_inc" then
         OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) + 1)
-    elseif action == "loadout_dec" then
+    elseif actionType == "loadout_dec" then
         OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) - 1)
-    elseif action == "unlock" and card.talent then
+    elseif actionType == "unlock" and card.talent then
         OnTalentClick(card.talent.id)
     else
         RefreshDeployModulePage(deployTerminal.module)
     end
+    return true
+end
+
+function OnDeployCardAction(key, action)
+    return HandleDeployCardAction({ key = key, type = action })
+end
+
+function HandleDeployCardClickAt(lx, ly)
+    for _, rect in ipairs(deployTerminal.actionRects or {}) do
+        if UILayout.ContainsLogic(lx, ly, rect) then
+            return HandleDeployCardAction({
+                key = rect.key,
+                type = rect.action,
+                itemId = rect.itemId,
+            })
+        end
+    end
+    for _, rect in ipairs(deployTerminal.hitRects or {}) do
+        if UILayout.ContainsLogic(lx, ly, rect) then
+            SelectDeployCard(rect.key)
+            return true, "select"
+        end
+    end
+    return false, "miss"
 end
 
 function ScrollDeployCards(delta)
@@ -1165,7 +1256,7 @@ function RefreshDeployModulePage(module)
                 height = 26,
                 backgroundImage = UITheme.GetRegisteredPath(active and "deploy.filter.active" or "deploy.filter.inactive"),
                 borderWidth = active and 2 or 1,
-                borderColor = active and { 214, 174, 86, 245 } or { 76, 116, 128, 170 },
+                borderColor = active and { 214, 174, 86, 245 } or { 70, 74, 70, 170 },
                 variant = active and "primary" or "default",
                 onClick = function() SetDeployFilter(filter.id) end,
             })
@@ -1176,6 +1267,7 @@ function RefreshDeployModulePage(module)
     if not grid then return end
     grid:RemoveAllChildren()
     deployTerminal.hitRects = {}
+    deployTerminal.actionRects = {}
 
     if #deployTerminal.cards == 0 then
         grid:AddChild(UI.Label { text = "暂无", fontSize = 14, fontColor = { 160, 175, 185, 230 } })
@@ -1196,6 +1288,7 @@ function RefreshDeployModulePage(module)
                     key = cardKey(deployTerminal.cards[i]),
                 }
                 table.insert(deployTerminal.hitRects, rect)
+                addDeployActionRects(deployTerminal.cards[i], rect)
                 table.insert(rowChildren, makeDeployCard(deployTerminal.cards[i], i))
             end
             grid:AddChild(UI.Panel { flexDirection = "row", gap = DEPLOY_LAYOUT.cardGap, children = rowChildren })
@@ -1523,6 +1616,7 @@ function OnSellWarehouseItem(itemId, count)
     end
     RefreshWarehousePage()
     RefreshTerminalSummary()
+    return ok, result
 end
 
 function OnSetWarehouseFilter(filter)
@@ -3730,7 +3824,7 @@ function CreateUI()
                         backgroundColor = { 12, 22, 28, 238 },
                         borderRadius = 10,
                         borderWidth = 2,
-                        borderColor = { 78, 120, 132, 190 },
+                        borderColor = { 70, 74, 70, 190 },
                     },
                     UI.Panel {
                         position = "absolute",
@@ -3748,7 +3842,7 @@ function CreateUI()
                         height = 24,
                         backgroundColor = { 18, 35, 42, 245 },
                         borderWidth = 1,
-                        borderColor = { 88, 145, 154, 190 },
+                        borderColor = { 78, 76, 64, 190 },
                     },
                     UI.Label {
                         id = "deployActiveTabLabel",
@@ -3797,7 +3891,7 @@ function CreateUI()
                         backgroundColor = { 18, 26, 36, 232 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 90, 160, 210, 120 },
+                        borderColor = { 70, 74, 70, 120 },
                         children = {
                             UI.Label { text = "出勤准备", fontSize = 20, fontColor = { 180, 230, 255, 255 } },
                             UI.Label { id = "deployGoldLabel", text = GameText.meta.account .. "0", fontSize = 13, fontColor = { 255, 220, 100, 240 } },
@@ -3817,7 +3911,7 @@ function CreateUI()
                         backgroundColor = { 12, 20, 28, 246 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 90, 160, 210, 160 },
+                        borderColor = { 70, 74, 70, 160 },
                         children = {
                             UI.Panel {
                                 position = "absolute",
@@ -3847,7 +3941,7 @@ function CreateUI()
                                 backgroundColor = { 10, 18, 25, 238 },
                                 borderRadius = 4,
                                 borderWidth = 1,
-                                borderColor = { 84, 138, 148, 170 },
+                                borderColor = { 70, 74, 70, 170 },
                                 children = {
                                     UI.Label { id = "deployCardDetailTitleLabel", text = "当前选中: 暂无", fontSize = 13, fontColor = { 206, 238, 232, 245 } },
                                     UI.Label { id = "deployCardDetailLabel", text = "点击卡片查看效果与状态。滚轮只作用于中央卡片区。", fontSize = 11, fontColor = { 160, 190, 200, 230 } },
@@ -3870,7 +3964,7 @@ function CreateUI()
                         backgroundColor = { 14, 24, 32, 232 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 110, 190, 180, 120 },
+                        borderColor = { 78, 76, 64, 120 },
                         children = {
                             UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
                             UI.Label { id = "deployLoadoutLabel", text = "当前作业装备 无 | 本次带入 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
@@ -3890,7 +3984,7 @@ function CreateUI()
                         backgroundColor = { 10, 20, 28, 242 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 110, 190, 180, 155 },
+                        borderColor = { 78, 76, 64, 155 },
                         children = {
                             UI.Label { text = "出勤摘要 / 待命", fontSize = 16, left = 21, top = 1, fontColor = { 210, 240, 230, 255 } },
                             UI.Label { id = "deploySummaryEquipmentLabel", text = "装备: 未配置作业装备", fontSize = 12, left = 20, top = 1, fontColor = { 190, 210, 230, 230 } },
@@ -3908,7 +4002,7 @@ function CreateUI()
                         backgroundColor = { 12, 24, 29, 238 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 112, 174, 164, 180 },
+                        borderColor = { 78, 76, 64, 180 },
                     },
                     UI.Panel {
                         position = "absolute",
@@ -4076,7 +4170,7 @@ function CreateUI()
                 backgroundColor = { 20, 25, 40, 240 },
                 borderRadius = 14,
                 borderWidth = 1,
-                borderColor = { 60, 120, 180, 120 },
+                borderColor = { 70, 74, 70, 120 },
                 children = {
                     UI.Panel {
                         flexDirection = "row",
@@ -4224,7 +4318,7 @@ function CreateUI()
                 backgroundColor = { 20, 25, 40, 240 },
                 borderRadius = 14,
                 borderWidth = 1,
-                borderColor = { 80, 140, 190, 120 },
+                borderColor = { 70, 74, 70, 120 },
                 children = {
                     UI.Panel {
                         flexDirection = "row",
@@ -4296,7 +4390,7 @@ function CreateUI()
                 backgroundColor = { 18, 28, 34, 242 },
                 borderRadius = 14,
                 borderWidth = 1,
-                borderColor = { 90, 150, 170, 120 },
+                borderColor = { 70, 74, 70, 120 },
                 children = {
                     UI.Panel {
                         flexDirection = "row",
@@ -4580,7 +4674,7 @@ function CreateUI()
                 backgroundColor = { 12, 30, 45, 240 },
                 borderRadius = 12,
                 borderWidth = 1,
-                borderColor = { 60, 160, 220, 120 },
+                borderColor = { 70, 74, 70, 120 },
                 alignItems = "center",
                 children = {
                     UI.Label {
@@ -5015,12 +5109,8 @@ function HandleMouseDown(eventType, eventData)
 
     if phase == PHASE.MENU and button == MOUSEB_LEFT and menuMode == "deploy" then
         local lx, ly = UILayout.ToLogic(mx, my)
-        for _, rect in ipairs(deployTerminal.hitRects or {}) do
-            if UILayout.ContainsLogic(lx, ly, rect) then
-                SelectDeployCard(rect.key)
-                return
-            end
-        end
+        local handled = HandleDeployCardClickAt(lx, ly)
+        if handled then return end
     end
 
     -- 设置面板点击
