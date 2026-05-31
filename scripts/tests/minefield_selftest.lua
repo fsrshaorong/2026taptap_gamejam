@@ -1062,7 +1062,7 @@ local function testEquipmentRequiresEquippedForBonus()
 
         local equippedArmor = MetaProgress.ToggleEquip("armor")
         assertTrue(equippedArmor, "armor equip should succeed")
-        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "equipped armor should add max HP")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, Balance.shop.armor.bonusHP, "equipped armor should add max HP")
 
         local boughtWhetstone = MetaProgress.BuyItem("whetstone")
         assertTrue(boughtWhetstone, "whetstone purchase should succeed")
@@ -1070,7 +1070,7 @@ local function testEquipmentRequiresEquippedForBonus()
 
         local equippedWhetstone = MetaProgress.ToggleEquip("whetstone")
         assertTrue(equippedWhetstone, "whetstone equip should succeed")
-        assertEq(MetaProgress.GetEquipBonus().bonusPower, 5, "equipped whetstone should add power")
+        assertEq(MetaProgress.GetEquipBonus().bonusPower, Balance.shop.whetstone.bonusPower, "equipped whetstone should add power")
     end)
 end
 
@@ -1102,7 +1102,7 @@ local function testMetaProgressGrowthEffectsStillApply()
         assertTrue(bought, "should buy armor with extracted gold")
         local equipped = MetaProgress.ToggleEquip("armor")
         assertTrue(equipped, "should equip bought armor")
-        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "armor should still grant HP")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, Balance.shop.armor.bonusHP, "armor should still grant HP")
 
         local unlocked = MetaProgress.UnlockTalent("talent_mine")
         assertTrue(unlocked, "should unlock mine talent with extracted gold")
