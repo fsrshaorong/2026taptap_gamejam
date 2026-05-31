@@ -181,7 +181,7 @@ local DEPLOY_LAYOUT = {
     baseH = 864,
     back = { x = 24, y = 22, w = 146, h = 42 },
     nav = { x = 356, y = 22, w = 892, h = 46 },
-    central = { x = 216, y = 140, w = 870, h = 648 },
+    central = { x = 212, y = 140, w = 934, h = 648 },
     cardArea = { x = 244, y = 288, w = 812, h = 338 },
     cardW = 236,
     cardH = 142,
@@ -3625,7 +3625,7 @@ function CreateUI()
                 id = "menuPage_deployOverview",
                 visible = false,
                 position = "absolute",
-                top = 0, left = 0, right = 0, bottom = 0,
+                top = 1, left = -1, right = 1, bottom = -1,
                 backgroundColor = { 6, 10, 14, 245 },
                 children = {
                     UI.Button {
@@ -3702,14 +3702,14 @@ function CreateUI()
                                 alignItems = "center",
                                 width = "100%",
                                 children = {
-                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, fontColor = { 210, 238, 245, 255 } },
+                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, width = 67, left = 63, fontColor = { 210, 238, 245, 255 } },
                                     UI.Label { id = "deployModuleMetaLabel", text = GameText.meta.account .. "0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
                                 },
                             },
-                            UI.Panel { id = "deployFilterBar", flexDirection = "row", flexWrap = "wrap", gap = 7, width = "100%", children = {} },
-                            UI.Panel { id = "deployCardGrid", gap = 12, width = "100%", height = 330, children = {} },
-                            UI.Label { id = "deployCardDetailLabel", text = "点击卡片可查看详情；滚轮只滚动中央显示屏内卡片。", fontSize = 11, fontColor = { 160, 190, 200, 230 } },
-                            UI.Label { id = "deployScrollLabel", text = "滚动 0/0", fontSize = 10, fontColor = { 120, 158, 170, 220 } },
+                            UI.Panel { id = "deployFilterBar", flexDirection = "row", flexWrap = "wrap", gap = 7, width = "87.2%", left = 67, children = {} },
+                            UI.Panel { id = "deployCardGrid", gap = 12, width = "87.9%", height = 325, left = 60, top = 5, children = {} },
+                            UI.Label { id = "deployCardDetailLabel", text = "点击卡片可查看详情；滚轮只滚动中央显示屏内卡片。", fontSize = 11, left = 72, top = 23, fontColor = { 160, 190, 200, 230 } },
+                            UI.Label { id = "deployScrollLabel", text = "滚动 0/0", fontSize = 10, width = 68, height = 31, left = 74, top = 15, fontColor = { 120, 158, 170, 220 } },
                         },
                     },
                     UI.Panel {
@@ -3747,10 +3747,10 @@ function CreateUI()
                         borderWidth = 1,
                         borderColor = { 110, 190, 180, 155 },
                         children = {
-                            UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
-                            UI.Label { id = "deploySummaryEquipmentLabel", text = "已带作业装备: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { id = "deploySummaryConsumableLabel", text = "已带消耗品: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                            UI.Label { text = "出勤摘要", fontSize = 16, left = 21, top = 1, fontColor = { 210, 240, 230, 255 } },
+                            UI.Label { id = "deploySummaryEquipmentLabel", text = "已带作业装备: 无", fontSize = 12, left = 20, top = 1, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryConsumableLabel", text = "已带消耗品: 无", fontSize = 12, left = 22, top = 3, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 无", fontSize = 11, left = 23, top = 11, fontColor = { 150, 190, 175, 220 } },
                         },
                     },
                     UI.Panel {
