@@ -171,7 +171,7 @@ local DEPLOY_MODULES = {
     { id = "requisition", label = "后勤申领" },
     { id = "loadout", label = "出勤配置" },
     { id = "recovery", label = "回收资历" },
-    { id = "talent", label = "回收资历" },
+    { id = "talent", label = "天赋" },
 }
 
 local DEPLOY_FILTERS = nil
@@ -687,7 +687,7 @@ local DEPLOY_MODULE_NAMES = {
     requisition = "后勤申领",
     loadout = "出勤配置",
     recovery = "回收资历",
-    talent = "回收资历",
+    talent = "天赋",
 }
 
 local function setLabelText(id, text)
@@ -813,10 +813,10 @@ local function buildWarehouseCards()
     local cards = {}
     for _, item in ipairs(list) do
         if itemMatchesDeployFilter(item, deployTerminal.filter) then
-            local status = item.isEquipped and "已配置" or ((item.loadoutCount or 0) > 0 and ("已带入 x" .. item.loadoutCount) or (item.canSell and "可出售" or "不可出售"))
+            local status = item.isEquipped and "已装备" or ((item.loadoutCount or 0) > 0 and ("已带入 x" .. item.loadoutCount) or (item.canSell and "可出售" or "不可出售"))
             local actions = {}
             if item.canSell then table.insert(actions, { text = "出售", action = "sell" }) end
-            if item.type == "equipment" then table.insert(actions, { text = item.isEquipped and "卸下" or "配置", action = "equip" }) end
+            if item.type == "equipment" then table.insert(actions, { text = item.isEquipped and "卸下" or "装备", action = "equip" }) end
             if item.type == "consumable" then
                 table.insert(actions, { text = "-", action = "loadout_dec" })
                 table.insert(actions, { text = "+", action = "loadout_inc" })
@@ -838,13 +838,13 @@ local function buildRequisitionCards()
         if itemMatchesDeployFilter(item, deployTerminal.filter) then
             local owned = item.type == "equipment" and (item.owned and 1 or 0) or (item.count or 0)
             local status = MetaProgress.GetGold() >= (item.price or 0) and "可申领" or "结算币不足"
-            local buttonText = "申领"
+            local buttonText = "购买"
             if item.type == "equipment" then
-                status = item.owned and (item.isEquipped and "已配置" or "已申领") or status
-                buttonText = item.owned and (item.isEquipped and "卸下" or "配置") or "申领"
+                status = item.owned and (item.isEquipped and "已装备" or "已拥有") or status
+                buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
             end
             table.insert(cards, makeCard("requisition", item, {
-                countLine = "持有 x" .. owned .. " / 申领价 " .. (item.price or 0) .. " 结算币",
+                countLine = "拥有 x" .. owned .. " / 价格 " .. (item.price or 0) .. " 结算币",
                 status = status,
                 actions = {
                     { text = "-", action = "noop" },
@@ -871,8 +871,8 @@ local function buildLoadoutCards()
                 actions = { { text = "-", action = "loadout_dec" }, { text = "+", action = "loadout_inc" } }
             else
                 countLine = "拥有 x" .. (item.owned and 1 or 0)
-                status = item.isEquipped and "已配置" or (item.owned and "未配置" or "未申领")
-                actions = { { text = item.isEquipped and "卸下" or "配置", action = "equip" } }
+                status = item.isEquipped and "已装备" or (item.owned and "未装备" or "未申领")
+                actions = { { text = item.isEquipped and "卸下" or "装备", action = "equip" } }
             end
             table.insert(cards, makeCard("loadout", item, {
                 countLine = countLine,
@@ -939,7 +939,7 @@ local function buildTalentCards()
                 title = talent.name,
                 icon = "*",
                 iconImage = "ui/deploy/ui_frame_highlight.png",
-                typeLine = (talent.direction or "回收资历") .. " / " .. talentFilterTag(talent),
+                typeLine = (talent.direction or "天赋") .. " / " .. talentFilterTag(talent),
                 effect = talent.desc,
                 desc = unlocked and "当前效果已生效" or "解锁后在正式局生效",
                 countLine = "Lv." .. (unlocked and "1" or "0") .. "/1",
@@ -1180,15 +1180,15 @@ function RefreshEquipPage()
         local btnVariant = "default"
 
         if equipped then
-            statusText = "[已配置]"
+            statusText = "[已装备]"
             btnText = "卸下"
         elseif owned then
             statusText = "已拥有"
-            btnText = "配置"
+            btnText = "装备"
             btnVariant = "primary"
         else
             statusText = item.price .. " 结算币"
-            btnText = "申领"
+            btnText = "购买"
             btnVariant = "primary"
         end
 
@@ -1487,11 +1487,11 @@ function RefreshRequisitionPage()
         local statusText = ""
         local buttonText = ""
         if isEquipment then
-            statusText = item.isEquipped and "[已配置]" or (item.owned and "已申领" or (item.price .. " 结算币"))
-            buttonText = item.owned and (item.isEquipped and "卸下" or "配置") or "申领"
+            statusText = item.isEquipped and "[已装备]" or (item.owned and "已拥有" or (item.price .. " 结算币"))
+            buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
         else
             statusText = "库存 " .. item.count .. " | 带入 " .. item.loadoutCount .. " | " .. item.price .. " 结算币"
-            buttonText = "申领1"
+            buttonText = "购买1"
         end
 
         listPanel:AddChild(UI.Panel {
@@ -1561,7 +1561,7 @@ function RefreshLoadoutPage()
         local isConsumable = item.type == "consumable"
         local statusText = isConsumable
             and ("库存 " .. item.count .. " | 带入 " .. item.loadoutCount)
-            or (item.isEquipped and "[已配置]" or (item.owned and "已申领" or "未申领"))
+            or (item.isEquipped and "[已装备]" or (item.owned and "未装备" or "未申领"))
 
         listPanel:AddChild(UI.Panel {
             flexDirection = "row",
@@ -1620,7 +1620,7 @@ function RefreshLoadoutPage()
                             fontColor = { 200, 200, 210, 210 },
                         },
                         UI.Button {
-                            text = item.isEquipped and "卸下" or "配置",
+                            text = item.isEquipped and "卸下" or "装备",
                             width = 60,
                             height = 28,
                             onClick = function()
@@ -3655,7 +3655,7 @@ function CreateUI()
                             UI.Button { text = "后勤申领", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
                             UI.Button { text = "出勤配置", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
                             UI.Button { text = "回收资历", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
-                            UI.Button { text = "回收资历", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
+                            UI.Button { text = "天赋", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
                         },
                     },
                     UI.Panel {
@@ -3702,7 +3702,7 @@ function CreateUI()
                                 alignItems = "center",
                                 width = "100%",
                                 children = {
-                                    UI.Label { id = "deployModuleTitleLabel", text = "回收资历", fontSize = 20, fontColor = { 210, 238, 245, 255 } },
+                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, fontColor = { 210, 238, 245, 255 } },
                                     UI.Label { id = "deployModuleMetaLabel", text = GameText.meta.account .. "0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
                                 },
                             },
@@ -4238,7 +4238,7 @@ function CreateUI()
                             UI.Button { text = "后勤申领", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
                             UI.Button { text = "出勤配置", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
                             UI.Button { text = "回收资历", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
-                            UI.Button { text = "回收资历", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
+                            UI.Button { text = "天赋", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
                         },
                     },
                     UI.Panel {
