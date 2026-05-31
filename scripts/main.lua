@@ -164,6 +164,9 @@ local deployTerminal = {
     cards = {},
     hitRects = {},
     actionRects = {},
+    filterRects = {},
+    tabRects = {},
+    chromeRects = {},
 }
 local currentRunConfig = nil
 
@@ -179,7 +182,15 @@ local DEPLOY_FILTERS = nil
 
 local DEPLOY_SAFE = 32
 local DEPLOY_GAP = 24
-local DEPLOY_RIGHT_RAIL = { x = 1154, y = 128, w = 350, h = 704 }
+local DEPLOY_ROOT_PANEL = { x = 32, y = 24, w = 1472, h = 808 }
+local DEPLOY_SHELL = { x = DEPLOY_ROOT_PANEL.x, y = DEPLOY_ROOT_PANEL.y, w = DEPLOY_ROOT_PANEL.w, h = DEPLOY_ROOT_PANEL.h }
+local DEPLOY_BACK = { x = DEPLOY_ROOT_PANEL.x + 22, y = DEPLOY_ROOT_PANEL.y + 18, w = 146, h = 42 }
+local DEPLOY_NAV = { x = DEPLOY_ROOT_PANEL.x + 286, y = DEPLOY_ROOT_PANEL.y + 18, w = 876, h = 46 }
+local DEPLOY_CENTRAL = { x = DEPLOY_ROOT_PANEL.x + 28, y = DEPLOY_ROOT_PANEL.y + 104, w = 956, h = 668 }
+local DEPLOY_RIGHT_RAIL = { x = DEPLOY_ROOT_PANEL.x + 1024, y = DEPLOY_ROOT_PANEL.y + 104, w = 416, h = 668 }
+local DEPLOY_CARD_AREA = { x = DEPLOY_CENTRAL.x + 40, y = DEPLOY_CENTRAL.y + 142, w = 876, h = 336 }
+local DEPLOY_DETAIL = { x = DEPLOY_CENTRAL.x + 40, y = DEPLOY_CENTRAL.y + 528, w = 876, h = 112 }
+local DEPLOY_SUMMARY = { x = DEPLOY_RIGHT_RAIL.x + 24, y = DEPLOY_RIGHT_RAIL.y + 28, w = DEPLOY_RIGHT_RAIL.w - 48, h = 304 }
 local DEPLOY_CONFIRM = { w = 217, h = 74 }
 DEPLOY_CONFIRM.x = math.floor(DEPLOY_RIGHT_RAIL.x + (DEPLOY_RIGHT_RAIL.w - DEPLOY_CONFIRM.w) / 2)
 DEPLOY_CONFIRM.y = DEPLOY_RIGHT_RAIL.y + DEPLOY_RIGHT_RAIL.h - DEPLOY_CONFIRM.h - 28
@@ -189,20 +200,21 @@ local DEPLOY_LAYOUT = {
     baseH = 864,
     safe = DEPLOY_SAFE,
     gap = DEPLOY_GAP,
-    rootPanel = { x = 0, y = 0, w = 1536, h = 864 },
-    shell = { x = 176, y = 96, w = 1328, h = 736 },
-    back = { x = 32, y = 24, w = 146, h = 42 },
-    nav = { x = 330, y = 24, w = 876, h = 46 },
-    central = { x = 196, y = 128, w = 932, h = 688 },
+    rootPanel = DEPLOY_ROOT_PANEL,
+    shell = DEPLOY_SHELL,
+    back = DEPLOY_BACK,
+    nav = DEPLOY_NAV,
+    central = DEPLOY_CENTRAL,
     rightRail = DEPLOY_RIGHT_RAIL,
-    cardArea = { x = 224, y = 270, w = 876, h = 336 },
+    cardArea = DEPLOY_CARD_AREA,
+    detail = DEPLOY_DETAIL,
     cardW = 270,
     cardH = 160,
     cardGap = 18,
     rowGap = 16,
     columns = 3,
     rowsVisible = 2,
-    summary = { x = 1166, y = 148, w = 326, h = 286 },
+    summary = DEPLOY_SUMMARY,
     confirm = DEPLOY_CONFIRM,
 }
 
@@ -288,24 +300,37 @@ function GetDeployTerminalLayoutInfo()
         central = DEPLOY_LAYOUT.central,
         rightRail = DEPLOY_LAYOUT.rightRail,
         cardArea = DEPLOY_LAYOUT.cardArea,
+        detail = DEPLOY_LAYOUT.detail,
         summary = DEPLOY_LAYOUT.summary,
         confirm = DEPLOY_LAYOUT.confirm,
         columns = DEPLOY_LAYOUT.columns,
         rowsVisible = DEPLOY_LAYOUT.rowsVisible,
         module = deployTerminal.module,
         filter = deployTerminal.filter,
+        scroll = deployTerminal.scroll,
         cardCount = #(deployTerminal.cards or {}),
         hitRectCount = #(deployTerminal.hitRects or {}),
         actionRectCount = #(deployTerminal.actionRects or {}),
+        filterRectCount = #(deployTerminal.filterRects or {}),
+        tabRectCount = #(deployTerminal.tabRects or {}),
     }
 end
 
+local function copyRect(rect)
+    if not rect then return nil end
+    return { x = rect.x, y = rect.y, w = rect.w, h = rect.h }
+end
+
 function GetDeployTerminalHitRects()
-    local copy = { cards = {}, actions = {} }
+    local copy = { cards = {}, actions = {}, filters = {}, tabs = {}, chrome = {} }
     for _, rect in ipairs(deployTerminal.hitRects or {}) do
         table.insert(copy.cards, {
             x = rect.x, y = rect.y, w = rect.w, h = rect.h,
             key = rect.key,
+            module = rect.module,
+            cardKey = rect.cardKey,
+            visibleIndex = rect.visibleIndex,
+            scrollIndex = rect.scrollIndex,
         })
     end
     for _, rect in ipairs(deployTerminal.actionRects or {}) do
@@ -313,7 +338,41 @@ function GetDeployTerminalHitRects()
             x = rect.x, y = rect.y, w = rect.w, h = rect.h,
             key = rect.key,
             action = rect.action,
+            actionType = rect.actionType,
+            module = rect.module,
+            cardKey = rect.cardKey,
             itemId = rect.itemId,
+            visibleIndex = rect.visibleIndex,
+            scrollIndex = rect.scrollIndex,
+            visualRect = copyRect(rect.visualRect),
+            hitRect = copyRect(rect.hitRect),
+        })
+    end
+    for _, rect in ipairs(deployTerminal.filterRects or {}) do
+        table.insert(copy.filters, {
+            x = rect.x, y = rect.y, w = rect.w, h = rect.h,
+            module = rect.module,
+            filter = rect.filter,
+            actionType = rect.actionType,
+            visualRect = copyRect(rect.visualRect),
+            hitRect = copyRect(rect.hitRect),
+        })
+    end
+    for _, rect in ipairs(deployTerminal.tabRects or {}) do
+        table.insert(copy.tabs, {
+            x = rect.x, y = rect.y, w = rect.w, h = rect.h,
+            module = rect.module,
+            actionType = rect.actionType,
+            visualRect = copyRect(rect.visualRect),
+            hitRect = copyRect(rect.hitRect),
+        })
+    end
+    for _, rect in ipairs(deployTerminal.chromeRects or {}) do
+        table.insert(copy.chrome, {
+            x = rect.x, y = rect.y, w = rect.w, h = rect.h,
+            actionType = rect.actionType,
+            visualRect = copyRect(rect.visualRect),
+            hitRect = copyRect(rect.hitRect),
         })
     end
     return copy
@@ -704,9 +763,9 @@ DEPLOY_FILTERS = {
     },
     talent = {
         { id = "all", label = "全部" },
-        { id = "survival", label = "生存" },
-        { id = "explore", label = "探索" },
-        { id = "profit", label = "收益" },
+        { id = "survival", label = "防护" },
+        { id = "explore", label = "勘测" },
+        { id = "profit", label = "回收" },
         { id = "event", label = "事件" },
     },
 }
@@ -736,9 +795,9 @@ local DEPLOY_MODULE_NAV_ASSETS = {
 }
 
 local TALENT_BRANCH_LABELS = {
-    survival = "生存",
-    explore = "探索",
-    profit = "收益",
+    survival = "防护",
+    explore = "勘测",
+    profit = "回收",
     event = "事件",
 }
 
@@ -1017,13 +1076,36 @@ local function getDeployActionButtonRect(cardRect, actionIndex)
     }
 end
 
-local function addDeployActionRects(card, cardRect)
+local function makeDeployInteractiveRect(rect, fields)
+    fields = fields or {}
+    local hitRect = {
+        x = rect.x,
+        y = rect.y,
+        w = rect.w,
+        h = rect.h,
+    }
+    for key, value in pairs(fields) do
+        hitRect[key] = value
+    end
+    hitRect.visualRect = copyRect(rect)
+    hitRect.hitRect = copyRect(rect)
+    return hitRect
+end
+
+local function addDeployActionRects(card, cardRect, visibleIndex, scrollIndex)
     for actionIndex, action in ipairs(card.actions or {}) do
         local rect = getDeployActionButtonRect(cardRect, actionIndex)
-        rect.key = cardKey(card)
-        rect.action = action.action
-        rect.itemId = card.item and card.item.id or card.id
-        table.insert(deployTerminal.actionRects, rect)
+        local key = cardKey(card)
+        table.insert(deployTerminal.actionRects, makeDeployInteractiveRect(rect, {
+            module = card.module,
+            key = key,
+            cardKey = key,
+            action = action.action,
+            actionType = action.action,
+            itemId = card.item and card.item.id or card.id,
+            visibleIndex = visibleIndex,
+            scrollIndex = scrollIndex,
+        }))
     end
 end
 
@@ -1082,11 +1164,10 @@ local function makeDeployCard(card, index)
                     },
                 },
             },
-            UI.Label { text = textShort(card.typeLine, 32), fontSize = 11, fontColor = { 160, 190, 200, 230 } },
-            UI.Label { text = textShort(card.effect, 34), fontSize = 11, fontColor = { 218, 226, 194, 235 } },
-            UI.Label { text = textShort(card.desc, 34), fontSize = 10, fontColor = { 154, 168, 178, 215 } },
-            UI.Label { text = textShort(card.countLine, 34), fontSize = 10, fontColor = { 220, 194, 126, 230 } },
-            UI.Label { text = textShort(card.status, 34), fontSize = 10, fontColor = { 135, 225, 176, 230 } },
+            UI.Label { text = textShort(card.typeLine, 30), width = 248, fontSize = 11, fontColor = { 160, 190, 200, 230 } },
+            UI.Label { text = textShort(card.effect ~= "" and card.effect or card.desc, 30), width = 248, fontSize = 11, fontColor = { 218, 226, 194, 235 } },
+            UI.Label { text = textShort(card.countLine, 30), width = 248, fontSize = 10, fontColor = { 220, 194, 126, 230 } },
+            UI.Label { text = textShort(card.status, 30), width = 248, fontSize = 10, fontColor = { 135, 225, 176, 230 } },
             UI.Panel {
                 position = "absolute",
                 left = DEPLOY_CARD_ACTION_LAYOUT.left,
@@ -1114,7 +1195,7 @@ local function refreshDeployDetails()
     end
     if selected then
         if title then title:SetText("当前选中: " .. (selected.title or "")) end
-        detail:SetText((selected.typeLine or "") .. " | " .. (selected.effect or selected.desc or ""))
+        detail:SetText((selected.typeLine or "") .. " | " .. (selected.effect or "") .. " | " .. (selected.desc or "") .. " | " .. (selected.countLine or ""))
         if status then status:SetText("状态: " .. (selected.status or "可查看")) end
     else
         if title then title:SetText("当前选中: 暂无") end
@@ -1132,10 +1213,25 @@ local function refreshDeployModuleNav()
     local nav = uiRoot_ and uiRoot_:FindById("deployModuleNavBar")
     if not nav then return end
     nav:RemoveAllChildren()
+    deployTerminal.tabRects = {}
+    local totalW = 0
+    local navGap = 8
+    for index, item in ipairs(DEPLOY_MODULES) do
+        local asset = DEPLOY_MODULE_NAV_ASSETS[item.id]
+        totalW = totalW + (asset and asset.w or 0)
+        if index > 1 then totalW = totalW + navGap end
+    end
+    local tabX = DEPLOY_LAYOUT.nav.x + math.floor((DEPLOY_LAYOUT.nav.w - totalW) / 2)
     for _, item in ipairs(DEPLOY_MODULES) do
         local moduleId = item.id
         local asset = DEPLOY_MODULE_NAV_ASSETS[moduleId]
         local active = deployTerminal.module == moduleId
+        local rect = { x = tabX, y = DEPLOY_LAYOUT.nav.y, w = asset.w, h = 42 }
+        table.insert(deployTerminal.tabRects, makeDeployInteractiveRect(rect, {
+            module = moduleId,
+            actionType = "tab",
+        }))
+        tabX = tabX + asset.w + navGap
         nav:AddChild(UI.Button {
             id = DEPLOY_MODULE_NAV_IDS[moduleId],
             text = "",
@@ -1182,9 +1278,9 @@ function HandleDeployCardAction(action)
     elseif actionType == "buy" then
         OnBuyConsumable(item.id, 1)
     elseif actionType == "loadout_inc" then
-        OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) + 1)
+        return OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) + 1, { refresh = "current" })
     elseif actionType == "loadout_dec" then
-        OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) - 1)
+        return OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) - 1, { refresh = "current" })
     elseif actionType == "unlock" and card.talent then
         OnTalentClick(card.talent.id)
     else
@@ -1202,7 +1298,7 @@ function HandleDeployCardClickAt(lx, ly)
         if UILayout.ContainsLogic(lx, ly, rect) then
             return HandleDeployCardAction({
                 key = rect.key,
-                type = rect.action,
+                type = rect.actionType or rect.action,
                 itemId = rect.itemId,
             })
         end
@@ -1211,6 +1307,29 @@ function HandleDeployCardClickAt(lx, ly)
         if UILayout.ContainsLogic(lx, ly, rect) then
             SelectDeployCard(rect.key)
             return true, "select"
+        end
+    end
+    for _, rect in ipairs(deployTerminal.filterRects or {}) do
+        if UILayout.ContainsLogic(lx, ly, rect) then
+            SetDeployFilter(rect.filter)
+            return true, "filter"
+        end
+    end
+    for _, rect in ipairs(deployTerminal.tabRects or {}) do
+        if UILayout.ContainsLogic(lx, ly, rect) then
+            OpenDeployModule(rect.module)
+            return true, "tab"
+        end
+    end
+    for _, rect in ipairs(deployTerminal.chromeRects or {}) do
+        if UILayout.ContainsLogic(lx, ly, rect) then
+            if rect.actionType == "confirm" then
+                ConfirmDeploy()
+                return true, "confirm"
+            elseif rect.actionType == "back" then
+                BackToMainMenu()
+                return true, "back"
+            end
         end
     end
     return false, "miss"
@@ -1231,6 +1350,13 @@ function SetDeployFilter(filter)
     RefreshDeployModulePage(deployTerminal.module)
 end
 
+local function refreshDeployChromeRects()
+    deployTerminal.chromeRects = {
+        makeDeployInteractiveRect(DEPLOY_LAYOUT.back, { actionType = "back" }),
+        makeDeployInteractiveRect(DEPLOY_LAYOUT.confirm, { actionType = "confirm" }),
+    }
+end
+
 function RefreshDeployModulePage(module)
     module = module or deployTerminal.module or "talent"
     resetDeployScrollIfNeeded(module)
@@ -1242,14 +1368,29 @@ function RefreshDeployModulePage(module)
     setLabelText("deployModuleTitleLabel", DEPLOY_MODULE_NAMES[module] or "出勤准备")
     setLabelText("deployModuleMetaLabel", GameText.meta.account .. MetaProgress.GetGold() .. " | " .. (#deployTerminal.cards) .. " 项")
     setLabelText("deployActiveTabLabel", "当前页签 / " .. (DEPLOY_MODULE_NAMES[module] or "出勤准备"))
+    deployTerminal.filterRects = {}
+    refreshDeployChromeRects()
     refreshDeployModuleNav()
     RefreshDeploySummaryPanel()
 
     local filterBar = uiRoot_ and uiRoot_:FindById("deployFilterBar")
     if filterBar then
         filterBar:RemoveAllChildren()
-        for _, filter in ipairs(DEPLOY_FILTERS[module] or DEPLOY_FILTERS.talent) do
+        local filterX = DEPLOY_LAYOUT.central.x + 40
+        local filterY = DEPLOY_LAYOUT.central.y + 78
+        local filterGap = 7
+        for index, filter in ipairs(DEPLOY_FILTERS[module] or DEPLOY_FILTERS.talent) do
             local active = deployTerminal.filter == filter.id
+            table.insert(deployTerminal.filterRects, makeDeployInteractiveRect({
+                x = filterX + (index - 1) * (58 + filterGap),
+                y = filterY,
+                w = 58,
+                h = 26,
+            }, {
+                module = module,
+                filter = filter.id,
+                actionType = "filter",
+            }))
             filterBar:AddChild(UI.Button {
                 text = filter.label,
                 width = 58,
@@ -1286,9 +1427,13 @@ function RefreshDeployModulePage(module)
                     w = DEPLOY_LAYOUT.cardW,
                     h = DEPLOY_LAYOUT.cardH,
                     key = cardKey(deployTerminal.cards[i]),
+                    module = module,
+                    cardKey = cardKey(deployTerminal.cards[i]),
+                    visibleIndex = visibleIndex + 1,
+                    scrollIndex = i,
                 }
                 table.insert(deployTerminal.hitRects, rect)
-                addDeployActionRects(deployTerminal.cards[i], rect)
+                addDeployActionRects(deployTerminal.cards[i], rect, visibleIndex + 1, i)
                 table.insert(rowChildren, makeDeployCard(deployTerminal.cards[i], i))
             end
             grid:AddChild(UI.Panel { flexDirection = "row", gap = DEPLOY_LAYOUT.cardGap, children = rowChildren })
@@ -1811,7 +1956,27 @@ function OnBuyConsumable(itemId, count)
     RefreshTerminalSummary()
 end
 
-function OnSetLoadoutConsumable(itemId, count)
+local function RefreshDeployActionTarget(refresh)
+    refresh = refresh or "loadout"
+    if refresh == "none" then
+        return
+    elseif refresh == "current" then
+        RefreshDeployModulePage(deployTerminal.module)
+    elseif refresh == "warehouse" then
+        RefreshWarehousePage()
+    elseif refresh == "requisition" then
+        RefreshRequisitionPage()
+    elseif refresh == "talent" then
+        RefreshTalentPage()
+    elseif refresh == "recovery" then
+        RefreshRecoveryPage()
+    else
+        RefreshLoadoutPage()
+    end
+end
+
+function OnSetLoadoutConsumable(itemId, count, opts)
+    opts = opts or {}
     local ok, result = MetaProgress.SetLoadoutConsumable(itemId, count)
     if ok then
         if result.clamped then
@@ -1822,8 +1987,9 @@ function OnSetLoadoutConsumable(itemId, count)
     else
         ShowMessage("配置失败: " .. tostring(result))
     end
-    RefreshLoadoutPage()
+    RefreshDeployActionTarget(opts.refresh or "loadout")
     RefreshTerminalSummary()
+    return ok, result
 end
 
 -- ============================================================================
@@ -3915,9 +4081,9 @@ function CreateUI()
                         children = {
                             UI.Panel {
                                 position = "absolute",
-                                left = 28,
+                                left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x,
                                 top = 22,
-                                width = 876,
+                                width = DEPLOY_LAYOUT.cardArea.w,
                                 height = 42,
                                 flexDirection = "row",
                                 justifyContent = "space-between",
@@ -3928,14 +4094,14 @@ function CreateUI()
                                     UI.Label { id = "deployModuleMetaLabel", text = GameText.meta.account .. "0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
                                 },
                             },
-                            UI.Panel { id = "deployFilterBar", position = "absolute", flexDirection = "row", flexWrap = "wrap", gap = 7, width = 876, height = 44, left = 28, top = 78, children = {} },
+                            UI.Panel { id = "deployFilterBar", position = "absolute", flexDirection = "row", flexWrap = "wrap", gap = 7, width = DEPLOY_LAYOUT.cardArea.w, height = 44, left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x, top = 78, children = {} },
                             UI.Panel { id = "deployCardGrid", position = "absolute", gap = DEPLOY_LAYOUT.rowGap, width = DEPLOY_LAYOUT.cardArea.w, height = DEPLOY_LAYOUT.cardArea.h, left = DEPLOY_LAYOUT.cardArea.x - DEPLOY_LAYOUT.central.x, top = DEPLOY_LAYOUT.cardArea.y - DEPLOY_LAYOUT.central.y, children = {} },
                             UI.Panel {
                                 position = "absolute",
-                                left = 28,
-                                top = 548,
-                                width = 878,
-                                height = 112,
+                                left = DEPLOY_LAYOUT.detail.x - DEPLOY_LAYOUT.central.x,
+                                top = DEPLOY_LAYOUT.detail.y - DEPLOY_LAYOUT.central.y,
+                                width = DEPLOY_LAYOUT.detail.w,
+                                height = DEPLOY_LAYOUT.detail.h,
                                 padding = 12,
                                 gap = 4,
                                 backgroundColor = { 10, 18, 25, 238 },
@@ -4515,7 +4681,7 @@ function CreateUI()
                         backgroundColor = { 14, 24, 32, 232 },
                         borderRadius = 8,
                         borderWidth = 1,
-                        borderColor = { 110, 190, 180, 120 },
+                        borderColor = { 78, 76, 64, 120 },
                         children = {
                             UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
                             UI.Label { text = "已带作业装备 / 已带消耗品 / 本局效果", fontSize = 12, fontColor = { 190, 210, 230, 230 } },

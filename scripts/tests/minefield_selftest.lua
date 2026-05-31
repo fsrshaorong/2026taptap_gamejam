@@ -1094,6 +1094,16 @@ local function testMainEntrySourceContract()
         return out
     end
 
+    local function findActionRect(action, itemId)
+        local rects = GetDeployTerminalHitRects()
+        for _, rect in ipairs(rects.actions or {}) do
+            if rect.action == action and (not itemId or rect.itemId == itemId) then
+                return rect
+            end
+        end
+        return nil
+    end
+
     local mainButtons = visibleButtons()
     assertTrue(mainButtons["接受工单"] == nil, "main should not show top-left accept button")
     assertTrue(mainButtons["展示工单"] == nil, "main should not show top-left tutorial button")
@@ -1124,6 +1134,9 @@ local function testMainEntrySourceContract()
     assertTrue(deployPageNode.backgroundImage ~= "ui/main_menu/main_menu_bg_no_text.png", "deploy terminal should not reuse no-text main background")
 
     local layout = GetDeployTerminalLayoutInfo()
+    assertTrue(layout.rootPanel.x >= 0 and layout.rootPanel.y >= 0, "deploy root panel should start inside base")
+    assertTrue(layout.rootPanel.x + layout.rootPanel.w <= 1536, "deploy root panel should fit base width")
+    assertTrue(layout.rootPanel.y + layout.rootPanel.h <= 864, "deploy root panel should fit base height")
     local central = _G.__testUiRoot:FindById("deployCentralDisplay")
     local legacyCentral = _G.__testUiRoot:FindById("deployOverviewLegacyPanel")
     local filterBar = _G.__testUiRoot:FindById("deployFilterBar")
@@ -1146,6 +1159,9 @@ local function testMainEntrySourceContract()
     assertEq(navBar.top, layout.nav.y, "deploy nav y should be fixed")
     assertEq(layout.columns, 3, "deploy card grid should use three columns")
     assertEq(layout.rowsVisible, 2, "deploy card grid should expose two visible rows before scrolling")
+    assertTrue(layout.central.x >= layout.rootPanel.x and layout.central.y >= layout.rootPanel.y, "central should be root-relative inside root")
+    assertTrue(layout.rightRail.x >= layout.rootPanel.x and layout.rightRail.y >= layout.rootPanel.y, "right rail should be root-relative inside root")
+    assertTrue(layout.detail.x + layout.detail.w <= layout.central.x + layout.central.w, "detail should fit central")
     assertTrue(layout.rightRail.x + layout.rightRail.w <= 1536 - layout.safe, "right rail should stay inside safe area")
     assertTrue(layout.confirm.x + layout.confirm.w <= 1536 - layout.safe, "confirm deploy should stay inside safe area")
     assertTrue(layout.central.x + layout.central.w < layout.rightRail.x - layout.gap, "central display should keep right rail gap")
@@ -1164,6 +1180,14 @@ local function testMainEntrySourceContract()
     for _, c in ipairs(layoutCases) do
         UILayout.SetViewport(c.w, c.h)
         local confirmX, confirmY, confirmW, confirmH = UILayout.ToScreen(layout.confirm.x, layout.confirm.y, layout.confirm.w, layout.confirm.h)
+        local rootX, rootY, rootW, rootH = UILayout.ToScreen(layout.rootPanel.x, layout.rootPanel.y, layout.rootPanel.w, layout.rootPanel.h)
+        local railX, railY, railW, railH = UILayout.ToScreen(layout.rightRail.x, layout.rightRail.y, layout.rightRail.w, layout.rightRail.h)
+        local centralX, centralY, centralW, centralH = UILayout.ToScreen(layout.central.x, layout.central.y, layout.central.w, layout.central.h)
+        local detailX, detailY, detailW, detailH = UILayout.ToScreen(layout.detail.x, layout.detail.y, layout.detail.w, layout.detail.h)
+        assertTrue(rootX >= 0 and rootY >= 0 and rootX + rootW <= c.w and rootY + rootH <= c.h, "root panel should fit screen at " .. c.w .. "x" .. c.h)
+        assertTrue(railX >= 0 and railY >= 0 and railX + railW <= c.w and railY + railH <= c.h, "right rail should fit screen at " .. c.w .. "x" .. c.h)
+        assertTrue(centralX >= 0 and centralY >= 0 and centralX + centralW <= c.w and centralY + centralH <= c.h, "central panel should fit screen at " .. c.w .. "x" .. c.h)
+        assertTrue(detailX >= 0 and detailY >= 0 and detailX + detailW <= c.w and detailY + detailH <= c.h, "detail panel should fit screen at " .. c.w .. "x" .. c.h)
         assertTrue(confirmX >= 0 and confirmY >= 0, "confirm deploy should start on screen at " .. c.w .. "x" .. c.h)
         assertTrue(confirmX + confirmW <= c.w and confirmY + confirmH <= c.h, "confirm deploy should fit screen at " .. c.w .. "x" .. c.h)
         local cardX, cardY = UILayout.ToScreen(layout.cardArea.x + 3, layout.cardArea.y + 3)
@@ -1183,6 +1207,7 @@ local function testMainEntrySourceContract()
 
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
+        MetaProgress.AddConsumable("emergency_bandage", 4)
         MetaProgress.AddWarehouseItems({
             { id = "ui_static_lens", name = "UI Static Lens", type = "relic", typeName = "Recovered item", value = 16, count = 2, source = "recovered" },
             { id = "ui_dim_capacitor", name = "UI Dim Capacitor", type = "relic", typeName = "Recovered item", value = 9, count = 1, source = "recovered" },
@@ -1192,6 +1217,42 @@ local function testMainEntrySourceContract()
             { id = "ui_cold_coin", name = "UI Cold Coin", type = "tool", typeName = "Recovered item", value = 3, count = 1, source = "recovered" },
             { id = "ui_spare_signal", name = "UI Spare Signal", type = "record", typeName = "Recovered item", value = 2, count = 1, source = "recovered" },
         }, "recovered")
+        RefreshDeployModulePage("warehouse")
+        SetDeployFilter("consumable")
+        local beforeWarehouseLoadout = MetaProgress.GetLoadout().consumables.emergency_bandage or 0
+        local warehouseInc = findActionRect("loadout_inc", "emergency_bandage")
+        assertTrue(warehouseInc ~= nil, "warehouse should register bandage + action")
+        assertEq(warehouseInc.module, "warehouse", "warehouse + action should carry module")
+        assertTrue(warehouseInc.visualRect ~= nil and warehouseInc.hitRect ~= nil, "warehouse + action should expose visual and hit rects")
+        local incOk = HandleDeployCardClickAt(warehouseInc.x + 1, warehouseInc.y + 1)
+        assertTrue(incOk, "warehouse bandage + should dispatch")
+        assertEq(GetDeployTerminalLayoutInfo().module, "warehouse", "warehouse + should stay in warehouse")
+        assertEq(MetaProgress.GetLoadout().consumables.emergency_bandage or 0, beforeWarehouseLoadout + 1, "warehouse + should increase loadout")
+
+        local warehouseDec = findActionRect("loadout_dec", "emergency_bandage")
+        assertTrue(warehouseDec ~= nil, "warehouse should register bandage - action")
+        local decOk = HandleDeployCardClickAt(warehouseDec.x + 1, warehouseDec.y + 1)
+        assertTrue(decOk, "warehouse bandage - should dispatch")
+        assertEq(GetDeployTerminalLayoutInfo().module, "warehouse", "warehouse - should stay in warehouse")
+        assertEq(MetaProgress.GetLoadout().consumables.emergency_bandage or 0, beforeWarehouseLoadout, "warehouse - should reduce loadout")
+
+        RefreshDeployModulePage("loadout")
+        SetDeployFilter("consumable")
+        local beforeLoadoutCount = MetaProgress.GetLoadout().consumables.emergency_bandage or 0
+        local loadoutInc = findActionRect("loadout_inc", "emergency_bandage")
+        assertTrue(loadoutInc ~= nil, "loadout should register bandage + action")
+        local loadoutIncOk = HandleDeployCardClickAt(loadoutInc.x + 1, loadoutInc.y + 1)
+        assertTrue(loadoutIncOk, "loadout bandage + should dispatch")
+        assertEq(GetDeployTerminalLayoutInfo().module, "loadout", "loadout + should stay in loadout")
+        assertEq(MetaProgress.GetLoadout().consumables.emergency_bandage or 0, beforeLoadoutCount + 1, "loadout + should increase loadout")
+
+        local loadoutDec = findActionRect("loadout_dec", "emergency_bandage")
+        assertTrue(loadoutDec ~= nil, "loadout should register bandage - action")
+        local loadoutDecOk = HandleDeployCardClickAt(loadoutDec.x + 1, loadoutDec.y + 1)
+        assertTrue(loadoutDecOk, "loadout bandage - should dispatch")
+        assertEq(GetDeployTerminalLayoutInfo().module, "loadout", "loadout - should stay in loadout")
+        assertEq(MetaProgress.GetLoadout().consumables.emergency_bandage or 0, beforeLoadoutCount, "loadout - should reduce loadout")
+
         RefreshDeployModulePage("warehouse")
         SetDeployFilter("recovered")
 
@@ -1208,6 +1269,9 @@ local function testMainEntrySourceContract()
             end
         end
         assertTrue(sellRect ~= nil, "warehouse should register a sell action rect")
+        assertEq(sellRect.module, "warehouse", "sell rect should record module")
+        assertEq(sellRect.actionType, "sell", "sell rect should record action type")
+        assertTrue(sellRect.visibleIndex ~= nil and sellRect.scrollIndex ~= nil, "sell rect should record visible and scroll indices")
         assertTrue(UILayout.ContainsLogic(sellRect.x + 1, sellRect.y + 1, layout.cardArea), "sell rect should be inside card area")
         assertEq(sellRect.w, 54, "sell click rect width should match button visual width")
         assertEq(sellRect.h, 24, "sell click rect height should match button visual height")
@@ -1217,6 +1281,7 @@ local function testMainEntrySourceContract()
         local dispatched, dispatchResult = HandleDeployCardClickAt(sellRect.x + 1, sellRect.y + 1)
         assertTrue(dispatched, "clicking sell rect should dispatch")
         assertTrue(dispatchResult and dispatchResult.gold and dispatchResult.gold > 0, "sell dispatch should return sale receipt")
+        assertEq(GetDeployTerminalLayoutInfo().module, "warehouse", "sell should stay in warehouse")
         assertEq(MetaProgress.GetGold(), beforeGold + dispatchResult.gold, "UI sell dispatch should increase gold")
         assertEq(MetaProgress.GetWarehouseItemCount(sellRect.itemId), beforeCount - 1, "UI sell dispatch should reduce warehouse count")
 
@@ -1226,8 +1291,10 @@ local function testMainEntrySourceContract()
         local scrolledLayout = GetDeployTerminalLayoutInfo()
         local scrolledRects = GetDeployTerminalHitRects()
         assertTrue(scrolledLayout.actionRectCount > 0, "scrolled warehouse should keep action rects")
+        assertTrue(scrolledLayout.actionRectCount <= scrolledLayout.hitRectCount * 3, "invisible cards should not keep action rects")
         for _, rect in ipairs(scrolledRects.actions) do
             assertTrue(UILayout.ContainsLogic(rect.x + 1, rect.y + 1, layout.cardArea), "scrolled action rect should stay in card area")
+            assertTrue(rect.scrollIndex > scrolledLayout.scroll * scrolledLayout.columns, "scrolled action rect should belong to visible page")
         end
     end)
 

@@ -19,7 +19,7 @@ local LAYOUT = {
     sidebarWidthRatio = 0.28,
     sidebarMinW = 272,
     sidebarMaxW = 360,
-    sidebarPadding = 14,
+    sidebarPadding = 16,
 
     -- 底部栏
     bottomBarH = 60,
@@ -27,7 +27,7 @@ local LAYOUT = {
     -- 右上协议面板
     protocolW = 196,
     protocolH = 132,
-    protocolMargin = 14,
+    protocolMargin = 16,
 
     -- 面板样式
     panelBg = { 10, 14, 22, 200 },
@@ -126,6 +126,23 @@ local function textShort(text, maxLen)
     return #text > maxLen and (string.sub(text, 1, maxLen) .. "...") or text
 end
 
+local function DrawTextBox(vg, text, x, y, w, h, opts)
+    opts = opts or {}
+    local padding = opts.padding or 0
+    local fontSize = opts.fontSize or 12
+    local maxChars = opts.maxChars or math.max(4, math.floor((w - padding * 2) / math.max(6, fontSize * 0.55)))
+    nvgSave(vg)
+    nvgScissor(vg, x, y, w, h)
+    nvgFontFace(vg, opts.fontFace or "sans")
+    nvgFontSize(vg, fontSize)
+    nvgTextAlign(vg, opts.align or (NVG_ALIGN_LEFT + NVG_ALIGN_TOP))
+    local color = opts.color or { 210, 220, 220, 230 }
+    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], color[4] or 230))
+    nvgText(vg, x + padding, y + padding, textShort(text, maxChars))
+    nvgResetScissor(vg)
+    nvgRestore(vg)
+end
+
 local function drawSummaryRow(vg, x, y, row)
     UITheme.DrawIcon(row.iconKey or "item.placeholder", x, y, 15, {
         vg = vg,
@@ -133,8 +150,11 @@ local function drawSummaryRow(vg, x, y, row)
         border = { 94, 154, 154, 170 },
         radius = 3,
     })
-    nvgFillColor(vg, nvgRGBA(190, 210, 220, 230))
-    nvgText(vg, x + 20, y + 1, textShort(row.text, 30))
+    DrawTextBox(vg, row.text, x + 20, y, 170, 17, {
+        fontSize = 12,
+        maxChars = 28,
+        color = { 190, 210, 220, 230 },
+    })
 end
 
 -- ============================================================================
@@ -251,7 +271,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     local hpRatio = maxHp > 0 and (hp / maxHp) or 0
 
     -- HP 条背景
-    local barW = sb.w - pad * 2 - 62
+    local barW = math.max(128, sb.w - pad * 2 - 70)
     local barH = 14
     local barX = contentX + 60
     nvgFillColor(vg, nvgRGBA(255, 100, 100, 255))
@@ -302,7 +322,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         .. "  回收物:" .. (inv.carriedItemCount or 0) .. "件"
         .. "  探索:" .. (context.exploredCount or 0) .. "格"
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
-    nvgText(vg, contentX, curY, rowText)
+    nvgText(vg, contentX, curY, textShort(rowText, 34))
     nvgFontSize(vg, 16)
     curY = curY + 24
 
