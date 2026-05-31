@@ -142,6 +142,8 @@ local cgState = {
     fadeAlpha = 0,       -- 淡入淡出
     fadeState = "in",    -- "in", "show", "out", "next"
     fadeTimer = 0,
+    loadTimer = 0,       -- 加载超时计时器
+    LOAD_TIMEOUT = 4,    -- 4秒内没加载好就跳过
 }
 
 local function triggerScreenShake(intensity, duration)
@@ -174,6 +176,7 @@ local function cgStartVideo(index)
     cgState.fadeState = "in"
     cgState.fadeTimer = 0
     cgState.fadeAlpha = 255
+    cgState.loadTimer = 0
 
     if cgState.nvgImage then
         cgState.nvgImage = nil
@@ -232,6 +235,16 @@ local function cgUpdate(dt)
     if not cgState.player then return end
 
     cgState.player:Update()
+
+    -- 加载超时保护：4秒内没加载好就跳过CG进入菜单
+    if not cgState.ready then
+        cgState.loadTimer = cgState.loadTimer + dt
+        if cgState.loadTimer >= cgState.LOAD_TIMEOUT then
+            print("[CG] Load timeout after " .. cgState.LOAD_TIMEOUT .. "s, skipping to menu")
+            cgSkip()
+            return
+        end
+    end
 
     -- 淡入效果
     if cgState.fadeState == "in" then
