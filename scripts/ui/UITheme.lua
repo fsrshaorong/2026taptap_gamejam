@@ -4,6 +4,8 @@
 -- simple NanoVG rectangles/text and never block gameplay.
 -- ============================================================================
 
+---@diagnostic disable: undefined-global
+
 local UITheme = {}
 
 local registry = {}
@@ -85,7 +87,7 @@ end
 
 function UITheme.DrawImage(key, x, y, w, h, opts)
     opts = opts or {}
-    local vg = opts.vg or nvgScene
+    local vg = opts.vg or currentVg or nvgScene
     if not vg then return false end
     local img = images[key]
     if isLoaded(img) then
