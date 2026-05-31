@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "source": "./assets/video/cgt-20260531125819-5lj8t_video.mp4",
+      "source_type": "local",
+      "video_id": 5688561,
+      "sha256": "def69244bfb403d99c0094b769b5ca7136ced797eda8380e7b0099cec7b1586e"
+    }
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "startTime": "2026-05-31T04:31:37.007Z",
+  "endTime": "2026-05-31T04:31:59.937Z",
+  "duration": "22930ms",
+  "result": {
+    "success": true
+  },
+  "steps": [
+    {
+      "time": "2026-05-31T04:31:37.483Z",
+      "stage": "upload_to_cdn",
+      "data": {
+        "status": "start"
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:52.686Z",
+      "stage": "upload_to_cdn",
+      "data": {
+        "status": "done"
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:52.687Z",
+      "stage": "network_config",
+      "data": {
+        "env": "production"
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:52.699Z",
+      "stage": "load_config",
+      "data": {
+        "projectId": "p_7j21",
+        "configPath": "/userspaces/c185e5bf-0eb3-4827-bb40-1cc79feaadb7/workspace/.project/project.json",
+        "taptap_publish": {
+          "title": "灰尾公司：格外危险",
+          "description": "一款融合扫雷与地牢探索的策略冒险游戏",
+          "category": "puzzle",
+          "screen_orientation": "landscape",
+          "collection_type": "sce",
+          "trial_note": "<developer's note>",
+          "app_platforms": "1,2",
+          "developer_id": 411437,
+          "app_id": 864887,
+          "miniapp_id": "tapmckqdu7bpbbeflr"
+        },
+        "assets": {
+          "icon": "./game_material/ICON_2026-05-30T17-06-08_01.png",
+          "screenshots": [
+            "./game_material/SCREENSHOT_2026-05-30T17-15-57_01.png",
+            "./game_material/SCREENSHOT_2026-05-30T17-15-57_02.png",
+            "./game_material/SCREENSHOT_2026-05-30T17-15-57_03.png"
+          ],
+          "promotional_image": "./game_material/PROMO_2026-05-30T17-15-57_01.jpg",
+          "icon_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/ICON_2026-05-30T17-06-08_01.png",
+          "screenshot_urls": [
+            "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_01.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_02.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_03.png"
+          ],
+          "promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/PROMO_2026-05-30T17-15-57_01.jpg",
+          "cover_horizontal": "./.project/game_material/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+          "cover_horizontal_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+          "cover_vertical": "./.project/game_material/COVER_VERTICAL_2026-05-30T17-16-53_01.png",
+          "cover_vertical_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_VERTICAL_2026-05-30T17-16-53_01.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:53.008Z",
+      "stage": "update_game",
+      "data": {
+        "app_id": 864887,
+        "developer_id": 411437
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:53.018Z",
+      "stage": "upload_assets",
+      "data": {
+        "status": "start",
+        "assets": {
+          "icon": "./game_material/ICON_2026-05-30T17-06-08_01.png",
+          "screenshots": [
+            "./game_material/SCREENSHOT_2026-05-30T17-15-57_01.png",
+            "./game_material/SCREENSHOT_2026-05-30T17-15-57_02.png",
+            "./game_material/SCREENSHOT_2026-05-30T17-15-57_03.png"
+          ],
+          "promotional_image": "./game_material/PROMO_2026-05-30T17-15-57_01.jpg",
+          "icon_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/ICON_2026-05-30T17-06-08_01.png",
+          "screenshot_urls": [
+            "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_01.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_02.png",
+            "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/SCREENSHOT_2026-05-30T17-15-57_03.png"
+          ],
+          "promotional_image_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/PROMO_2026-05-30T17-15-57_01.jpg",
+          "cover_horizontal": "./.project/game_material/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+          "cover_horizontal_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+          "cover_vertical": "./.project/game_material/COVER_VERTICAL_2026-05-30T17-16-53_01.png",
+          "cover_vertical_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_VERTICAL_2026-05-30T17-16-53_01.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:56.538Z",
+      "stage": "upload_cover_horizontal",
+      "data": {
+        "path": "./.project/game_material/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png",
+        "resolvedPath": "/userspaces/c185e5bf-0eb3-4827-bb40-1cc79feaadb7/workspace/.project/game_material/COVER_HORIZONTAL_2026-05-30T17-16-53_01.png"
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:56.565Z",
+      "stage": "upload_cover_horizontal",
+      "data": {
+        "fileSize": 2613911
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:57.286Z",
+      "stage": "upload_cover_horizontal",
+      "data": {
+        "response": {
+          "result": true,
+          "image_url": "https://img-tc.tapimg.com/market/images/Frn_JZFjTr7ZkIuspclJzo8ibw4M.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:57.286Z",
+      "stage": "upload_cover_vertical",
+      "data": {
+        "path": "./.project/game_material/COVER_VERTICAL_2026-05-30T17-16-53_01.png",
+        "resolvedPath": "/userspaces/c185e5bf-0eb3-4827-bb40-1cc79feaadb7/workspace/.project/game_material/COVER_VERTICAL_2026-05-30T17-16-53_01.png"
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:57.312Z",
+      "stage": "upload_cover_vertical",
+      "data": {
+        "fileSize": 2817210
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:58.203Z",
+      "stage": "upload_cover_vertical",
+      "data": {
+        "response": {
+          "result": true,
+          "image_url": "https://img-tc.tapimg.com/market/images/FgODqzlQvd0SjLQmIYOAJXv0KMzp.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:58.203Z",
+      "stage": "upload_assets",
+      "data": {
+        "status": "done",
+        "uploadedAssets": {
+          "iconUrl": "https://img-tc.tapimg.com/market/images/FvV7o7wTV_sFrgcaefnCejkI4JwS.png",
+          "screenshotUrls": [
+            "https://img-tc.tapimg.com/market/images/FjGsLmfCSN6VZOCAOup55Ek7DKSj.png",
+            "https://img-tc.tapimg.com/market/images/FlexSSX2hiszKK0OaOzwppsL0GHS.png",
+            "https://img-tc.tapimg.com/market/images/FsEs1L1ryPjxBxswcz4k6IT8OZJ1.png"
+          ],
+          "bannerUrl": "https://img-tc.tapimg.com/market/images/Fjt_rukanto_K778pPzw4CRISB-m.jpg",
+          "coverUrl": "https://img-tc.tapimg.com/market/images/Frn_JZFjTr7ZkIuspclJzo8ibw4M.png",
+          "coverVerticalUrl": "https://img-tc.tapimg.com/market/images/FgODqzlQvd0SjLQmIYOAJXv0KMzp.png"
+        }
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:58.203Z",
+      "stage": "submit_spark_request",
+      "data": {
+        "app_id": 864887,
+        "developer_id": 411437,
+        "map_version": "12",
+        "sce_project_id": "p_7j21",
+        "category": "puzzle",
+        "collection_type": "puzzle",
+        "description": "一款融合扫雷与地牢探索的策略冒险游戏",
+        "screen_orientation": 2,
+        "title": "灰尾公司：格外危险",
+        "icon": "https://img-tc.tapimg.com/market/images/FvV7o7wTV_sFrgcaefnCejkI4JwS.png",
+        "screenshots": [
+          "https://img-tc.tapimg.com/market/images/FjGsLmfCSN6VZOCAOup55Ek7DKSj.png",
+          "https://img-tc.tapimg.com/market/images/FlexSSX2hiszKK0OaOzwppsL0GHS.png",
+          "https://img-tc.tapimg.com/market/images/FsEs1L1ryPjxBxswcz4k6IT8OZJ1.png"
+        ],
+        "banner": "https://img-tc.tapimg.com/market/images/Fjt_rukanto_K778pPzw4CRISB-m.jpg",
+        "trial_note": "<developer's note>",
+        "app_platforms": "1,2",
+        "cover": "https://img-tc.tapimg.com/market/images/Frn_JZFjTr7ZkIuspclJzo8ibw4M.png",
+        "cover_vertical": "https://img-tc.tapimg.com/market/images/FgODqzlQvd0SjLQmIYOAJXv0KMzp.png",
+        "publish_intl": false
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:59.776Z",
+      "stage": "submit_spark_response",
+      "data": {
+        "app_id": 864887,
+        "app_title": "灰尾公司：格外危险",
+        "category": "puzzle",
+        "category_label": "益智",
+        "display_app_title": "益智游戏合集"
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:59.776Z",
+      "stage": "update_project_app_id",
+      "data": {
+        "stage": "start",
+        "project_id": "p_7j21",
+        "app_id": 864887
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:59.937Z",
+      "stage": "update_project_app_id",
+      "data": {
+        "stage": "success",
+        "project_id": "p_7j21",
+        "app_id": 864887
+      }
+    },
+    {
+      "time": "2026-05-31T04:31:59.937Z",
+      "stage": "publish_result",
+      "data": {
+        "action": "updated",
+        "status": "pending_review",
+        "game_id": 864887,
+        "message": "成功更新游戏 \"灰尾公司：格外危险\"",
+        "developer_id": 411437,
+        "config_file_path": "/userspaces/c185e5bf-0eb3-4827-bb40-1cc79feaadb7/workspace/.project/project.json"
+      }
+    }
+  ]
+}

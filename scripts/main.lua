@@ -20,6 +20,20 @@ local TextBox = require("ui.TextBox")
 local DungeonRoom = require("scenes.DungeonRoom")
 local EventSystem = require("systems.EventSystem")
 local Tutorial = require("systems.Tutorial")
+local ok_ia, InputAdapter = pcall(require, "systems.InputAdapter")
+if not ok_ia then
+    print("WARN: InputAdapter load failed: " .. tostring(InputAdapter))
+    -- 提供空壳避免后续调用崩溃
+    InputAdapter = {
+        Initialize = function() end,
+        ComputeLayout = function() end,
+        Update = function() end,
+        Draw = function() end,
+        IsMobile = function() return false end,
+        IsActionTriggered = function() return false end,
+        moveX = 0, moveY = 0, moveDX = 0, moveDY = 0,
+    }
+end
 
 -- ============================================================================
 -- 全局状态
@@ -56,6 +70,7 @@ local visitedCells = {}
 
 -- 游戏阶段
 local PHASE = {
+    CG = "cg",
     MENU = "menu",
     PLAYING = "playing",
     MAP_OPEN = "map_open",
@@ -113,6 +128,22 @@ local settingsPanel = {
     selected = 1,       -- 当前选中项 (1=继续, 2=重新开始, 3=返回主界面)
 }
 
+-- 开场CG视频播放
+local cgState = {
+    videos = {
+        "video/cgt-20260531110551-l7jlr_video.mp4",   -- 浣熊角色展示
+        "video/cgt-20260531111059-hrz9l_video.mp4",   -- 扫雷+搜打撤玩法
+    },
+    currentIndex = 1,
+    player = nil,
+    nvgImage = nil,
+    ready = false,
+    finished = false,
+    fadeAlpha = 0,       -- 淡入淡出
+    fadeState = "in",    -- "in", "show", "out", "next"
+    fadeTimer = 0,
+}
+
 local function triggerScreenShake(intensity, duration)
     screenShake.timer = duration or 0.3
     screenShake.duration = screenShake.timer
@@ -131,6 +162,116 @@ local function updateScreenShake(dt)
             local strength = screenShake.intensity * progress
             screenShake.offsetX = (math.random() * 2 - 1) * strength
             screenShake.offsetY = (math.random() * 2 - 1) * strength
+        end
+    end
+end
+
+-- CG视频控制函数
+local function cgStartVideo(index)
+    print("[CG] cgStartVideo(" .. tostring(index) .. ")")
+    cgState.currentIndex = index
+    cgState.ready = false
+    cgState.fadeState = "in"
+    cgState.fadeTimer = 0
+    cgState.fadeAlpha = 255
+
+    if cgState.nvgImage then
+        cgState.nvgImage = nil
+    end
+
+    if cgState.player then
+        cgState.player:Stop()
+        cgState.player:Dispose()
+        cgState.player = nil
+    end
+
+    local url = cgState.videos[index]
+    if not url then
+        print("[CG] No more videos, going to MENU")
+        cgState.finished = true
+        phase = PHASE.MENU
+        return
+    end
+
+    print("[CG] Loading video: " .. url)
+    local ok, player = pcall(function() return VideoPlayer:new() end)
+    if ok and player then
+        cgState.player = player
+        local success = cgState.player:Load(url, 1280, 720)
+        print("[CG] Load result: " .. tostring(success))
+        if success then
+            cgState.player:SetVolume(0.8)
+            cgState.player:SetLoop(false)
+        else
+            print("[CG] Load failed, skip to MENU")
+            cgState.finished = true
+            phase = PHASE.MENU
+        end
+    else
+        print("[CG] VideoPlayer not available: " .. tostring(player))
+        cgState.finished = true
+        phase = PHASE.MENU
+    end
+end
+
+local function cgSkip()
+    if cgState.player then
+        cgState.player:Stop()
+        cgState.player:Dispose()
+        cgState.player = nil
+    end
+    cgState.nvgImage = nil
+    cgState.finished = true
+    phase = PHASE.MENU
+    -- 恢复显示主菜单UI
+    local menuEl = uiRoot_ and uiRoot_:FindById("menuOverlay")
+    if menuEl then menuEl:Show() end
+end
+
+local function cgUpdate(dt)
+    if not cgState.player then return end
+
+    cgState.player:Update()
+
+    -- 淡入效果
+    if cgState.fadeState == "in" then
+        cgState.fadeTimer = cgState.fadeTimer + dt
+        cgState.fadeAlpha = math.max(0, 255 - math.floor(cgState.fadeTimer / 0.5 * 255))
+        if cgState.fadeTimer >= 0.5 then
+            cgState.fadeState = "show"
+            cgState.fadeAlpha = 0
+        end
+    end
+
+    -- 检测视频就绪后开始播放
+    if cgState.player:IsReady() then
+        if not cgState.ready then
+            cgState.ready = true
+            cgState.player:Play()
+        end
+        local duration = cgState.player:GetDuration()
+        local current = cgState.player:GetCurrentTime()
+        if duration > 0 and current >= duration - 0.3 and cgState.fadeState == "show" then
+            -- 当前视频结束，淡出后切下一段
+            cgState.fadeState = "out"
+            cgState.fadeAlpha = 0
+        end
+    end
+
+    -- 淡出效果
+    if cgState.fadeState == "out" then
+        cgState.fadeTimer = cgState.fadeTimer + dt
+        local outTime = cgState.fadeTimer - 0  -- 从fadeState切换开始计时
+        cgState.fadeAlpha = math.min(255, math.floor(dt * 600 + cgState.fadeAlpha))
+        if cgState.fadeAlpha >= 255 then
+            cgState.fadeAlpha = 255
+            -- 切下一段或结束
+            local nextIdx = cgState.currentIndex + 1
+            if nextIdx > #cgState.videos then
+                cgSkip()
+            else
+                cgStartVideo(nextIdx)
+            end
         end
     end
 end
@@ -484,6 +625,12 @@ function Start()
     -- 初始化菜单显示
     RefreshMainMenu()
 
+    -- 启动开场CG（第一次进入游戏播放）
+    phase = PHASE.CG
+    local menuEl = uiRoot_ and uiRoot_:FindById("menuOverlay")
+    if menuEl then menuEl:Hide() end
+    cgStartVideo(1)
+
     -- 配置放大地图回调
     MapOverlay.onClose = function()
         phase = PHASE.PLAYING
@@ -501,6 +648,10 @@ function Start()
             TeleportTo(x, y)
         end
     end
+
+    -- 初始化输入适配(手机端自动启用虚拟摇杆+按钮)
+    InputAdapter.Initialize()
+    InputAdapter.ComputeLayout(screenW / dpr, screenH / dpr)
 
     -- 订阅事件
     SubscribeToEvent(nvgScene, "NanoVGRender", "HandleNanoVGRender")
@@ -3601,17 +3752,17 @@ function DrawEventPanel(vg, w, h)
 
     nvgFontFace(vg, "sans")
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
-    nvgFontSize(vg, 22)
+    nvgFontSize(vg, 28)
     nvgFillColor(vg, nvgRGBA(235, 250, 255, 255))
     nvgText(vg, x + 28, y + 22, data.title or "事件")
 
-    nvgFontSize(vg, 13)
+    nvgFontSize(vg, 18)
     nvgFillColor(vg, nvgRGBA(170, 205, 210, 230))
-    nvgText(vg, x + 28, y + 56, data.description or "")
+    nvgText(vg, x + 28, y + 60, data.description or "")
 
-    local listY = y + 96
-    local rowH = 50
-    local maxRows = math.floor((panelH - 188) / rowH)
+    local listY = y + 100
+    local rowH = 54
+    local maxRows = math.floor((panelH - 200) / rowH)
     if maxRows < 1 then maxRows = 1 end
     local startIndex = 1
     if #options > maxRows then
@@ -3650,33 +3801,33 @@ function DrawEventPanel(vg, w, h)
         end
 
         local enabled = opt.enabled ~= false
-        nvgFontSize(vg, 14)
+        nvgFontSize(vg, 18)
         nvgFillColor(vg, enabled and nvgRGBA(245, 240, 200, 255) or nvgRGBA(120, 125, 130, 210))
-        nvgText(vg, x + 40, oy + 8, (selected and "> " or "  ") .. (opt.label or "选项"))
+        nvgText(vg, x + 40, oy + 6, (selected and "> " or "  ") .. (opt.label or "选项"))
 
-        nvgFontSize(vg, 10)
+        nvgFontSize(vg, 13)
         nvgFillColor(vg, enabled and nvgRGBA(165, 185, 195, 230) or nvgRGBA(105, 110, 118, 190))
         local meta = "成本: " .. (opt.cost or "无") .. "   收益: " .. (opt.reward or "无") .. "   风险: " .. (opt.risk or "无")
         if not enabled and opt.disabledReason then
             meta = meta .. "   [" .. opt.disabledReason .. "]"
         end
-        nvgText(vg, x + 40, oy + 27, meta)
+        nvgText(vg, x + 40, oy + 29, meta)
     end
 
     local selected = options[eventPanel.selected]
     if selected then
-        nvgFontSize(vg, 12)
+        nvgFontSize(vg, 15)
         nvgFillColor(vg, nvgRGBA(200, 220, 220, 230))
         nvgText(vg, x + 28, y + panelH - 70, selected.description or "")
     end
     if eventPanel.message and eventPanel.message ~= "" then
-        nvgFontSize(vg, 12)
+        nvgFontSize(vg, 15)
         nvgFillColor(vg, nvgRGBA(255, 185, 120, 245))
         nvgText(vg, x + 28, y + panelH - 44, eventPanel.message)
     end
 
     nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
-    nvgFontSize(vg, 11)
+    nvgFontSize(vg, 13)
     nvgFillColor(vg, nvgRGBA(150, 165, 180, 220))
     nvgText(vg, x + panelW - 28, y + panelH - 30, "W/S 或 ↑/↓ 选择   T/Enter 确认   Esc 返回")
 end
@@ -3825,6 +3976,60 @@ function HandleNanoVGRender(eventType, eventData)
     -- and scene helpers already use logical pixels, so keep the frame in the
     -- same coordinate space to avoid packaged builds rendering text smaller.
     nvgBeginFrame(nvgScene, w, h, dpr)
+
+    -- CG 播放阶段渲染
+    if phase == PHASE.CG then
+        -- 黑色背景
+        nvgBeginPath(nvgScene)
+        nvgRect(nvgScene, 0, 0, w, h)
+        nvgFillColor(nvgScene, nvgRGBA(0, 0, 0, 255))
+        nvgFill(nvgScene)
+
+        -- 绘制视频画面
+        if cgState.player and cgState.ready then
+            local tex = cgState.player:GetTexture()
+            if tex then
+                if not cgState.nvgImage then
+                    cgState.nvgImage = nvgCreateVideo(nvgScene, tex)
+                end
+                if cgState.nvgImage then
+                    -- 全屏适配（保持比例居中）
+                    local videoW, videoH = 1280, 720
+                    local scaleX = w / videoW
+                    local scaleY = h / videoH
+                    local scale = math.max(scaleX, scaleY)
+                    local drawW = videoW * scale
+                    local drawH = videoH * scale
+                    local drawX = (w - drawW) / 2
+                    local drawY = (h - drawH) / 2
+
+                    local imgPaint = nvgImagePattern(nvgScene, drawX, drawY, drawW, drawH, 0, cgState.nvgImage, 1.0)
+                    nvgBeginPath(nvgScene)
+                    nvgRect(nvgScene, drawX, drawY, drawW, drawH)
+                    nvgFillPaint(nvgScene, imgPaint)
+                    nvgFill(nvgScene)
+                end
+            end
+        end
+
+        -- 淡入/淡出黑色覆盖层
+        if cgState.fadeAlpha > 0 then
+            nvgBeginPath(nvgScene)
+            nvgRect(nvgScene, 0, 0, w, h)
+            nvgFillColor(nvgScene, nvgRGBA(0, 0, 0, cgState.fadeAlpha))
+            nvgFill(nvgScene)
+        end
+
+        -- "点击跳过" 提示（右下角）
+        nvgFontFace(nvgScene, "sans")
+        nvgFontSize(nvgScene, 14)
+        nvgTextAlign(nvgScene, NVG_ALIGN_RIGHT + NVG_ALIGN_BOTTOM)
+        nvgFillColor(nvgScene, nvgRGBA(200, 200, 200, 160))
+        nvgText(nvgScene, w - 20, h - 20, "点击跳过")
+
+        nvgEndFrame(nvgScene)
+        return
+    end
 
     if phase == PHASE.PLAYING or phase == PHASE.EVENT_PANEL or phase == PHASE.LOOT_RESULT or phase == PHASE.CONFIRM_EXTRACT or phase == PHASE.GAME_OVER or phase == PHASE.EXTRACTED or phase == PHASE.SETTINGS then
         local hudLayout = HUD.ComputeLayout(w, h)
@@ -3975,6 +4180,9 @@ function HandleNanoVGRender(eventType, eventData)
 
     -- 居中播报(始终绘制在最上层)
     HUD.DrawCenterToast(nvgScene, { screenW = w, screenH = h }, message, messageTimer, messageDuration)
+
+    -- 手机端虚拟摇杆+按钮(最上层，不受裁剪影响)
+    InputAdapter.Draw(nvgScene)
 
     nvgEndFrame(nvgScene)
 end
@@ -5080,8 +5288,17 @@ function HandleUpdate(eventType, eventData)
     screenH = graphics:GetHeight()
     dpr = GetSafeDPR()
     UILayout.SetViewport(screenW / dpr, screenH / dpr)
+    -- 同步更新虚拟控件布局(手机端)
+    InputAdapter.ComputeLayout(screenW / dpr, screenH / dpr)
 
     local dt = eventData["TimeStep"]:GetFloat()
+
+    -- CG 阶段只更新视频播放器
+    if phase == PHASE.CG then
+        cgUpdate(dt)
+        return
+    end
+
     if blockedWallHintTimer > 0 then
         blockedWallHintTimer = blockedWallHintTimer - dt
     end
@@ -5122,17 +5339,43 @@ function HandleUpdate(eventType, eventData)
         end
     end
 
-    -- 连续移动:按住方向键时按帧平滑移动角色(战斗演出中禁止)
+    -- 更新输入适配器(统一处理 PC 键盘 / 手机摇杆+陀螺仪)
+    InputAdapter.Update(dt)
+
+    -- 连续移动:按住方向键/摇杆时按帧平滑移动角色(战斗演出中禁止)
     if phase == PHASE.PLAYING and run and not battleState.active then
-        local dx, dy = 0, 0
-        if input:GetKeyDown(KEY_W) or input:GetKeyDown(KEY_UP) then dy = -1
-        elseif input:GetKeyDown(KEY_S) or input:GetKeyDown(KEY_DOWN) then dy = 1
-        elseif input:GetKeyDown(KEY_A) or input:GetKeyDown(KEY_LEFT) then dx = -1
-        elseif input:GetKeyDown(KEY_D) or input:GetKeyDown(KEY_RIGHT) then dx = 1
-        end
+        local dx = InputAdapter.moveX
+        local dy = InputAdapter.moveY
 
         if dx ~= 0 or dy ~= 0 then
             MoveScenePlayer(dx, dy, dt)
+        end
+
+        -- 手机端虚拟按钮动作
+        if InputAdapter.IsMobile() then
+            if InputAdapter.IsActionTriggered("attack") then
+                local p = run and run:GetPlayer() or nil
+                local enemy = p and Combat.GetEnemy(p.x, p.y) or nil
+                if enemy then
+                    AttackCurrentEnemy()
+                else
+                    SearchCurrentRoom()
+                end
+            elseif InputAdapter.IsActionTriggered("extract") then
+                DoExtract()
+            elseif InputAdapter.IsActionTriggered("heal") then
+                UseEmergencyBandage()
+            elseif InputAdapter.IsActionTriggered("map") then
+                phase = PHASE.MAP_OPEN
+                MapOverlay.visible = true
+                RefreshMapData()
+                Tutorial.NotifyAction("open_map")
+                local lw = screenW / dpr
+                local lh = screenH / dpr
+                MapOverlay.ComputeLayout(minefield.width, minefield.height, lw, lh)
+            elseif InputAdapter.IsActionTriggered("trade") then
+                DoTrade()
+            end
         end
     end
 end
@@ -5141,6 +5384,12 @@ end
 ---@param eventData KeyDownEventData
 function HandleKeyDown(eventType, eventData)
     local key = eventData["Key"]:GetInt()
+
+    -- CG 播放中：任意键跳过
+    if phase == PHASE.CG then
+        cgSkip()
+        return
+    end
 
     -- 放大地图模式下
     if phase == PHASE.MAP_OPEN then
@@ -5307,6 +5556,12 @@ function HandleMouseDown(eventType, eventData)
     local button = eventData["Button"]:GetInt()
     local mx = eventData["X"]:GetInt() / dpr
     local my = eventData["Y"]:GetInt() / dpr
+
+    -- CG 播放中：点击跳过
+    if phase == PHASE.CG then
+        cgSkip()
+        return
+    end
 
     -- 教程阻塞弹窗点击确认（优先消耗）
     if button == MOUSEB_LEFT and Tutorial.HasBlockingPopup() then
