@@ -13,6 +13,8 @@ local MetaProgress = require("systems.MetaProgress")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
 local HUD = require("ui.HUD")
+local UITheme = require("ui.UITheme")
+local UILayout = require("ui.UILayout")
 local DungeonRoom = require("scenes.DungeonRoom")
 local EventSystem = require("systems.EventSystem")
 local Tutorial = require("systems.Tutorial")
@@ -193,49 +195,42 @@ local function setVisible(id, visible)
     end
 end
 
-local MENU_BG_W = 1672
-local MENU_BG_H = 941
 local MENU_HOTSPOTS = {
     {
-        x = 1100, y = 260, w = 430, h = 135,
+        x = 1010, y = 238, w = 395, h = 124,
         action = function()
             OpenDeployTerminal()
         end,
     },
     {
-        x = 1095, y = 395, w = 430, h = 130,
+        x = 1006, y = 363, w = 395, h = 119,
         action = function()
             OpenTutorial()
         end,
     },
     {
-        x = 1085, y = 530, w = 430, h = 135,
-        action = function()
-            OpenSettingsTerminal()
-        end,
-    },
-    {
-        x = 1075, y = 670, w = 430, h = 130,
+        x = 997, y = 487, w = 395, h = 124,
         action = function()
             OpenSettingsTerminal()
         end,
     },
 }
 
+function GetMainMenuHotspotCount()
+    return #MENU_HOTSPOTS
+end
+
 local function HandleMenuHotspotClick(mx, my)
     if phase ~= PHASE.MENU or menuPage ~= "main" then return false end
 
     local viewW = screenW / dpr
     local viewH = screenH / dpr
-    local sx = viewW / MENU_BG_W
-    local sy = viewH / MENU_BG_H
+    UILayout.SetViewport(viewW, viewH)
+    local lx, ly = UILayout.ToLogic(mx, my)
+    if not UILayout.IsInsideBase(lx, ly) then return false end
 
     for _, spot in ipairs(MENU_HOTSPOTS) do
-        local x = spot.x * sx
-        local y = spot.y * sy
-        local w = spot.w * sx
-        local h = spot.h * sy
-        if mx >= x and mx <= x + w and my >= y and my <= y + h then
+        if UILayout.ContainsLogic(lx, ly, spot) then
             spot.action()
             return true
         end
@@ -254,6 +249,7 @@ function Start()
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
     dpr = GetSafeDPR()
+    UILayout.SetViewport(screenW / dpr, screenH / dpr)
 
     -- 创建 NanoVG context
     nvgScene = nvgCreate(1)
@@ -262,6 +258,14 @@ function Start()
         return
     end
     nvgCreateFont(nvgScene, "sans", "Fonts/FusionPixel.otf")
+    UITheme.Register("main_menu_bg_no_text", "ui/main_menu/main_menu_bg_no_text.png")
+    UITheme.Register("deploy_panel_main", "ui/deploy/ui_panel_deploy_main_blank.png")
+    UITheme.Register("deploy_panel_summary", "ui/deploy/ui_panel_deploy_summary_blank.png")
+    UITheme.Register("deploy_confirm", "ui/deploy/ui_button_confirm_deploy_large.png")
+    UITheme.Register("hud_key_q", "ui/keys/ui_key_q.png")
+    UITheme.Register("hud_key_e", "ui/keys/ui_key_e.png")
+    UITheme.Register("hud_key_f", "ui/keys/ui_key_f.png")
+    UITheme.LoadRegistered(nvgScene)
     imgBattlePlayer = nvgCreateImage(nvgScene, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
     imgBattleEnemy = nvgCreateImage(nvgScene, "Textures/enemy_slime.png", 0)
 
@@ -364,6 +368,7 @@ function ShowMenuPage(page)
         SetDeployPage(page == "deployOverview" and "overview" or page)
     end
     setVisible("terminalNavOverlay", page == "main")
+    setVisible("deployShellOverlay", page ~= "main" and page ~= "gm" and page ~= "deployOverview")
     setVisible("menuPage_main", page == "main")
     setVisible("menuPage_deployOverview", page == "deployOverview")
     setVisible("menuPage_equip", page == "equip")
@@ -2976,8 +2981,8 @@ function CreateUI()
                 id = "menuPage_main",
                 position = "absolute",
                 top = 0, left = 0, right = 0, bottom = 0,
-                backgroundImage = "Textures/menu_bg.png",
-                backgroundFit = "fill",
+                backgroundImage = "Textures/menu_bg_no_text.png", -- fallback asset kept: Textures/menu_bg.png
+                backgroundFit = "fit",
                 children = {
                     -- 右侧按钮区域，对应图片中"灰尾公司"招牌位置
                     UI.Panel {
@@ -3018,41 +3023,91 @@ function CreateUI()
             UI.Panel {
                 id = "menuPage_deployOverview",
                 visible = false,
-                width = "92%",
-                maxWidth = 620,
-                padding = 24,
-                gap = 10,
-                backgroundColor = { 18, 26, 36, 242 },
-                borderRadius = 14,
-                borderWidth = 1,
-                borderColor = { 90, 160, 210, 120 },
+                position = "absolute",
+                top = 0, left = 0, right = 0, bottom = 0,
+                backgroundImage = "ui/main_menu/main_menu_bg_no_text.png",
+                backgroundFit = "fit",
                 children = {
-                    UI.Label { text = "出勤准备", fontSize = 20, fontColor = { 180, 230, 255, 255 } },
-                    UI.Label { id = "deployGoldLabel", text = "后勤账户: 0 金币", fontSize = 13, fontColor = { 255, 220, 100, 240 } },
-                    UI.Label { id = "deployLoadoutLabel", text = "当前装备 无 | 本次带入 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
-                    UI.Label { id = "deployWarehouseLabel", text = "仓库库存 0 件 | 可售估值 0", fontSize = 12, fontColor = { 170, 210, 220, 220 } },
-                    UI.Label { id = "deployRecentLabel", text = "最近带回: 无", fontSize = 12, fontColor = { 170, 185, 200, 220 } },
-                    UI.Label { id = "deployBonusLabel", text = "当前主要加成: 无", fontSize = 12, fontColor = { 210, 220, 170, 230 } },
+                    UI.Button {
+                        text = "返回主界面",
+                        position = "absolute",
+                        left = "3%",
+                        top = "4%",
+                        width = 132,
+                        height = 42,
+                        backgroundImage = "ui/deploy/ui_button_back_main.png",
+                        onClick = function() BackToMainMenu() end,
+                    },
                     UI.Panel {
+                        position = "absolute",
+                        top = "4%",
+                        left = "21%",
+                        width = "56%",
                         flexDirection = "row",
                         flexWrap = "wrap",
-                        gap = 8,
-                        marginTop = 8,
+                        justifyContent = "center",
+                        gap = 10,
                         children = {
-                            UI.Button { text = "后勤仓库", width = 100, height = 30, onClick = function() OpenDeployWarehouse() end },
-                            UI.Button { text = "后勤申领", width = 100, height = 30, onClick = function() OpenDeployShop() end },
-                            UI.Button { text = "出勤配置", width = 100, height = 30, onClick = function() OpenDeployLoadout() end },
-                            UI.Button { text = "回收资历", width = 100, height = 30, onClick = function() OpenDeployRecovery() end },
-                            UI.Button { text = "天赋", width = 80, height = 30, onClick = function() OpenDeployTalents() end },
+                            UI.Button { text = "后勤仓库", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_warehouse.png", onClick = function() OpenDeployWarehouse() end },
+                            UI.Button { text = "后勤申领", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
+                            UI.Button { text = "出勤配置", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
+                            UI.Button { text = "回收资历", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
+                            UI.Button { text = "天赋", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
                         },
                     },
                     UI.Panel {
-                        flexDirection = "row",
+                        position = "absolute",
+                        left = "14%",
+                        top = "18%",
+                        width = "52%",
+                        height = "64%",
+                        padding = 24,
                         gap = 10,
-                        marginTop = 10,
+                        backgroundImage = "ui/deploy/ui_panel_deploy_main_blank.png",
+                        backgroundColor = { 18, 26, 36, 232 },
+                        borderRadius = 8,
+                        borderWidth = 1,
+                        borderColor = { 90, 160, 210, 120 },
                         children = {
-                            UI.Button { text = "确认出发", variant = "primary", width = 120, height = 36, onClick = function() ConfirmDeploy() end },
-                            UI.Button { text = "返回主界面", width = 120, height = 36, onClick = function() BackToMainMenu() end },
+                            UI.Label { text = "出勤准备", fontSize = 20, fontColor = { 180, 230, 255, 255 } },
+                            UI.Label { id = "deployGoldLabel", text = "后勤账户: 0 金币", fontSize = 13, fontColor = { 255, 220, 100, 240 } },
+                            UI.Label { id = "deployWarehouseLabel", text = "仓库库存 0 件 | 可售估值 0", fontSize = 12, fontColor = { 170, 210, 220, 220 } },
+                            UI.Label { id = "deployRecentLabel", text = "最近带回: 无", fontSize = 12, fontColor = { 170, 185, 200, 220 } },
+                            UI.Label { id = "deployBonusLabel", text = "当前主要加成: 无", fontSize = 12, fontColor = { 210, 220, 170, 230 } },
+                        },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        right = "4%",
+                        top = "17%",
+                        width = "26%",
+                        height = "30%",
+                        padding = 18,
+                        gap = 8,
+                        backgroundImage = "ui/deploy/ui_panel_deploy_summary_blank.png",
+                        backgroundColor = { 14, 24, 32, 232 },
+                        borderRadius = 8,
+                        borderWidth = 1,
+                        borderColor = { 110, 190, 180, 120 },
+                        children = {
+                            UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
+                            UI.Label { id = "deployLoadoutLabel", text = "当前装备 无 | 本次带入 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { text = "局内效果见本局生效装备与天赋", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                        },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        right = "5%",
+                        bottom = "7%",
+                        children = {
+                            UI.Button {
+                                text = "确认出发",
+                                variant = "primary",
+                                width = 190,
+                                height = 58,
+                                backgroundImage = "ui/deploy/ui_button_confirm_deploy_large.png",
+                                onClick = function() ConfirmDeploy() end,
+                            },
                         },
                     },
                 },
@@ -3492,6 +3547,76 @@ function CreateUI()
                     },
                 },
             },
+            UI.Panel {
+                id = "deployShellOverlay",
+                visible = false,
+                position = "absolute",
+                top = 0, left = 0, right = 0, bottom = 0,
+                pointerEvents = "box-none",
+                children = {
+                    UI.Button {
+                        text = "返回主界面",
+                        position = "absolute",
+                        left = "3%",
+                        top = "4%",
+                        width = 132,
+                        height = 42,
+                        backgroundImage = "ui/deploy/ui_button_back_main.png",
+                        onClick = function() BackToMainMenu() end,
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        top = "4%",
+                        left = "21%",
+                        width = "56%",
+                        flexDirection = "row",
+                        flexWrap = "wrap",
+                        justifyContent = "center",
+                        gap = 10,
+                        children = {
+                            UI.Button { text = "后勤仓库", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_warehouse.png", onClick = function() OpenDeployWarehouse() end },
+                            UI.Button { text = "后勤申领", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
+                            UI.Button { text = "出勤配置", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
+                            UI.Button { text = "回收资历", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
+                            UI.Button { text = "天赋", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
+                        },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        right = "4%",
+                        top = "17%",
+                        width = "26%",
+                        height = "30%",
+                        padding = 18,
+                        gap = 8,
+                        backgroundImage = "ui/deploy/ui_panel_deploy_summary_blank.png",
+                        backgroundColor = { 14, 24, 32, 232 },
+                        borderRadius = 8,
+                        borderWidth = 1,
+                        borderColor = { 110, 190, 180, 120 },
+                        children = {
+                            UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
+                            UI.Label { text = "已带装备 / 已带消耗品 / 本局效果", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { text = "详情随当前模块列表刷新", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                        },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        right = "5%",
+                        bottom = "7%",
+                        children = {
+                            UI.Button {
+                                text = "确认出发",
+                                variant = "primary",
+                                width = 190,
+                                height = 58,
+                                backgroundImage = "ui/deploy/ui_button_confirm_deploy_large.png",
+                                onClick = function() ConfirmDeploy() end,
+                            },
+                        },
+                    },
+                },
+            },
 
         }
     }
@@ -3801,6 +3926,7 @@ function HandleUpdate(eventType, eventData)
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
     dpr = GetSafeDPR()
+    UILayout.SetViewport(screenW / dpr, screenH / dpr)
 
     local dt = eventData["TimeStep"]:GetFloat()
     if blockedWallHintTimer > 0 then
