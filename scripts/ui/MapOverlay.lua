@@ -223,7 +223,7 @@ function MapOverlay.Draw(vg, screenW, screenH)
     nvgFontSize(vg, 18)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(255, 255, 255, 240))
-    nvgText(vg, screenW / 2, oy - 28, "扫雷地图 (点击格子插旗/回传)")
+    nvgText(vg, screenW / 2, oy - 28, "区域扫描图 (点击格子标记雷险/回传)")
 
     -- 格子
     for y = 1, MapOverlay.fieldHeight do
@@ -375,7 +375,7 @@ function MapOverlay.Draw(vg, screenW, screenH)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(180, 200, 220, 200))
     local bottomY = oy + MapOverlay.fieldHeight * cs + 10
-    nvgText(vg, screenW / 2, bottomY, "左键: 未知格插旗/取消 | 已探索格回传 | ESC/右键关闭")
+    nvgText(vg, screenW / 2, bottomY, "左键: 未知格标记雷险/取消 | 已探索格回传 | ESC/右键关闭")
 end
 
 --- 处理放大地图的点击

@@ -4,16 +4,16 @@ Date: 2026-05-31
 
 ## Scope
 
-- Main menu keeps the no-text background and removes visible top-left dynamic UI buttons.
+- Main menu is restored to the original `Textures/menu_bg.png` background and removes visible top-left dynamic UI buttons.
 - Main menu entry behavior is retained through three logical hotspots: accept work order, tutorial, settings.
 - Deploy preparation now has a 1536x864 logical layout basis with letterbox/pillarbox coordinate mapping.
-- The deploy overview uses the approved A-level panel, nav, summary, back, and confirm-deploy assets when available.
-- Other deploy modules keep their existing gameplay data and list logic, with a shared lightweight deploy shell overlay for navigation, summary, and confirm-deploy access.
+- The deploy preparation page is decoupled from the main-menu scene and uses a dark terminal backdrop plus approved A-level panel, nav, summary, back, icon, and confirm-deploy assets when available.
+- Warehouse, requisition, loadout, recovery, and talent modules all render into one fixed central display area using a shared filter bar and three-column card grid.
 - HUD work this pass is asset registration only; full in-run HUD refactor is intentionally deferred.
 
 ## Runtime Asset Paths
 
-- `assets/ui/main_menu/main_menu_bg_no_text.png`
+- `assets/Textures/menu_bg.png`
 - `assets/ui/deploy/ui_button_back_main.png`
 - `assets/ui/deploy/ui_button_nav_warehouse.png`
 - `assets/ui/deploy/ui_button_nav_requisition.png`
@@ -35,11 +35,12 @@ Date: 2026-05-31
 - `assets/ui/keys/ui_key_m.png`
 - `assets/ui/keys/ui_key_q.png`
 - `assets/ui/keys/ui_key_t.png`
+- `assets/ui/main_menu/main_menu_bg_no_text.png` is retained in the project but is not used as the formal main-menu background.
 
 ## Fallbacks
 
 - `UITheme` treats missing images as non-fatal and falls back to NanoVG rectangles/text.
-- Existing UI list rows, talent rows, and detailed warehouse/requisition content still use the old dynamic UI drawing because the available row assets contain fixed sample text or require further slicing.
+- Detailed module content uses dynamic card text over approved blank deploy/card shell assets; old per-module list panels are no longer visible in the deploy flow.
 - In-run HUD image skinning is not applied yet; registered key-prompt assets are prepared for a later HUD pass.
 
 ## Guardrails

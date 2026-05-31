@@ -110,7 +110,7 @@ local PROTOCOL_TITLES = {
     [5] = "正常作业",
     [4] = "轻度警戒",
     [3] = "风险作业",
-    [2] = "强制返程建议",
+    [2] = "返程建议",
     [1] = "最终广播",
 }
 
@@ -119,7 +119,7 @@ local PROTOCOL_DESCS = {
     [4] = "异常读数上升.",
     [3] = "深入提高收益和风险.",
     [2] = "撤离窗口缩短.",
-    [1] = "立即撤离.",
+    [1] = "撤离是建议.",
 }
 
 for level, text in pairs(GameText.protocol.levels) do
@@ -151,7 +151,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgFontSize(vg, 18)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(180, 200, 230, 255))
-    nvgText(vg, contentX, curY, "区域扫描图")
+    nvgText(vg, contentX, curY, GameText.hud.mapTitle)
     curY = curY + 24
 
     -- 小地图(嵌入左侧栏, 随侧边栏宽度缩放)
@@ -181,9 +181,9 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     -- 图例
     nvgFontSize(vg, 13)
     nvgFillColor(vg, nvgRGBA(140, 150, 170, 200))
-    nvgText(vg, contentX, curY, "数字 = 周围8格雷险")
+    nvgText(vg, contentX, curY, GameText.hud.minesweeperRule1)
     curY = curY + 18
-    nvgText(vg, contentX, curY, "特殊房不计入数字")
+    nvgText(vg, contentX, curY, GameText.hud.minesweeperRule2)
     curY = curY + 23
 
     -- 分隔线
@@ -210,7 +210,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     local barH = 14
     local barX = contentX + 60
     nvgFillColor(vg, nvgRGBA(255, 100, 100, 255))
-    nvgText(vg, contentX, curY, "生命")
+    nvgText(vg, contentX, curY, GameText.hud.hp)
     nvgBeginPath(vg)
     nvgRoundedRect(vg, barX, curY + 2, barW, barH, 3)
     nvgFillColor(vg, nvgRGBA(40, 20, 20, 200))
@@ -226,12 +226,12 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, barX + barW / 2, curY + 2 + barH / 2, hp .. "/" .. maxHp)
     curY = curY + barH + 14
 
-    -- 战斗力/金币/零件
+    -- 战斗力/待结算/回收物
     nvgFontSize(vg, 16)
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
 
     nvgFillColor(vg, nvgRGBA(255, 180, 60, 255))
-    nvgText(vg, contentX, curY, "战力: " .. (combat.power or 10))
+    nvgText(vg, contentX, curY, GameText.hud.power .. (combat.power or 10))
     curY = curY + 21
 
     local inv = context.inventory or {}
@@ -254,7 +254,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     -- 已锁定 / 回收物 / 已探索 一行显示
     nvgFontSize(vg, 14)
     local rowText = "已锁定:" .. (inv.safeGold or 0)
-        .. "  回收:" .. (inv.carriedItemCount or 0) .. "件"
+        .. "  回收物:" .. (inv.carriedItemCount or 0) .. "件"
         .. "  探索:" .. (context.exploredCount or 0) .. "格"
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
     nvgText(vg, contentX, curY, rowText)
@@ -273,10 +273,10 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     -- 当前目标
     nvgFontSize(vg, 15)
     nvgFillColor(vg, nvgRGBA(120, 230, 160, 255))
-    nvgText(vg, contentX, curY, "目标:")
+    nvgText(vg, contentX, curY, GameText.hud.targetTitle)
     curY = curY + 19
     nvgFillColor(vg, nvgRGBA(200, 220, 200, 220))
-    nvgText(vg, contentX, curY, "搜刮物资, 前往撤离点")
+    nvgText(vg, contentX, curY, GameText.hud.target)
     curY = curY + 23
 
     -- 附近危险
@@ -285,7 +285,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         nvgFontSize(vg, 16)
         local dangerColor = adjacent >= 3 and nvgRGBA(255, 80, 60, 255) or nvgRGBA(255, 200, 80, 255)
         nvgFillColor(vg, dangerColor)
-        nvgText(vg, contentX, curY, "附近危险: " .. adjacent .. " 格")
+        nvgText(vg, contentX, curY, GameText.hud.nearbyDanger .. adjacent .. " 格")
         curY = curY + 23
     end
 
@@ -316,7 +316,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
 
         nvgFontSize(vg, 15)
         nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
-        nvgText(vg, contentX, curY, "协议等级")
+        nvgText(vg, contentX, curY, GameText.hud.protocol)
 
         -- 等级数字(右侧对齐)
         local numScale = 1.0
@@ -381,7 +381,7 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     nvgFontSize(vg, 11)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
-    nvgText(vg, p.x + p.w / 2, p.y + 8, "54321 协议")
+    nvgText(vg, p.x + p.w / 2, p.y + 8, GameText.hud.protocol)
 
     -- 大号等级数字
     local numScale = 1.0
@@ -435,7 +435,7 @@ function HUD.DrawBottomBar(vg, layout, context)
     if context.consumables and (context.consumables.emergency_bandage or 0) > 0 then
         useText = "  Q:止血贴"
     end
-    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/攻击  E:撤离  T:事件" .. useText)
+    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, GameText.hud.controls .. useText)
 
     -- 右侧: 撤离距离
     if context.exitDistance then
@@ -444,7 +444,7 @@ function HUD.DrawBottomBar(vg, layout, context)
         nvgFillColor(vg, nvgRGBA(100, 255, 150, 230))
         local dirText = context.exitDirection or ""
         nvgText(vg, b.x + b.w - 14, b.y + b.h / 2,
-            "撤离点 " .. dirText .. " 距离 " .. context.exitDistance)
+            "撤离信标 " .. dirText .. " 距离 " .. context.exitDistance)
     end
 end
 
@@ -457,7 +457,7 @@ end
 ---@return string
 function HUD.GetInteractHint(context)
     if context.hasExit then
-        return "[E] 启动撤离信标"
+        return GameText.interact.exit
     end
     if context.hasEnemy and context.enemyAlive then
         if context.playerPower and context.enemyPower then
@@ -470,16 +470,16 @@ function HUD.GetInteractHint(context)
         return "[F] 攻击异常体  /  可直接离开"
     end
     if context.hasEnemy then
-        return "异常体已清理"
+        return GameText.interact.cleared
     end
     if context.canTrade then
         if context.eventName then
-            return "[T] 事件: " .. context.eventName
+            return GameText.interact.event .. context.eventName
         end
-        return "[T] 交易: 1零件换金币"
+        return GameText.interact.trader
     end
     if context.tradeUnavailable then
-        return "旅商需要 1 个零件"
+        return GameText.events.trader.noItem
     end
     if context.eventTraded then
         if context.eventName then
@@ -495,10 +495,10 @@ function HUD.GetInteractHint(context)
         return "该区域已搜索"
     end
     if context.roomType == "chest" and searchState.canSearch then
-        return "[F] 开启未登记物资箱"
+        return GameText.interact.chest
     end
     if searchState.canSearch then
-        return "[F] 搜索可回收物"
+        return GameText.interact.search
     end
     if searchState.searching then
         return "搜索中..."

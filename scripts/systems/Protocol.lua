@@ -58,7 +58,7 @@ function Protocol.GetDescription()
 end
 
 function Protocol.GetHUDText()
-    return "协议: " .. tostring(Protocol.level) .. " / " .. Protocol.GetDescription()
+    return "撤离协议: " .. tostring(Protocol.level) .. " / " .. Protocol.GetDescription()
 end
 
 function Protocol.GetStatus()

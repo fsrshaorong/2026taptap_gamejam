@@ -244,7 +244,13 @@ function Combat.TrySpawnEnemy(minefield, x, y)
     local basePower = CONFIG.enemyPowerMin + (hash % (CONFIG.enemyPowerMax - CONFIG.enemyPowerMin + 1))
     local enemyPower = basePower + adjPower
 
-    local names = { "哥布林", "骷髅兵", "蝙蝠怪", "食尸鬼", "暗影刺客" }
+    local names = {
+        "滞留工偶",
+        "空壳巡工",
+        "失控搬运机",
+        "头灯哨卫",
+        "管道清理机"
+    }
     local nameIdx = (hash % #names) + 1
 
     Combat.enemies[key] = {

@@ -933,6 +933,9 @@ local function testUILayoutRoundTrip()
         assertTrue(math.abs(ly - 80) < 0.001, "layout y round trip at " .. c.w .. "x" .. c.h)
         assertTrue(sw > 0 and sh > 0, "layout screen size should be positive")
         assertTrue(UILayout.ContainsLogic(130, 90, { x = 120, y = 80, w = 360, h = 180 }), "layout hit test")
+        local deployX, deployY = UILayout.ToLogic(UILayout.ToScreen(260, 292))
+        assertTrue(UILayout.ContainsLogic(deployX, deployY, { x = 230, y = 148, w = 820, h = 612 }), "deploy central hit at " .. c.w .. "x" .. c.h)
+        assertTrue(UILayout.ContainsLogic(deployX, deployY, { x = 260, y = 292, w = 760, h = 320 }), "deploy card hot area at " .. c.w .. "x" .. c.h)
     end
 end
 
@@ -1000,6 +1003,11 @@ local function testMainEntrySourceContract()
     CreateUI()
     OpenMainMenu()
 
+    local mainPage = _G.__testUiRoot:FindById("menuPage_main")
+    assertTrue(mainPage ~= nil, "main page should exist")
+    assertEq(mainPage.backgroundImage, "Textures/menu_bg.png", "main page should use original menu background")
+    assertTrue(mainPage.backgroundImage ~= "Textures/menu_bg_no_text.png", "main page should not use no-text texture")
+
     local directStartCount = 0
     local capturedStartConfig = nil
     local oldStartNewGame = StartNewGame
@@ -1051,6 +1059,54 @@ local function testMainEntrySourceContract()
     assertTrue(deployButtons["确认出发"] ~= nil, "deploy should show confirm deploy")
     assertTrue(deployButtons["返回主界面"] ~= nil, "deploy should show return to main")
     assertEq(_G.__testUiRoot:FindById("menuPage_deployOverview").visible, true, "accept should open deploy overview")
+
+    local deployPageNode = _G.__testUiRoot:FindById("menuPage_deployOverview")
+    assertTrue(deployPageNode.backgroundImage ~= "Textures/menu_bg.png", "deploy terminal should not reuse main menu background")
+    assertTrue(deployPageNode.backgroundImage ~= "ui/main_menu/main_menu_bg_no_text.png", "deploy terminal should not reuse no-text main background")
+
+    local layout = GetDeployTerminalLayoutInfo()
+    local central = _G.__testUiRoot:FindById("deployCentralDisplay")
+    local legacyCentral = _G.__testUiRoot:FindById("deployOverviewLegacyPanel")
+    local filterBar = _G.__testUiRoot:FindById("deployFilterBar")
+    local cardGrid = _G.__testUiRoot:FindById("deployCardGrid")
+    local summaryPanel = _G.__testUiRoot:FindById("deploySummaryFixedPanel")
+    local confirmButton = _G.__testUiRoot:FindById("deployConfirmButton")
+    local navBar = _G.__testUiRoot:FindById("deployModuleNavBar")
+    assertEq(central.left, layout.central.x, "central display x should be fixed")
+    assertEq(central.top, layout.central.y, "central display y should be fixed")
+    assertEq(central.width, layout.central.w, "central display width should be fixed")
+    assertEq(central.height, layout.central.h, "central display height should be fixed")
+    assertTrue(legacyCentral.visible == false, "legacy deploy overview panel should be hidden")
+    assertTrue(filterBar ~= nil, "central display should have filter bar")
+    assertTrue(cardGrid ~= nil, "central display should have card grid")
+    assertEq(summaryPanel.left, layout.summary.x, "summary panel x should be fixed")
+    assertEq(summaryPanel.top, layout.summary.y, "summary panel y should be fixed")
+    assertEq(confirmButton.width, layout.confirm.w, "confirm deploy button width should be fixed")
+    assertEq(confirmButton.height, layout.confirm.h, "confirm deploy button height should be fixed")
+    assertEq(navBar.left, layout.nav.x, "deploy nav x should be fixed")
+    assertEq(navBar.top, layout.nav.y, "deploy nav y should be fixed")
+    assertEq(layout.columns, 3, "deploy card grid should use three columns")
+    assertEq(layout.rowsVisible, 2, "deploy card grid should expose two visible rows before scrolling")
+
+    for _, module in ipairs(GetDeployTerminalModules()) do
+        RefreshDeployModulePage(module.id)
+        local moduleLayout = GetDeployTerminalLayoutInfo()
+        local expectedVisibleCards = math.min(moduleLayout.cardCount, moduleLayout.columns * moduleLayout.rowsVisible)
+        assertEq(moduleLayout.module, module.id, "deploy module should refresh into central display")
+        assertEq(moduleLayout.hitRectCount, expectedVisibleCards, "visible card hit rects should match central grid")
+        assertEq(#(_G.__testUiRoot:FindById("deployFilterBar").children or {}), #GetDeployTerminalFilters(module.id), "filter bar should match module filters")
+    end
+
+    local function assertNoAbsoluteBackgrounds(node)
+        if not node then return end
+        if node.backgroundImage then
+            assertTrue(string.find(node.backgroundImage, ":\\", 1, true) == nil, "runtime UI background should be project-relative: " .. node.backgroundImage)
+        end
+        for _, child in ipairs(node.children or {}) do
+            assertNoAbsoluteBackgrounds(child)
+        end
+    end
+    assertNoAbsoluteBackgrounds(_G.__testUiRoot)
 
     OpenTutorial()
     assertEq(directStartCount, 1, "tutorial should enter through StartTutorialRun config")

@@ -520,10 +520,10 @@ local function drawSearchPoint(vg, layout, searchState)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         if searchState.searched then
             nvgFillColor(vg, nvgRGBA(170, 160, 145, 180))
-            nvgText(vg, cx, rect.y + rect.h + 16, searchState.isChest and "宝箱已开启" or "已搜索")
+            nvgText(vg, cx, rect.y + rect.h + 16, searchState.isChest and "物资箱已开启" or "已搜索")
         else
             nvgFillColor(vg, nvgRGBA(255, 230, 140, 230))
-            nvgText(vg, cx, rect.y + rect.h + 16, searchState.isChest and "F 开启宝箱" or "F 搜索")
+            nvgText(vg, cx, rect.y + rect.h + 16, searchState.isChest and "F 开启物资箱" or "F 搜索")
         end
         return
     end
@@ -569,10 +569,10 @@ local function drawSearchPoint(vg, layout, searchState)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
     if searchState.searched then
         nvgFillColor(vg, nvgRGBA(170, 160, 145, 180))
-        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, searchState.isChest and "宝箱已开启" or "已搜索")
+        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, searchState.isChest and "物资箱已开启" or "已搜索")
     else
         nvgFillColor(vg, nvgRGBA(255, 230, 140, 230))
-        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, searchState.isChest and "F 开启宝箱" or "F 搜索")
+        nvgText(vg, rect.x + rect.w / 2, rect.y + rect.h + 6, searchState.isChest and "F 开启物资箱" or "F 搜索")
     end
 end
 
@@ -598,7 +598,7 @@ local function drawExitDevice(vg, layout, cell)
         nvgFontSize(vg, 14)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
         nvgFillColor(vg, nvgRGBA(150, 255, 170, 255))
-        nvgText(vg, cx, y + 94, cell.randomExit and "隐藏撤离点" or "撤离装置")
+        nvgText(vg, cx, y + 94, cell.randomExit and "隐藏撤离信标" or "撤离信标")
         if activePulse > 0 then
             nvgFontSize(vg, 13)
             nvgFillColor(vg, nvgRGBA(255, 235, 120, math.floor(255 * activePulse)))
@@ -628,7 +628,7 @@ local function drawExitDevice(vg, layout, cell)
     nvgFontSize(vg, 14)
     nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(150, 255, 170, 255))
-    nvgText(vg, cx, y, cell.randomExit and "隐藏撤离点" or "撤离装置")
+    nvgText(vg, cx, y, cell.randomExit and "隐藏撤离信标" or "撤离信标")
 
     if activePulse > 0 then
         nvgFontSize(vg, 13)
@@ -922,7 +922,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgFontSize(vg, 20)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBA(80, 255, 80, 255))
-        nvgText(vg, playerCX, layout.y + 20, "[ 撤离点 - 按 E 撤离 ]")
+        nvgText(vg, playerCX, layout.y + 20, "[ 撤离信标 - 按 E 撤离 ]")
     end
 
     if cell and cell.spawn then
@@ -957,11 +957,11 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgFontSize(vg, 20)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBA(220, 90, 70, 230))
-        nvgText(vg, cx, cy + 120, "已触发地雷")
+        nvgText(vg, cx, cy + 120, "已触发雷险")
 
         nvgFontSize(vg, 14)
         nvgFillColor(vg, nvgRGBA(180, 140, 130, 180))
-        nvgText(vg, cx, cy + 146, "不再触发 - 安全通过")
+        nvgText(vg, cx, cy + 146, "不再触发 - 可安全通过")
     end
 
     -- 宝箱房标题
@@ -970,7 +970,7 @@ function DungeonRoom.Draw(vg, w, h, context)
         nvgFontSize(vg, 16)
         nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
         nvgFillColor(vg, nvgRGBA(255, 210, 80, 230))
-        nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "宝箱房")
+        nvgText(vg, layout.x + layout.w / 2, layout.y + 12, "物资箱区")
     end
 
     -- 怪物房标题
@@ -992,10 +992,10 @@ function DungeonRoom.Draw(vg, w, h, context)
 
         -- 事件类型视觉配置
         local evtVisual = {
-            trader = { bodyColor = nvgRGBA(40, 140, 150, 230), hatColor = nvgRGBA(60, 180, 190, 240), accentColor = nvgRGBA(80, 220, 230, 255), label = "旅商", hint = "T:打开交易面板" },
-            dice   = { bodyColor = nvgRGBA(180, 120, 40, 230), hatColor = nvgRGBA(220, 160, 50, 240), accentColor = nvgRGBA(255, 200, 80, 255), label = "赌徒", hint = "T:打开下注面板" },
-            altar  = { bodyColor = nvgRGBA(120, 50, 150, 230), hatColor = nvgRGBA(160, 70, 200, 240), accentColor = nvgRGBA(200, 130, 255, 255), label = "祭坛", hint = "T:打开祭坛面板" },
-            trap   = { bodyColor = nvgRGBA(150, 80, 40, 230), hatColor = nvgRGBA(190, 100, 50, 240), accentColor = nvgRGBA(240, 150, 70, 255), label = "机关", hint = "T:打开机关面板" },
+            trader = { bodyColor = nvgRGBA(40, 140, 150, 230), hatColor = nvgRGBA(60, 180, 190, 240), accentColor = nvgRGBA(80, 220, 230, 255), label = "旅商", hint = "T:与旅商交易" },
+            dice   = { bodyColor = nvgRGBA(180, 120, 40, 230), hatColor = nvgRGBA(220, 160, 50, 240), accentColor = nvgRGBA(255, 200, 80, 255), label = "赌徒", hint = "T:与赌徒交涉" },
+            altar  = { bodyColor = nvgRGBA(120, 50, 150, 230), hatColor = nvgRGBA(160, 70, 200, 240), accentColor = nvgRGBA(200, 130, 255, 255), label = "祭坛", hint = "T:查看祭坛" },
+            trap   = { bodyColor = nvgRGBA(150, 80, 40, 230), hatColor = nvgRGBA(190, 100, 50, 240), accentColor = nvgRGBA(240, 150, 70, 255), label = "机关", hint = "T:处理机关" },
         }
         local vis = evtVisual[eventType] or evtVisual.trader
 
