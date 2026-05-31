@@ -3348,17 +3348,17 @@ function DrawEventPanel(vg, w, h)
 
     nvgFontFace(vg, "sans")
     nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
-    nvgFontSize(vg, 22)
+    nvgFontSize(vg, 28)
     nvgFillColor(vg, nvgRGBA(235, 250, 255, 255))
     nvgText(vg, x + 28, y + 22, data.title or "事件")
 
-    nvgFontSize(vg, 13)
+    nvgFontSize(vg, 18)
     nvgFillColor(vg, nvgRGBA(170, 205, 210, 230))
-    nvgText(vg, x + 28, y + 56, data.description or "")
+    nvgText(vg, x + 28, y + 60, data.description or "")
 
-    local listY = y + 96
-    local rowH = 50
-    local maxRows = math.floor((panelH - 188) / rowH)
+    local listY = y + 100
+    local rowH = 54
+    local maxRows = math.floor((panelH - 200) / rowH)
     if maxRows < 1 then maxRows = 1 end
     local startIndex = 1
     if #options > maxRows then
@@ -3397,33 +3397,33 @@ function DrawEventPanel(vg, w, h)
         end
 
         local enabled = opt.enabled ~= false
-        nvgFontSize(vg, 14)
+        nvgFontSize(vg, 18)
         nvgFillColor(vg, enabled and nvgRGBA(245, 240, 200, 255) or nvgRGBA(120, 125, 130, 210))
-        nvgText(vg, x + 40, oy + 8, (selected and "> " or "  ") .. (opt.label or "选项"))
+        nvgText(vg, x + 40, oy + 6, (selected and "> " or "  ") .. (opt.label or "选项"))
 
-        nvgFontSize(vg, 10)
+        nvgFontSize(vg, 13)
         nvgFillColor(vg, enabled and nvgRGBA(165, 185, 195, 230) or nvgRGBA(105, 110, 118, 190))
         local meta = "成本: " .. (opt.cost or "无") .. "   收益: " .. (opt.reward or "无") .. "   风险: " .. (opt.risk or "无")
         if not enabled and opt.disabledReason then
             meta = meta .. "   [" .. opt.disabledReason .. "]"
         end
-        nvgText(vg, x + 40, oy + 27, meta)
+        nvgText(vg, x + 40, oy + 29, meta)
     end
 
     local selected = options[eventPanel.selected]
     if selected then
-        nvgFontSize(vg, 12)
+        nvgFontSize(vg, 15)
         nvgFillColor(vg, nvgRGBA(200, 220, 220, 230))
         nvgText(vg, x + 28, y + panelH - 70, selected.description or "")
     end
     if eventPanel.message and eventPanel.message ~= "" then
-        nvgFontSize(vg, 12)
+        nvgFontSize(vg, 15)
         nvgFillColor(vg, nvgRGBA(255, 185, 120, 245))
         nvgText(vg, x + 28, y + panelH - 44, eventPanel.message)
     end
 
     nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
-    nvgFontSize(vg, 11)
+    nvgFontSize(vg, 13)
     nvgFillColor(vg, nvgRGBA(150, 165, 180, 220))
     nvgText(vg, x + panelW - 28, y + panelH - 30, "W/S 或 ↑/↓ 选择   T/Enter 确认   Esc 返回")
 end
