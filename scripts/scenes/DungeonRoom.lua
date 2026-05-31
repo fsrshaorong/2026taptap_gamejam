@@ -42,6 +42,7 @@ local imgPropGold = -1
 local imgPropMedkit = -1
 local imgPropSupplyBox = -1
 local imagesLoaded = false
+local PLAYER_FRAME_DIR = "Textures/generated/characters/huanxiong/frames/"
 
 -- 角色动画帧
 local animFrames = {
@@ -80,7 +81,7 @@ local animMovedThisFrame = false  -- 本帧是否调用了MovePlayer
 --- 初始化图片资源(只调用一次)
 function DungeonRoom.Init(vg)
     if imagesLoaded then return end
-    imgPlayer = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
+    imgPlayer = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "00_front_idle.png", 0)
     imgEnemy = nvgCreateImage(vg, "Textures/enemy_slime.png", 0)
     imgRoomSafe = nvgCreateImage(vg, "Textures/room_safe.png", 0)
     imgRoomDanger = nvgCreateImage(vg, "Textures/room_danger.png", 0)
@@ -101,19 +102,19 @@ function DungeonRoom.Init(vg)
     imgPropGold = nvgCreateImage(vg, "Textures/generated/props/09_jinbi_dui.png", 0)
     imgPropMedkit = nvgCreateImage(vg, "Textures/generated/props/10_yiliaobao.png", 0)
     imgPropSupplyBox = nvgCreateImage(vg, "Textures/generated/props/11_wuzi_xiang.png", 0)
-    idleFrames.down = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/00_front_idle.png", 0)
-    idleFrames.up = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/01_back_idle.png", 0)
-    idleFrames.left = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/02_left_idle.png", 0)
-    idleFrames.right = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/03_right_idle.png", 0)
+    idleFrames.down = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "00_front_idle.png", 0)
+    idleFrames.up = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "01_back_idle.png", 0)
+    idleFrames.left = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "02_left_idle.png", 0)
+    idleFrames.right = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "03_right_idle.png", 0)
     -- 加载行走动画帧
-    animFrames.down[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/04_front_walk_1.png", 0)
-    animFrames.down[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/08_front_walk_2.png", 0)
-    animFrames.up[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/05_back_walk_1.png", 0)
-    animFrames.up[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/09_back_walk_2.png", 0)
-    animFrames.left[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/06_left_walk_1.png", 0)
-    animFrames.left[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/10_left_walk_2.png", 0)
-    animFrames.right[1] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/07_right_walk_1.png", 0)
-    animFrames.right[2] = nvgCreateImage(vg, "Textures/generated/characters/huli/frames/11_right_walk_2.png", 0)
+    animFrames.down[1] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "04_front_walk_1.png", 0)
+    animFrames.down[2] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "08_front_walk_2.png", 0)
+    animFrames.up[1] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "05_back_walk_1.png", 0)
+    animFrames.up[2] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "09_back_walk_2.png", 0)
+    animFrames.left[1] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "06_left_walk_1.png", 0)
+    animFrames.left[2] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "10_left_walk_2.png", 0)
+    animFrames.right[1] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "07_right_walk_1.png", 0)
+    animFrames.right[2] = nvgCreateImage(vg, PLAYER_FRAME_DIR .. "11_right_walk_2.png", 0)
     imagesLoaded = true
 end
 
