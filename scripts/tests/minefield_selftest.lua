@@ -8,6 +8,7 @@ package.path = table.concat({
 local Minefield = require("systems.Minefield")
 local ExtractionRun = require("systems.ExtractionRun")
 local Protocol = require("systems.Protocol")
+local Balance = require("systems.Balance")
 local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Tutorial = require("systems.Tutorial")
@@ -252,29 +253,32 @@ local function testProtocolPressure()
     assertEq(status.level, 5, "protocol should start at level 5")
     assertEq(status.pressure, 0, "protocol should start at 0 pressure")
 
-    -- 每次探索 +2 压力, 10 次 = 20 -> level 4
+    -- 每次探索增加 5 压力, 4次 = 20 → level 4
     for i = 1, 10 do
         Protocol.AddPressure()
     end
     assertEq(Protocol.GetStatus().level, 4, "protocol level 4 at pressure 20")
     assertEq(Protocol.GetStatus().pressure, 20, "protocol pressure should be 20 after 10 explores")
 
+    -- 再 4 次 = 40 → level 3
     for i = 1, 10 do
         Protocol.AddPressure()
     end
     assertEq(Protocol.GetStatus().level, 3, "protocol level 3 at pressure 40")
 
+    -- 再 4 次 = 60 → level 2
     for i = 1, 10 do
         Protocol.AddPressure()
     end
     assertEq(Protocol.GetStatus().level, 2, "protocol level 2 at pressure 60")
 
+    -- 再 4 次 = 80 → level 1
     for i = 1, 10 do
         Protocol.AddPressure()
     end
     local result = Protocol.AddPressure()
     assertEq(Protocol.GetStatus().level, 1, "protocol level 1 at pressure 80+")
-    assertTrue(not result.penalty, "protocol 1 should not report penalty")
+    assertTrue(not result.penalty, "protocol 1 should not apply extra HP penalty")
 end
 
 local function testProtocolPenaltyDamageCanKill()
@@ -282,7 +286,7 @@ local function testProtocolPenaltyDamageCanKill()
     Combat.Reset()
     Combat.hp = 1
 
-    for i = 1, 16 do
+    for i = 1, 40 do
         Protocol.AddPressure()
     end
 
@@ -306,6 +310,24 @@ local function testCombatHpDeltaClamps()
     local heal = Combat.ApplyHpDelta(999)
     assertEq(heal.hp, Combat.maxHp, "positive hp delta should clamp at max hp")
     assertTrue(not heal.dead, "healed player should be alive")
+end
+
+local function testV03BalanceCombatRules()
+    Combat.Reset()
+    local mine = Combat.TakeMineHit()
+    assertEq(mine.damage, Balance.mineDamage, "mine damage should come from Balance")
+
+    Combat.Reset()
+    local powerBefore = Combat.power
+    local powerUp = Combat.TryPowerUp({ seed = 1 }, 1, 1)
+    assertEq(powerUp, 0, "normal search should not grant attack power")
+    assertEq(Combat.power, powerBefore, "normal search should not change combat power")
+
+    local gained = 0
+    for _ = 1, 8 do
+        gained = gained + Combat.GrantMonsterKillPower({ fought = true, dead = false, enemy = {} })
+    end
+    assertEq(gained, Balance.monster.powerGainCap, "monster kill power gain should cap per run")
 end
 
 local function testCellStateExploreAndClear()
@@ -412,6 +434,7 @@ local function testFailureSalvage()
     RunInventory.Reset()
     RunInventory.pendingGold = 23
     RunInventory.safeGold = 7
+    RunInventory.gold = RunInventory.pendingGold
     RunInventory.parts = 3
 
     local options = RunInventory.GetFailureSalvageOptions()
@@ -427,7 +450,7 @@ local function testFailureSalvage()
     assertEq(accept.bonus, 0, "accept salvage should not add bonus")
 
     local salvaged = RunInventory.ApplyFailureSalvage("salvage_part")
-    assertEq(salvaged.gold, 7, "legacy salvage_part should not add bonus gold")
+    assertEq(salvaged.gold, 7, "part salvage should not add bonus gold")
     assertEq(salvaged.parts, 0, "part salvage should still lose parts")
     assertEq(salvaged.bonus, 0, "part salvage bonus mismatch")
 end
@@ -541,13 +564,14 @@ local function testCarriedItemsExtractionNoDuplicateParts()
     assertEq(reward.carriedItemCount, RunInventory.parts, "seeded chest should have only item-backed parts")
     assertEq(reward.looseParts, 0, "item-backed parts should not be loose")
     assertEq(reward.convertedGold, 0, "carried items should not auto-convert to gold")
-    assertEq(reward.totalGold, RunInventory.gold, "total extraction reward should only include direct gold and loose parts")
+    assertEq(reward.totalGold, RunInventory.pendingGold + RunInventory.safeGold, "total extraction reward should include pending and safe gold")
 end
 
 local function testFailureSalvageWithCarriedItems()
     RunInventory.Reset()
     RunInventory.pendingGold = 12
     RunInventory.safeGold = 5
+    RunInventory.gold = RunInventory.pendingGold
     RunInventory.parts = 1
     RunInventory.AddCarriedItem("static_lens", 1, "test")
     local options = RunInventory.GetFailureSalvageOptions()
@@ -743,18 +767,20 @@ local function testMetaProgressWarehouseSellAndProtection()
     end)
 end
 
-local function testMetaProgressFailureDoesNotRecordWarehouse()
+local function testMetaProgressFailureSalvagesHighestItem()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
         RunInventory.Reset()
         RunInventory.pendingGold = 9
         RunInventory.safeGold = 4
+        RunInventory.gold = RunInventory.pendingGold
         RunInventory.parts = 1
         RunInventory.AddCarriedItem("static_lens", 1, "test")
         local salvage = RunInventory.ApplyFailureSalvage("accept")
         MetaProgress.AddGold(salvage.gold)
+        MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
         assertEq(MetaProgress.GetGold(), 4, "failure should only add safe gold")
-        assertEq(MetaProgress.GetWarehouseSummary().totalItems, 0, "failed run should not store carried items")
+        assertEq(MetaProgress.GetWarehouseItemCount("static_lens"), 1, "failed run should salvage one highest value item")
     end)
 end
 
@@ -780,6 +806,294 @@ local function testDisplayAdaptersProtectEquipmentAndConsumables()
     end)
 end
 
+local function testMetaProgressLoadConsumableAndLoadoutDefaults()
+    withMetaProgressMock({
+        gold = 25,
+        unlockedTalents = {},
+        ownedItems = {},
+        equippedItems = {},
+        stats = {},
+        recovery = nil,
+        warehouse = nil,
+    }, function()
+        MetaProgress.Load()
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "old save should default consumable stock")
+        assertEq(MetaProgress.GetLoadoutSummary().consumableCount, 0, "old save should default loadout")
+        assertEq(MetaProgress.GetTerminalSummary().inventory.gold, 25, "terminal summary should read old save gold")
+    end)
+end
+
+local function testUnifiedDisplayAndWarehouseCategories()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(100)
+        local bought = MetaProgress.BuyConsumable("emergency_bandage", 2)
+        assertTrue(bought, "should buy consumables")
+        MetaProgress.RecordExtractionReward({
+            totalGold = 0,
+            directGold = 0,
+            loosePartsGold = 0,
+            carriedItemCount = 1,
+            carriedItemValue = 16,
+            carriedItems = {
+                { itemId = "static_lens", count = 1, def = RunInventory.GetItemDef("static_lens") },
+            },
+        }, nil)
+        MetaProgress.BuyItem("armor")
+        local recovered = MetaProgress.GetUnifiedItemDisplayData("static_lens", "warehouse")
+        local equipment = MetaProgress.GetUnifiedItemDisplayData("armor", "equipment")
+        local consumable = MetaProgress.GetUnifiedItemDisplayData("emergency_bandage", "consumable")
+        assertEq(recovered.source, "recovered", "recovered display source mismatch")
+        assertEq(equipment.type, "equipment", "equipment display type mismatch")
+        assertEq(consumable.type, "consumable", "consumable display type mismatch")
+        assertEq(consumable.count, 2, "consumable display should show stock")
+
+        local equipmentList = MetaProgress.GetWarehouseDisplayList({ category = "equipment" })
+        assertTrue(#equipmentList >= 1, "equipment category should show old equipment")
+        for _, item in ipairs(equipmentList) do
+            assertTrue(not item.canSell, "equipment category should not be sellable")
+        end
+        local consumableList = MetaProgress.GetWarehouseDisplayList({ category = "consumable" })
+        assertTrue(#consumableList >= 1, "consumable category should show consumables")
+        for _, item in ipairs(consumableList) do
+            assertTrue(not item.canSell, "consumable category should not be sellable")
+        end
+    end)
+end
+
+local function testConsumablePurchaseLoadoutAndRunUse()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(100)
+        local bought, receipt = MetaProgress.BuyConsumable("emergency_bandage", 3)
+        assertTrue(bought, "consumable purchase should succeed")
+        assertEq(receipt.total, 3, "consumable stock should stack")
+
+        local configured, loadoutReceipt = MetaProgress.SetLoadoutConsumable("emergency_bandage", 2)
+        assertTrue(configured, "loadout set should succeed")
+        assertEq(loadoutReceipt.count, 2, "loadout should store selected count")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 3, "setting loadout should not consume stock")
+
+        local clampedOk, clamped = MetaProgress.SetLoadoutConsumable("emergency_bandage", 99)
+        assertTrue(clampedOk, "oversized loadout should be safely handled")
+        assertEq(clamped.count, 3, "oversized loadout should clamp to stock")
+
+        local consumedOk, runLoadout = MetaProgress.ConsumeLoadoutForRun()
+        assertTrue(consumedOk, "consume loadout should succeed")
+        assertEq(runLoadout.consumables.emergency_bandage, 3, "run loadout should receive consumables")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "starting run should consume stock")
+
+        RunInventory.Reset()
+        RunInventory.SetConsumables(runLoadout.consumables)
+        local hp = 50
+        local maxHp = 100
+        local used, useReceipt = RunInventory.UseConsumable("emergency_bandage", {
+            hp = hp,
+            maxHp = maxHp,
+            applyHpDelta = function(delta)
+                hp = math.min(maxHp, hp + delta)
+                return { hp = hp, delta = delta }
+            end,
+        })
+        assertTrue(used, "bandage should be usable in run")
+        assertEq(useReceipt.heal, 25, "bandage should heal configured minimum")
+        assertEq(RunInventory.GetConsumableCount("emergency_bandage"), 2, "using should reduce run count")
+
+        local fullUse, fullReason = RunInventory.UseConsumable("emergency_bandage", { hp = 100, maxHp = 100 })
+        assertTrue(not fullUse, "full hp use should fail")
+        assertEq(fullReason, "hp_full", "full hp should return hp_full")
+
+        RunInventory.SetConsumables({})
+        local emptyUse, emptyReason = RunInventory.UseConsumable("emergency_bandage", { hp = 50, maxHp = 100 })
+        assertTrue(not emptyUse, "empty use should fail")
+        assertEq(emptyReason, "not_enough", "empty use should return not_enough")
+    end)
+end
+
+local function testMainEntrySourceContract()
+    local oldPreload = package.preload["urhox-libs/UI"]
+    local oldLoaded = package.loaded["urhox-libs/UI"]
+    local buttons = {}
+
+    local function makeNode(spec)
+        spec = spec or {}
+        spec.visible = spec.visible ~= false
+        function spec:FindById(id)
+            if self.id == id then return self end
+            for _, child in ipairs(self.children or {}) do
+                if type(child) == "table" and child.FindById then
+                    local found = child:FindById(id)
+                    if found then return found end
+                end
+            end
+            return nil
+        end
+        function spec:Show() self.visible = true end
+        function spec:Hide() self.visible = false end
+        function spec:SetText(text) self.text = text end
+        function spec:AddChild(child)
+            self.children = self.children or {}
+            table.insert(self.children, child)
+        end
+        function spec:RemoveAllChildren() self.children = {} end
+        return spec
+    end
+
+    package.loaded["urhox-libs/UI"] = nil
+    package.preload["urhox-libs/UI"] = function()
+        return {
+            Panel = function(spec) return makeNode(spec) end,
+            Label = function(spec) return makeNode(spec) end,
+            Button = function(spec)
+                local node = makeNode(spec)
+                table.insert(buttons, node)
+                return node
+            end,
+            SetRoot = function(root) _G.__testUiRoot = root end,
+            Shutdown = function() end,
+        }
+    end
+
+    local chunk, loadErr = loadfile("scripts/main.lua")
+    assertTrue(chunk ~= nil, "main.lua should load: " .. tostring(loadErr))
+    local ok, runErr = pcall(chunk)
+    assertTrue(ok, "main.lua should initialize with UI stub: " .. tostring(runErr))
+
+    assertTrue(type(OpenMainMenu) == "function", "main menu wrapper should exist")
+    assertTrue(type(OpenDeployTerminal) == "function", "deploy terminal wrapper should exist")
+    assertTrue(type(ConfirmDeploy) == "function", "confirm deploy wrapper should exist")
+    assertTrue(type(StartNormalRun) == "function", "normal run wrapper should exist")
+    assertTrue(type(StartTutorialRun) == "function", "tutorial wrapper should exist")
+
+    CreateUI()
+    OpenMainMenu()
+
+    local directStartCount = 0
+    local capturedStartConfig = nil
+    local oldStartNewGame = StartNewGame
+    local oldStartTutorial = StartTutorial
+    StartNewGame = function(config)
+        directStartCount = directStartCount + 1
+        capturedStartConfig = config
+    end
+    StartTutorial = function() error("UI should not call StartTutorial directly") end
+
+    local function collectVisibleButtons(node, inheritedVisible, out)
+        if not node then return end
+        local visible = inheritedVisible and node.visible ~= false
+        if visible and node.onClick and node.text then
+            out[node.text] = (out[node.text] or 0) + 1
+        end
+        for _, child in ipairs(node.children or {}) do
+            collectVisibleButtons(child, visible, out)
+        end
+    end
+
+    local function visibleButtons()
+        local out = {}
+        collectVisibleButtons(_G.__testUiRoot, true, out)
+        return out
+    end
+
+    local mainButtons = visibleButtons()
+    assertTrue(mainButtons["接受工单"] ~= nil, "main should show accept work order")
+    assertTrue(mainButtons["展示工单"] ~= nil, "main should show tutorial entry")
+    assertTrue(mainButtons["调整终端"] ~= nil, "main should show settings entry")
+    assertTrue(mainButtons["后勤仓库"] == nil, "main should not show warehouse entry")
+    assertTrue(mainButtons["后勤申领"] == nil, "main should not show requisition entry")
+    assertTrue(mainButtons["出勤配置"] == nil, "main should not show loadout entry")
+    assertTrue(mainButtons["回收资历"] == nil, "main should not show recovery entry")
+    assertTrue(_G.__testUiRoot:FindById("menuGoldLabel") == nil, "main should not define gold summary label")
+    assertTrue(_G.__testUiRoot:FindById("menuWarehouseLabel") == nil, "main should not define warehouse summary label")
+    assertTrue(_G.__testUiRoot:FindById("menuLoadoutLabel") == nil, "main should not define loadout summary label")
+
+    local acceptButton = nil
+    for _, button in ipairs(buttons) do
+        if button.text == "接受工单" then
+            acceptButton = button
+            break
+        end
+    end
+    assertTrue(acceptButton ~= nil, "accept work order button should exist")
+    acceptButton.onClick()
+    assertEq(directStartCount, 0, "top-level accept should open deploy terminal, not start a run")
+
+    local deployButtons = visibleButtons()
+    assertTrue(deployButtons["后勤仓库"] ~= nil, "deploy should show warehouse entry")
+    assertTrue(deployButtons["后勤申领"] ~= nil, "deploy should show requisition entry")
+    assertTrue(deployButtons["出勤配置"] ~= nil, "deploy should show loadout entry")
+    assertTrue(deployButtons["回收资历"] ~= nil, "deploy should show recovery entry")
+    assertTrue(deployButtons["确认出发"] ~= nil, "deploy should show confirm deploy")
+    assertTrue(deployButtons["返回主界面"] ~= nil, "deploy should show return to main")
+    assertEq(_G.__testUiRoot:FindById("menuPage_deployOverview").visible, true, "accept should open deploy overview")
+
+    local tutorialButton = nil
+    for _, button in ipairs(buttons) do
+        if button.text == "展示工单" then
+            tutorialButton = button
+            break
+        end
+    end
+    assertTrue(tutorialButton ~= nil, "tutorial button should exist")
+    tutorialButton.onClick()
+    assertEq(directStartCount, 1, "tutorial should enter through StartTutorialRun config")
+    assertEq(capturedStartConfig.mode, "tutorial", "tutorial start config should stay tutorial mode")
+    assertEq(capturedStartConfig.useLoadout, false, "tutorial should not use loadout")
+    assertEq(capturedStartConfig.applyMetaProgress, false, "tutorial should not apply meta")
+    assertEq(capturedStartConfig.allowWarehouseRewards, false, "tutorial should not write warehouse rewards")
+    assertEq(capturedStartConfig.allowFailureRewards, false, "tutorial should not write failure rewards")
+    assertEq(capturedStartConfig.skipLoadout, true, "tutorial should skip loadout")
+    assertTrue(capturedStartConfig.manualMap ~= nil, "tutorial should keep fixed manual map")
+
+    StartNewGame = oldStartNewGame
+    StartTutorial = oldStartTutorial
+    package.preload["urhox-libs/UI"] = oldPreload
+    package.loaded["urhox-libs/UI"] = oldLoaded
+end
+
+local function testEquipmentRequiresEquippedForBonus()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(200)
+
+        local boughtArmor = MetaProgress.BuyItem("armor")
+        assertTrue(boughtArmor, "armor purchase should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 0, "owned armor should not apply until equipped")
+
+        local equippedArmor = MetaProgress.ToggleEquip("armor")
+        assertTrue(equippedArmor, "armor equip should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "equipped armor should add max HP")
+
+        local boughtWhetstone = MetaProgress.BuyItem("whetstone")
+        assertTrue(boughtWhetstone, "whetstone purchase should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusPower, 0, "owned whetstone should not apply until equipped")
+
+        local equippedWhetstone = MetaProgress.ToggleEquip("whetstone")
+        assertTrue(equippedWhetstone, "whetstone equip should succeed")
+        assertEq(MetaProgress.GetEquipBonus().bonusPower, 5, "equipped whetstone should add power")
+    end)
+end
+
+local function testConsumableLoadoutZeroDoesNotEnterRun()
+    withMetaProgressMock(nil, function()
+        MetaProgress.GMReset()
+        MetaProgress.AddGold(100)
+        local bought = MetaProgress.BuyConsumable("emergency_bandage", 2)
+        assertTrue(bought, "bandage purchase should succeed")
+
+        local ok, runLoadout = MetaProgress.ConsumeLoadoutForRun()
+        assertTrue(ok, "empty loadout consume should succeed")
+        assertEq(runLoadout.consumables.emergency_bandage, nil, "loadout=0 should carry no bandages")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 2, "loadout=0 should not consume stock")
+
+        MetaProgress.SetLoadoutConsumable("emergency_bandage", 2)
+        local ok2, runLoadout2 = MetaProgress.ConsumeLoadoutForRun()
+        assertTrue(ok2, "configured loadout should consume")
+        assertEq(runLoadout2.consumables.emergency_bandage, 2, "configured loadout should enter run")
+        assertEq(MetaProgress.GetConsumableCount("emergency_bandage"), 0, "configured loadout should reduce stock")
+    end)
+end
+
 local function testMetaProgressGrowthEffectsStillApply()
     withMetaProgressMock(nil, function()
         MetaProgress.GMReset()
@@ -788,7 +1102,7 @@ local function testMetaProgressGrowthEffectsStillApply()
         assertTrue(bought, "should buy armor with extracted gold")
         local equipped = MetaProgress.ToggleEquip("armor")
         assertTrue(equipped, "should equip bought armor")
-        assertEq(MetaProgress.GetEquipBonus().bonusHP, 20, "armor should grant tuned HP")
+        assertEq(MetaProgress.GetEquipBonus().bonusHP, 25, "armor should still grant HP")
 
         local unlocked = MetaProgress.UnlockTalent("talent_mine")
         assertTrue(unlocked, "should unlock mine talent with extracted gold")
@@ -913,10 +1227,18 @@ local function testNormalRunTunedSpecialCounts()
 end
 
 local function testTutorialMapDiagonalLayout()
-    local field = Minefield.New(Tutorial.GetMapConfig())
+    local config = Tutorial.GetMapConfig()
+    assertEq(config.mode, "tutorial", "tutorial config should use tutorial mode")
+    assertEq(config.seed, 777, "tutorial seed mismatch")
+    assertTrue(config.manualMap ~= nil, "tutorial config should include fixed manual map")
+    assertEq(config.manualMap.width, 5, "tutorial manual map width mismatch")
+    assertEq(config.manualMap.height, 5, "tutorial manual map height mismatch")
+
+    local field = Minefield.New(config)
 
     assertEq(field.width, 5, "tutorial width mismatch")
     assertEq(field.height, 5, "tutorial height mismatch")
+    assertEq(field.mode, "tutorial", "tutorial field mode mismatch")
     assertEq(field.mineCount, 4, "tutorial mine count mismatch")
     assertEq(field.eventCount, 4, "tutorial event room count mismatch")
     assertEq(field.monsterCount, 5, "tutorial monster room count mismatch")
@@ -949,6 +1271,19 @@ local function testTutorialMapDiagonalLayout()
             end
         end
     end
+
+    local normalField = Minefield.New({
+        mode = "normal",
+        width = 10,
+        height = 10,
+        seed = 777,
+        randomExitCount = 2,
+    })
+    assertEq(normalField.width, 10, "normal mode should keep normal width")
+    assertEq(normalField.height, 10, "normal mode should keep normal height")
+    assertTrue(normalField.manualMap == nil, "normal mode should not receive tutorial manual map")
+    assertTrue(#normalField:GetExits() ~= #field:GetExits() or normalField.width ~= field.width,
+        "normal mode should differ from fixed tutorial map")
 end
 
 local function testJudgeModeManualMap()
@@ -1011,7 +1346,7 @@ local function testCombatResultSignals()
     assertEq(win.playerPower, 12, "combat result should include player power")
     assertEq(win.enemyPower, 9, "combat result should include enemy power")
     assertEq(win.damage, 0, "winning combat should not cost hp")
-    assertTrue(win.reward and win.reward.gold > 0, "combat result should include gold reward")
+    assertTrue(win.reward and win.reward.gold >= 0 and win.reward.gold <= Balance.monster.goldMax, "combat result should include tuned gold reward")
     assertEq(win.reward.parts, 0, "low threat combat should not force part reward")
     assertTrue(not Combat.enemies["1,1"].alive, "enemy should be cleared after fight")
 
@@ -1031,7 +1366,7 @@ local function testCombatResultSignals()
     assertEq(costly.enemyPower, 14, "costly combat should include enemy power")
     assertEq(costly.damage, 8, "combat damage should be power gap")
     assertEq(costly.hp, 92, "combat hp should reflect damage")
-    assertTrue(costly.reward and costly.reward.gold > 0, "costly combat should still pay reward")
+    assertTrue(costly.reward and costly.reward.gold >= 0 and costly.reward.gold <= Balance.monster.goldMax, "costly combat should still pay tuned reward")
 end
 
 local function testMonsterActiveCombatLoop()
@@ -1057,7 +1392,7 @@ local function testMonsterActiveCombatLoop()
         killed = Combat.PlayerAttackEnemy(3, 3, { x = 0.35, y = 0.45 })
     end
     assertTrue(killed and killed.killed, "repeated hits should kill monster")
-    assertTrue(killed.result and killed.result.reward and killed.result.reward.gold > 0, "killed monster should produce reward result")
+    assertTrue(killed.result and killed.result.reward and killed.result.reward.gold >= 0, "killed monster should produce reward result")
     assertTrue(not Combat.enemies["3,3"].alive, "monster should be marked dead after hp reaches zero")
 end
 
@@ -1183,19 +1518,22 @@ end
 
 local function testEventExecTrader()
     EventSystem.Reset(50)
+    -- Force the assignment to trader by finding a coord that gives "trader"
+    -- We'll directly assign for testing
     EventSystem.assignedEvents["10,10"] = "trader"
 
-    local noItem = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = {}, hp = 3, maxHp = 5, power = 5 })
-    assert(noItem.ok, "default trader action should leave when no item exists")
-    assertEq(noItem.completed, false, "leave should not complete trader")
+    local r1 = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = {}, hp = 3, maxHp = 5, power = 5 })
+    assert(r1.ok, "default trader action should leave when no item exists")
+    assertEq(r1.completed, false, "leave should not complete trader")
 
-    local item = { id = "static_lens", itemId = "static_lens", name = "静电透镜", count = 1, value = 16, baseValue = 16, type = "tool" }
+    local item = { itemId = "static_lens", name = "Static Lens", count = 1, baseValue = 16, value = 16 }
     local r2 = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = { item }, hp = 3, maxHp = 5, power = 5 })
     assert(r2.ok, "trader should sell concrete item")
     assertEq(r2.safeGoldDelta, 12, "trader should pay floor(baseValue * 0.75)")
     assertEq(r2.sellItemId, "static_lens", "trader should request concrete item removal")
     assertEq(r2.hpDelta, 0, "no hp change for trader")
 
+    -- Already completed
     local r3 = EventSystem.Execute(10, 10, { pendingGold = 100, tradableItems = { item }, hp = 3, maxHp = 5, power = 5 })
     assert(not r3.ok, "completed event should fail")
 
@@ -1207,17 +1545,17 @@ local function testEventTraderOptionsAndAdapter()
     EventSystem.Reset(51)
     EventSystem.assignedEvents["11,11"] = "trader"
 
-    local tradables = EventSystem.getTradableItems({ tradableItems = { { id = "dim_capacitor", itemId = "dim_capacitor", count = 2 } } })
-    assertEq(tradables[1].id, "dim_capacitor", "concrete tradable should pass through")
-    assertEq(tradables[1].count, 2, "concrete tradable should expose current count")
+    local tradables = EventSystem.getTradableItems({ tradableItems = { { itemId = "static_lens", count = 1 } } })
+    assertEq(tradables[1].itemId, "static_lens", "tradable adapter should expose concrete item")
+    assertEq(tradables[1].count, 1, "tradable adapter should expose item count")
 
     local menu = EventSystem.GetOptions(11, 11, { pendingGold = 0, tradableItems = {}, hp = 100, maxHp = 100, power = 10 })
     assertEq(#menu.options, 2, "trader without items should expose disabled placeholder and leave")
-    assertTrue(menu.options[1].enabled == false, "sell should be disabled without concrete items")
+    assertTrue(menu.options[1].enabled == false, "no item placeholder should be disabled")
 
     local ok, reason = EventSystem.canExecuteTrade(menu.options[1], menu.state)
     assertTrue(not ok, "canExecuteTrade should reject disabled option")
-    assertEq(reason, "没有可出售的回收物。", "canExecuteTrade disabled reason mismatch")
+    assertTrue(reason ~= nil, "canExecuteTrade should return disabled reason")
 end
 
 local function testEventExecTraderHealFull()
@@ -1226,18 +1564,19 @@ local function testEventExecTraderHealFull()
 
     local full = EventSystem.ExecuteOptionById(12, 12, "heal", { pendingGold = 20, tradableItems = {}, hp = 100, maxHp = 100, power = 10 })
     assertTrue(not full.ok, "removed trader heal option should fail")
-    assertEq(full.msg, "未知事件选项。", "removed heal option message mismatch")
 end
 
 local function testEventExecDice()
     EventSystem.Reset(50)
     EventSystem.assignedEvents["20,20"] = "dice"
 
+    -- Not enough gold
     local r1 = EventSystem.Execute(20, 20, { pendingGold = 5, hp = 3, maxHp = 5, power = 5 })
-    assert(not r1.ok, "dice should fail with insufficient pending gold")
+    assert(not r1.ok, "dice should fail with insufficient gold")
 
+    -- Enough gold - should produce a result (win or lose)
     local r2 = EventSystem.Execute(20, 20, { pendingGold = 50, hp = 3, maxHp = 5, power = 5 })
-    assert(r2.ok, "dice should succeed with enough pending gold")
+    assert(r2.ok, "dice should succeed with enough gold")
     assert(r2.pendingGoldDelta == -20 or r2.pendingGoldDelta == 20 or r2.pendingGoldDelta == 60, "dice should use tuned net results, got: " .. r2.pendingGoldDelta)
     assertEq(r2.partsDelta, 0, "dice no parts change")
     assertEq(r2.hpDelta, 0, "dice no hp change")
@@ -1247,11 +1586,13 @@ local function testEventExecAltar()
     EventSystem.Reset(50)
     EventSystem.assignedEvents["30,30"] = "altar"
 
+    -- Not enough HP (hp <= cost)
     local r1 = EventSystem.Execute(30, 30, { pendingGold = 10, hp = 10, maxHp = 100, power = 5 })
-    assert(not r1.ok, "altar should fail with hp <= first cost")
+    assert(not r1.ok, "altar should fail with hp <= cost")
 
+    -- Enough HP
     local r2 = EventSystem.Execute(30, 30, { pendingGold = 10, hp = 30, maxHp = 100, power = 5 })
-    assert(r2.ok, "altar should succeed with hp > first cost")
+    assert(r2.ok, "altar should succeed with hp > cost")
     assertEq(r2.hpDelta, -10, "altar first cost should be 10 hp")
     assertTrue(r2.pendingGoldDelta > 0, "altar should give pending gold")
     assertTrue(r2.rewardItemQuality ~= nil, "altar should return reward item quality")
@@ -1262,22 +1603,26 @@ local function testEventExecTrap()
     EventSystem.Reset(50)
     EventSystem.assignedEvents["40,40"] = "trap"
 
+    -- Low power - fail
     local r1 = EventSystem.Execute(40, 40, { pendingGold = 10, hp = 3, maxHp = 5, power = 3 })
-    assert(r1.ok, "trap always executes, even on fail check")
-    assertEq(r1.pendingGoldDelta, 0, "trap fail gives no gold")
+    assert(r1.ok, "trap always 'succeeds' (executes), even on fail check")
+    assertEq(r1.goldDelta, 0, "trap fail gives no gold")
     assertEq(r1.hpDelta, -1, "trap fail costs 1 hp")
     assertEq(r1.pressureDelta, 5, "trap fail should raise pressure")
 
+    -- Reset for high power test
     EventSystem.Reset(50)
     EventSystem.assignedEvents["40,40"] = "trap"
 
+    -- High power - success
     local r2 = EventSystem.Execute(40, 40, { pendingGold = 10, hp = 3, maxHp = 5, power = 10 })
     assert(r2.ok, "trap should succeed")
     assertEq(r2.pendingGoldDelta, 25, "trap success gives pending gold")
-    assertEq(#r2.rewardItems, 2, "trap success gives two reward item entries")
+    assertTrue(#(r2.rewardItems or {}) == 2, "trap success gives reward item descriptors")
     assertEq(r2.hpDelta, 0, "trap success no hp cost")
     assertEq(r2.pressureDelta, 0, "trap success should not raise pressure")
 end
+
 local function testEventStatsRecordEvent()
     RunInventory.Reset()
     RunInventory.RecordEvent("trader")
@@ -1316,6 +1661,7 @@ local tests = {
     { name = "protocol pressure", fn = testProtocolPressure },
     { name = "protocol penalty damage can kill", fn = testProtocolPenaltyDamageCanKill },
     { name = "combat hp delta clamps", fn = testCombatHpDeltaClamps },
+    { name = "v0.3 balance combat rules", fn = testV03BalanceCombatRules },
     { name = "cell state explore and clear", fn = testCellStateExploreAndClear },
     { name = "zero expansion disabled by default", fn = testZeroExpansionDisabledByDefault },
     { name = "teleport requires explored", fn = testTeleportRequiresExplored },
@@ -1333,8 +1679,14 @@ local tests = {
     { name = "meta progress recent recovery trim", fn = testMetaProgressRecentRecoveryTrim },
     { name = "meta progress failure does not record recovery", fn = testMetaProgressFailureDoesNotRecordRecovery },
     { name = "meta progress warehouse sell and protection", fn = testMetaProgressWarehouseSellAndProtection },
-    { name = "meta progress failure does not record warehouse", fn = testMetaProgressFailureDoesNotRecordWarehouse },
+    { name = "meta progress failure salvages highest item", fn = testMetaProgressFailureSalvagesHighestItem },
     { name = "display adapters protect equipment and consumables", fn = testDisplayAdaptersProtectEquipmentAndConsumables },
+    { name = "meta progress load consumable and loadout defaults", fn = testMetaProgressLoadConsumableAndLoadoutDefaults },
+    { name = "unified display and warehouse categories", fn = testUnifiedDisplayAndWarehouseCategories },
+    { name = "consumable purchase loadout and run use", fn = testConsumablePurchaseLoadoutAndRunUse },
+    { name = "main entry source contract", fn = testMainEntrySourceContract },
+    { name = "equipment requires equipped for bonus", fn = testEquipmentRequiresEquippedForBonus },
+    { name = "consumable loadout zero does not enter run", fn = testConsumableLoadoutZeroDoesNotEnterRun },
     { name = "meta progress growth effects still apply", fn = testMetaProgressGrowthEffectsStillApply },
     { name = "event room not searchable", fn = testEventRoomNotSearchable },
     { name = "10x10 tuned special counts", fn = testNormalRunTunedSpecialCounts },

@@ -15,9 +15,9 @@ local HUD = {}
 
 local LAYOUT = {
     -- 左侧信息栏
-    sidebarWidthRatio = 0.30,  -- 屏幕宽度 30%
-    sidebarMinW = 240,
-    sidebarMaxW = 400,
+    sidebarWidthRatio = 0.35,  -- 屏幕宽度 35%
+    sidebarMinW = 280,
+    sidebarMaxW = 460,
     sidebarPadding = 12,
 
     -- 底部栏
@@ -45,7 +45,6 @@ local LAYOUT = {
 function HUD.ComputeLayout(w, h)
     -- 左侧栏宽度
     local sidebarW = math.floor(w * LAYOUT.sidebarWidthRatio)
-    sidebarW = math.max(LAYOUT.sidebarMinW, math.min(LAYOUT.sidebarMaxW, sidebarW))
 
     local bottomH = LAYOUT.bottomBarH
 
@@ -155,15 +154,9 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, "区域扫描图")
     curY = curY + 24
 
-    -- 小地图(嵌入左侧栏)
+    -- 小地图(嵌入左侧栏, 随侧边栏宽度缩放)
     if context.visibleMap then
         local mapW = sb.w - pad * 2
-        -- 重新计算小地图尺寸适配侧边栏
-        local maxDim = math.max(context.fieldWidth or 15, context.fieldHeight or 15)
-        local cellSize = math.floor(mapW / maxDim)
-        if cellSize < 4 then cellSize = 4 end
-        local actualMapW = cellSize * (context.fieldWidth or 15)
-        local actualMapH = cellSize * (context.fieldHeight or 15)
 
         -- 临时覆盖 MiniMap 参数
         local oldMapX = MiniMap.mapX
@@ -182,7 +175,7 @@ function HUD.DrawLeftSidebar(vg, layout, context)
         MiniMap.mapY = oldMapY
         MiniMap.maxSize = oldMaxSize
 
-        curY = curY + actualMapH + 8
+        curY = curY + MiniMap.totalH + 8
     end
 
     -- 图例
@@ -246,21 +239,27 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgText(vg, contentX, curY, GameText.hud.pendingGold .. (inv.pendingGold or inv.gold or 0))
     curY = curY + 21
 
-    nvgFillColor(vg, nvgRGBA(120, 240, 160, 255))
-    nvgText(vg, contentX, curY, GameText.hud.safeGold .. (inv.safeGold or 0))
-    curY = curY + 21
-
     nvgFillColor(vg, nvgRGBA(160, 210, 255, 255))
     nvgText(vg, contentX, curY, GameText.hud.parts .. (inv.parts or 0))
     curY = curY + 21
 
-    nvgFillColor(vg, nvgRGBA(150, 230, 190, 255))
-    nvgText(vg, contentX, curY, "回收包: " .. (inv.carriedItemCount or 0) .. " 件 / 估值 " .. (inv.carriedItemValue or 0))
-    curY = curY + 21
+    local consumables = inv.consumables or {}
+    local bandageCount = consumables.emergency_bandage or 0
+    if bandageCount > 0 then
+        nvgFillColor(vg, nvgRGBA(170, 230, 210, 255))
+        nvgText(vg, contentX, curY, "止血贴: x" .. bandageCount)
+        curY = curY + 21
+    end
 
+    -- 已锁定 / 回收物 / 已探索 一行显示
+    nvgFontSize(vg, 14)
+    local rowText = "已锁定:" .. (inv.safeGold or 0)
+        .. "  回收:" .. (inv.carriedItemCount or 0) .. "件"
+        .. "  探索:" .. (context.exploredCount or 0) .. "格"
     nvgFillColor(vg, nvgRGBA(180, 190, 210, 200))
-    nvgText(vg, contentX, curY, "已探索: " .. (context.exploredCount or 0) .. " 格")
-    curY = curY + 26
+    nvgText(vg, contentX, curY, rowText)
+    nvgFontSize(vg, 16)
+    curY = curY + 24
 
     -- 分隔线
     nvgBeginPath(vg)
@@ -432,7 +431,11 @@ function HUD.DrawBottomBar(vg, layout, context)
     -- 底部次要操作
     nvgFontSize(vg, 10)
     nvgFillColor(vg, nvgRGBA(140, 150, 170, 180))
-    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/攻击  E:撤离  T:事件")
+    local useText = ""
+    if context.consumables and (context.consumables.emergency_bandage or 0) > 0 then
+        useText = "  Q:止血贴"
+    end
+    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, "WASD:移动  M:地图  F:搜索/攻击  E:撤离  T:事件" .. useText)
 
     -- 右侧: 撤离距离
     if context.exitDistance then

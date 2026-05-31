@@ -197,7 +197,7 @@ end
 ---@return table 传给 StartNewGame 的 override 参数
 function Tutorial.GetMapConfig()
     return {
-        mode = "judge",
+        mode = "tutorial",
         width = 5,
         height = 5,
         mineCount = 4,

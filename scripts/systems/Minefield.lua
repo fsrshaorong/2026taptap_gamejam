@@ -156,7 +156,7 @@ function Minefield:Init(config)
 end
 
 function Minefield:Generate()
-    if self.mode == "judge" then
+    if self.manualMap or self.mode == "judge" then
         self.rng = RNG.New(self.seed)
         self.generationAttempt = 1
         self:_GenerateManual()

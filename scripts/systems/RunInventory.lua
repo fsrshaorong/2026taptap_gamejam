@@ -13,6 +13,7 @@ RunInventory.safeGold = 0
 RunInventory.parts = 0
 RunInventory.searchedRooms = {}
 RunInventory.carriedItems = {}
+RunInventory.consumables = {}
 RunInventory.failureSalvage = nil
 RunInventory.searchBonus = 0  -- 搜索奖励加成百分比(装备效果)
 RunInventory.stats = {}
@@ -167,6 +168,7 @@ function RunInventory.Reset()
     RunInventory.parts = 0
     RunInventory.searchedRooms = {}
     RunInventory.carriedItems = {}
+    RunInventory.consumables = {}
     RunInventory.failureSalvage = nil
     RunInventory.searchBonus = 0
     RunInventory.stats = newStats()
@@ -203,6 +205,17 @@ function RunInventory.GetItemDef(itemId)
     return ITEM_DEF_LOOKUP[itemId]
 end
 
+local function copyConsumables(consumables)
+    local copied = {}
+    for itemId, count in pairs(consumables or {}) do
+        count = math.floor(tonumber(count) or 0)
+        if count > 0 then
+            copied[itemId] = count
+        end
+    end
+    return copied
+end
+
 function RunInventory.GetItemDisplayData(itemId)
     local def = RunInventory.GetItemDef(itemId) or {}
     return {
@@ -220,6 +233,59 @@ function RunInventory.GetItemDisplayData(itemId)
         source = "recovered",
         unique = def.unique == true,
     }
+end
+
+function RunInventory.SetConsumables(consumables)
+    RunInventory.consumables = copyConsumables(consumables)
+end
+
+function RunInventory.AddConsumable(itemId, count)
+    local def = RunInventory.GetItemDef(itemId)
+    if not def then return false, "unknown_item" end
+    if def.type ~= "consumable" then return false, "not_consumable" end
+    count = math.floor(tonumber(count) or 1)
+    if count < 1 then return false, "invalid_count" end
+    RunInventory.consumables[itemId] = (RunInventory.consumables[itemId] or 0) + count
+    return true, { itemId = itemId, count = count, total = RunInventory.consumables[itemId] }
+end
+
+function RunInventory.GetConsumableCount(itemId)
+    return RunInventory.consumables[itemId] or 0
+end
+
+function RunInventory.GetConsumables()
+    return copyConsumables(RunInventory.consumables)
+end
+
+function RunInventory.UseConsumable(itemId, context)
+    context = context or {}
+    local def = RunInventory.GetItemDef(itemId)
+    if not def or def.type ~= "consumable" then return false, "not_consumable" end
+    local count = RunInventory.GetConsumableCount(itemId)
+    if count <= 0 then return false, "not_enough" end
+
+    if itemId == "emergency_bandage" then
+        local hp = context.hp or 0
+        local maxHp = context.maxHp or hp
+        if hp >= maxHp then return false, "hp_full" end
+        local heal = math.min(25, maxHp - hp)
+        local result = nil
+        if context.applyHpDelta then
+            result = context.applyHpDelta(heal)
+        end
+        RunInventory.consumables[itemId] = count - 1
+        if RunInventory.consumables[itemId] <= 0 then
+            RunInventory.consumables[itemId] = nil
+        end
+        return true, {
+            itemId = itemId,
+            heal = heal,
+            count = RunInventory.GetConsumableCount(itemId),
+            result = result,
+        }
+    end
+
+    return false, "not_implemented"
 end
 
 function RunInventory.GetAllItemDefs()
@@ -345,6 +411,7 @@ function RunInventory.GetTradableItems()
             name = stack.def and stack.def.name or stack.itemId,
             count = stack.count,
             value = itemBaseValue(stack.def),
+            baseValue = itemBaseValue(stack.def),
             type = stack.def and stack.def.type or "unknown",
         })
     end
@@ -406,6 +473,9 @@ local function buildRewardItems(roll, isChest, adjacent)
     local items = {}
     for i = 1, itemCount do
         local itemId = chooseItemId(roll, isChest, i, adjacent)
+        if not itemId then
+            break
+        end
         local found = nil
         for _, stack in ipairs(items) do
             if stack.itemId == itemId then
@@ -444,8 +514,11 @@ function RunInventory.GetReward(minefield, x, y)
         parts = parts + stack.count
     end
 
-    -- 宝箱房奖励加成:金币翻倍, 必给零件
-    -- 搜索奖励加成(大背包装备效果)
+    if RunInventory.searchBonus > 0 then
+        gold = math.floor(gold * (1 + RunInventory.searchBonus / 100))
+        gold = math.min(isChest and Balance.chest.goldCap or Balance.search.goldCap, gold)
+    end
+
     return { gold = gold, pendingGold = gold, parts = parts, items = items, isChest = isChest, itemValue = 0 }
 end
 
@@ -551,6 +624,7 @@ function RunInventory.GetTotals()
         carriedItemCount = RunInventory.GetCarriedItemCount(),
         carriedItemValue = RunInventory.GetCarriedItemValue(),
         carriedItems = RunInventory.GetCarriedItems(),
+        consumables = RunInventory.GetConsumables(),
         searchedRooms = RunInventory.GetSearchedCount(),
         failureSalvage = RunInventory.failureSalvage,
     }
@@ -689,4 +763,5 @@ function RunInventory.ApplyFailureSalvage(choice)
     RunInventory.failureSalvage = salvage
     return salvage
 end
+
 return RunInventory

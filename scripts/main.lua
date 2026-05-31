@@ -9,7 +9,6 @@ local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Protocol = require("systems.Protocol")
 local Balance = require("systems.Balance")
-local GameText = require("systems.GameText")
 local MetaProgress = require("systems.MetaProgress")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
@@ -135,9 +134,14 @@ local BATTLE_RESULT_DURATION = 1.5 -- 结果展示时间
 local imgBattlePlayer = -1
 local imgBattleEnemy = -1
 
--- 菜单子页面状态
-local menuPage = "main"  -- "main" | "equip" | "talent" | "warehouse"
+-- Menu state is intentionally shallow: top level opens terminals, deploy pages
+-- are the only place that can confirm a normal run.
+local menuMode = "main" -- "main" | "deploy" | "settings"
+local deployPage = "overview"
+local menuPage = "main"  -- "main" | "deployOverview" | "equip" | "talent" | "warehouse" | "requisition" | "loadout" | "recovery" | "gm"
 local warehouseSelectedIndex = 1
+local warehouseFilter = "all"
+local currentRunConfig = nil
 
 local JUDGE_DEMO_MAP = {
     width = 15,
@@ -183,25 +187,25 @@ local MENU_HOTSPOTS = {
     {
         x = 1100, y = 260, w = 430, h = 135,
         action = function()
-            StartNewGame()
+            OpenDeployTerminal()
         end,
     },
     {
         x = 1095, y = 395, w = 430, h = 130,
         action = function()
-            StartTutorial()
+            OpenTutorial()
         end,
     },
     {
         x = 1085, y = 530, w = 430, h = 135,
         action = function()
-            ShowMenuPage("equip")
+            OpenSettingsTerminal()
         end,
     },
     {
         x = 1075, y = 670, w = 430, h = 130,
         action = function()
-            ShowMenuPage("gm")
+            OpenSettingsTerminal()
         end,
     },
 }
@@ -315,88 +319,241 @@ end
 -- 菜单页面管理
 -- ============================================================================
 
+function SetMenuMode(mode)
+    menuMode = mode or "main"
+    if menuMode == "main" then
+        deployPage = "overview"
+    end
+end
+
+function SetDeployPage(page)
+    deployPage = page or "overview"
+    SetMenuMode("deploy")
+end
+
 --- 返回主菜单(从游戏结束/撤离成功面板)
 function ReturnToMenu()
-    Tutorial.Reset()
     phase = PHASE.MENU
     setVisible("gameOverPanel", false)
     setVisible("winPanel", false)
     local menu = uiRoot_:FindById("menuOverlay")
     if menu then menu:Show() end
-    ShowMenuPage("main")
+    OpenMainMenu()
 end
 
 --- 切换菜单子页面
 function ShowMenuPage(page)
     menuPage = page
+    if page == "main" then
+        SetMenuMode("main")
+    elseif page == "gm" then
+        SetMenuMode("settings")
+    else
+        SetDeployPage(page == "deployOverview" and "overview" or page)
+    end
+    setVisible("terminalNavOverlay", page == "main")
     setVisible("menuPage_main", page == "main")
+    setVisible("menuPage_deployOverview", page == "deployOverview")
     setVisible("menuPage_equip", page == "equip")
     setVisible("menuPage_talent", page == "talent")
     setVisible("menuPage_warehouse", page == "warehouse")
+    setVisible("menuPage_requisition", page == "requisition")
+    setVisible("menuPage_loadout", page == "loadout")
+    setVisible("menuPage_recovery", page == "recovery")
     setVisible("menuPage_gm", page == "gm")
 
     if page == "main" then
         RefreshMainMenu()
+    elseif page == "deployOverview" then
+        RefreshDeployOverview()
     elseif page == "equip" then
         RefreshEquipPage()
     elseif page == "talent" then
         RefreshTalentPage()
     elseif page == "warehouse" then
         RefreshWarehousePage()
+    elseif page == "requisition" then
+        RefreshRequisitionPage()
+    elseif page == "loadout" then
+        RefreshLoadoutPage()
+    elseif page == "recovery" then
+        RefreshRecoveryPage()
     elseif page == "gm" then
         RefreshGMPanel()
     end
 end
 
+local function RefreshCurrentMenuPage()
+    ShowMenuPage(menuPage)
+end
+
+function OpenMainMenu()
+    ShowMenuPage("main")
+end
+
+function BackToMainMenu()
+    OpenMainMenu()
+end
+
+function OpenDeployTerminal()
+    OpenDeployOverview()
+end
+
+function OpenDeployOverview()
+    SetDeployPage("overview")
+    ShowMenuPage("deployOverview")
+end
+
+function OpenDeployWarehouse()
+    SetDeployPage("warehouse")
+    ShowMenuPage("warehouse")
+end
+
+function OpenDeployShop()
+    SetDeployPage("requisition")
+    ShowMenuPage("requisition")
+end
+
+function OpenDeployLoadout()
+    SetDeployPage("loadout")
+    ShowMenuPage("loadout")
+end
+
+function OpenDeployRecovery()
+    SetDeployPage("recovery")
+    ShowMenuPage("recovery")
+end
+
+function OpenDeployTalents()
+    SetDeployPage("talent")
+    ShowMenuPage("talent")
+end
+
+function OpenTutorial()
+    StartTutorialRun()
+end
+
+function OpenSettingsTerminal()
+    ShowMenuPage("gm")
+end
+
+function BackFromCurrentMenu()
+    if menuMode == "deploy" then
+        if deployPage == "overview" then
+            OpenMainMenu()
+        else
+            OpenDeployOverview()
+        end
+    elseif menuMode == "settings" then
+        OpenMainMenu()
+    end
+end
+
+function HandleMenuEscape()
+    BackFromCurrentMenu()
+end
+
 --- 刷新主菜单数据
 function RefreshMainMenu()
-    local goldLabel = uiRoot_ and uiRoot_:FindById("menuGoldLabel")
+    -- The first-level menu is deliberately quiet. Deploy summaries live on
+    -- the deploy overview so main does not leak second-level state.
+end
+
+function RefreshDeployOverview()
+    local summary = MetaProgress.GetTerminalSummary()
+
+    local goldLabel = uiRoot_ and uiRoot_:FindById("deployGoldLabel")
     if goldLabel then
-        goldLabel:SetText("金币: " .. MetaProgress.GetGold())
+        goldLabel:SetText("后勤账户: " .. summary.inventory.gold .. " 金币")
     end
 
-    -- 装备信息
-    local equipLabel = uiRoot_ and uiRoot_:FindById("menuEquippedLabel")
-    if equipLabel then
-        local equipped = MetaProgress.GetEquippedItems()
-        if #equipped == 0 then
-            equipLabel:SetText("装备: 无")
-        else
-            local names = {}
-            for _, id in ipairs(equipped) do
-                local def = MetaProgress.GetItemDef(id)
-                if def then table.insert(names, def.icon .. def.name) end
-            end
-            equipLabel:SetText("装备: " .. table.concat(names, " "))
-        end
+    local loadoutLabel = uiRoot_ and uiRoot_:FindById("deployLoadoutLabel")
+    if loadoutLabel then
+        loadoutLabel:SetText("当前装备 " .. summary.loadout.equipmentText .. " | 本次带入 " .. summary.loadout.consumableText)
     end
 
-    -- 统计
-    local statsLabel = uiRoot_ and uiRoot_:FindById("menuStatsLabel")
-    if statsLabel then
-        local stats = MetaProgress.GetStats()
-        if stats.totalRuns > 0 then
-            statsLabel:SetText("出击 " .. stats.totalRuns .. " 次 | 撤离 " .. stats.totalExtractions .. " 次")
-        else
-            statsLabel:SetText("首次探索, 祝你好运!")
-        end
-    end
-
-    local recovery = MetaProgress.GetRecoverySummary()
-    local recoveryLabel = uiRoot_ and uiRoot_:FindById("menuRecoveryLabel")
-    if recoveryLabel then
-        recoveryLabel:SetText("后勤回收: " .. recovery.totalItems .. " 件 | 估值 " .. recovery.totalValue)
-    end
-
-    local recentLabel = uiRoot_ and uiRoot_:FindById("menuRecentRecoveryLabel")
-    if recentLabel then
-        recentLabel:SetText(MetaProgress.GetRecoverySummaryText(4))
-    end
-
-    local warehouse = MetaProgress.GetWarehouseSummary()
-    local warehouseLabel = uiRoot_ and uiRoot_:FindById("menuWarehouseLabel")
+    local warehouseLabel = uiRoot_ and uiRoot_:FindById("deployWarehouseLabel")
     if warehouseLabel then
-        warehouseLabel:SetText("后勤仓库: " .. warehouse.totalItems .. " 件 | 可售估值 " .. warehouse.totalValue)
+        warehouseLabel:SetText("仓库库存 " .. summary.inventory.warehouseItems .. " 件 | 可售估值 " .. summary.inventory.warehouseValue)
+    end
+
+    local recentLabel = uiRoot_ and uiRoot_:FindById("deployRecentLabel")
+    if recentLabel then
+        recentLabel:SetText(summary.recentText)
+    end
+
+    local bonusLabel = uiRoot_ and uiRoot_:FindById("deployBonusLabel")
+    if bonusLabel then
+        local equipBonus = MetaProgress.GetEquipBonus()
+        local talentEffects = MetaProgress.GetTalentEffects()
+        local bonuses = {}
+        if equipBonus.bonusHP > 0 then table.insert(bonuses, "HP+" .. equipBonus.bonusHP) end
+        if equipBonus.bonusPower > 0 then table.insert(bonuses, "战力+" .. equipBonus.bonusPower) end
+        if equipBonus.mineImmunity then table.insert(bonuses, "首雷免疫") end
+        if equipBonus.showExitHint then table.insert(bonuses, "罗盘提示") end
+        if equipBonus.searchBonus > 0 then table.insert(bonuses, "搜索+" .. equipBonus.searchBonus) end
+        if talentEffects.mineDmgReduce > 0 then table.insert(bonuses, "雷伤-" .. talentEffects.mineDmgReduce) end
+        if talentEffects.failureGoldBonus > 0 then table.insert(bonuses, "保险金+" .. talentEffects.failureGoldBonus) end
+        if #bonuses == 0 then
+            bonusLabel:SetText("当前主要加成: 无")
+        else
+            bonusLabel:SetText("当前主要加成: " .. table.concat(bonuses, " | "))
+        end
+    end
+end
+
+function RefreshWarehousePanel()
+    RefreshWarehousePage()
+end
+
+function RefreshShopPanel()
+    RefreshRequisitionPage()
+end
+
+function RefreshLoadoutPanel()
+    RefreshLoadoutPage()
+end
+
+function RefreshTalentPanel()
+    RefreshTalentPage()
+end
+
+function RefreshTerminalSummary()
+    RefreshMainMenu()
+    if menuPage == "deployOverview" then
+        RefreshDeployOverview()
+    elseif menuPage == "warehouse" then
+        SetTerminalSummaryLabels("warehouse")
+    elseif menuPage == "requisition" then
+        SetTerminalSummaryLabels("requisition")
+    elseif menuPage == "loadout" then
+        SetTerminalSummaryLabels("loadout")
+    end
+end
+
+function RefreshDeployTerminal()
+    if menuMode == "deploy" then
+        RefreshCurrentMenuPage()
+    else
+        RefreshMainMenu()
+    end
+end
+
+local function DisplayIconText(item)
+    local iconText = item and item.icon or ""
+    if string.find(iconText, "/", 1, true) or string.find(iconText, "\\", 1, true) then
+        iconText = ""
+    end
+    return iconText
+end
+
+function SetTerminalSummaryLabels(prefix)
+    local summary = MetaProgress.GetTerminalSummary()
+    local goldLabel = uiRoot_ and uiRoot_:FindById(prefix .. "GoldLabel")
+    if goldLabel then goldLabel:SetText("金币 " .. summary.inventory.gold) end
+    local loadoutLabel = uiRoot_ and uiRoot_:FindById(prefix .. "LoadoutLabel")
+    if loadoutLabel then
+        loadoutLabel:SetText("装备 " .. summary.loadout.equipmentText .. " | 带入 " .. summary.loadout.consumableText)
     end
 end
 
@@ -406,14 +563,15 @@ function RefreshEquipPage()
     if goldLabel then
         goldLabel:SetText("金币 " .. MetaProgress.GetGold())
     end
+    SetTerminalSummaryLabels("equip")
 
     local listPanel = uiRoot_ and uiRoot_:FindById("equipItemList")
     if not listPanel then return end
     listPanel:RemoveAllChildren()
 
-    for _, item in ipairs(MetaProgress.ITEMS) do
-        local owned = MetaProgress.OwnsItem(item.id)
-        local equipped = MetaProgress.IsEquipped(item.id)
+    for _, item in ipairs(MetaProgress.GetShopDisplayList({ type = "equipment" })) do
+        local owned = item.owned
+        local equipped = item.isEquipped
 
         local statusText = ""
         local btnText = ""
@@ -447,12 +605,12 @@ function RefreshEquipPage()
                     gap = 2,
                     children = {
                         UI.Label {
-                            text = item.icon .. " " .. item.name,
+                            text = DisplayIconText(item) .. " " .. item.name,
                             fontSize = 13,
                             fontColor = { 230, 235, 245, 255 },
                         },
                         UI.Label {
-                            text = item.desc,
+                            text = item.effectText or item.description,
                             fontSize = 11,
                             fontColor = { 150, 160, 180, 200 },
                         },
@@ -558,6 +716,7 @@ function RefreshWarehousePage()
     if goldLabel then
         goldLabel:SetText("金币 " .. MetaProgress.GetGold())
     end
+    SetTerminalSummaryLabels("warehouse")
 
     local summary = MetaProgress.GetWarehouseSummary()
     local summaryLabel = uiRoot_ and uiRoot_:FindById("warehouseSummaryLabel")
@@ -565,14 +724,20 @@ function RefreshWarehousePage()
         summaryLabel:SetText("库存 " .. summary.totalItems .. " 件 | 可售估值 " .. summary.totalValue)
     end
 
+    local filterLabel = uiRoot_ and uiRoot_:FindById("warehouseFilterLabel")
+    if filterLabel then
+        local names = { all = "全部", recovered = "异常回收物", consumable = "消耗品", equipment = "装备" }
+        filterLabel:SetText("分类: " .. (names[warehouseFilter] or warehouseFilter))
+    end
+
     local listPanel = uiRoot_ and uiRoot_:FindById("warehouseItemList")
     if not listPanel then return end
     listPanel:RemoveAllChildren()
 
-    local items = MetaProgress.GetWarehouseDisplayList()
+    local items = MetaProgress.GetWarehouseDisplayList({ category = warehouseFilter })
     if #items == 0 then
         listPanel:AddChild(UI.Label {
-            text = "后勤仓库暂无登记回收物。",
+            text = "当前分类暂无登记物品。",
             fontSize = 12,
             fontColor = { 160, 170, 190, 220 },
         })
@@ -609,7 +774,7 @@ function RefreshWarehousePage()
                             fontColor = { 230, 235, 245, 255 },
                         },
                         UI.Label {
-                            text = item.typeName .. " / " .. item.rarityName .. " | 单价 " .. item.value .. " | 总值 " .. item.totalValue,
+                            text = item.typeName .. " / " .. item.rarityName .. " | 价值 " .. item.value .. " | 价格 " .. item.price .. " | 带入 " .. item.loadoutCount,
                             fontSize = 11,
                             fontColor = { 150, 170, 190, 210 },
                         },
@@ -670,7 +835,8 @@ function OnEquipItemClick(itemId)
             print("[Menu] BuyItem failed: " .. err)
         end
     end
-    RefreshEquipPage()
+    RefreshCurrentMenuPage()
+    RefreshTerminalSummary()
 end
 
 --- 天赋点击处理
@@ -680,6 +846,7 @@ function OnTalentClick(talentId)
         print("[Menu] UnlockTalent failed: " .. err)
     end
     RefreshTalentPage()
+    RefreshTerminalSummary()
 end
 
 function OnSellWarehouseItem(itemId, count)
@@ -691,7 +858,208 @@ function OnSellWarehouseItem(itemId, count)
         print("[Warehouse] Sell failed: " .. tostring(result))
     end
     RefreshWarehousePage()
-    RefreshMainMenu()
+    RefreshTerminalSummary()
+end
+
+function OnSetWarehouseFilter(filter)
+    warehouseFilter = filter
+    warehouseSelectedIndex = 1
+    RefreshWarehousePage()
+end
+
+function RefreshRequisitionPage()
+    SetTerminalSummaryLabels("requisition")
+    local listPanel = uiRoot_ and uiRoot_:FindById("requisitionItemList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    for _, item in ipairs(MetaProgress.GetShopDisplayList({ type = "all" })) do
+        local itemId = item.id
+        local isEquipment = item.type == "equipment"
+        local statusText = ""
+        local buttonText = ""
+        if isEquipment then
+            statusText = item.isEquipped and "[已装备]" or (item.owned and "已拥有" or (item.price .. "g"))
+            buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
+        else
+            statusText = "库存 " .. item.count .. " | 带入 " .. item.loadoutCount .. " | " .. item.price .. "g"
+            buttonText = "买1"
+        end
+
+        listPanel:AddChild(UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = DisplayIconText(item) .. " " .. item.name,
+                            fontSize = 13,
+                            fontColor = { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = item.typeName .. " | " .. (item.effectText or item.description or ""),
+                            fontSize = 11,
+                            fontColor = { 150, 170, 190, 210 },
+                        },
+                    },
+                },
+                UI.Panel {
+                    alignItems = "flex-end",
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = { 200, 200, 210, 210 },
+                        },
+                        UI.Button {
+                            text = buttonText,
+                            variant = "primary",
+                            width = 64,
+                            height = 28,
+                            onClick = function()
+                                if isEquipment then
+                                    OnEquipItemClick(itemId)
+                                else
+                                    OnBuyConsumable(itemId, 1)
+                                end
+                            end,
+                        },
+                    },
+                },
+            },
+        })
+    end
+end
+
+function RefreshLoadoutPage()
+    SetTerminalSummaryLabels("loadout")
+    local listPanel = uiRoot_ and uiRoot_:FindById("loadoutItemList")
+    if not listPanel then return end
+    listPanel:RemoveAllChildren()
+
+    for _, item in ipairs(MetaProgress.GetLoadoutDisplayList()) do
+        local itemId = item.id
+        local isConsumable = item.type == "consumable"
+        local statusText = isConsumable
+            and ("库存 " .. item.count .. " | 带入 " .. item.loadoutCount)
+            or (item.isEquipped and "[已装备]" or (item.owned and "已拥有" or "未申领"))
+
+        listPanel:AddChild(UI.Panel {
+            flexDirection = "row",
+            alignItems = "center",
+            justifyContent = "space-between",
+            width = "100%",
+            padding = 8,
+            backgroundColor = item.isEquipped and { 30, 60, 80, 120 } or { 25, 30, 45, 100 },
+            borderRadius = 8,
+            children = {
+                UI.Panel {
+                    flexShrink = 1,
+                    gap = 2,
+                    children = {
+                        UI.Label {
+                            text = DisplayIconText(item) .. " " .. item.name,
+                            fontSize = 13,
+                            fontColor = { 230, 235, 245, 255 },
+                        },
+                        UI.Label {
+                            text = item.typeName .. " | " .. (item.effectText or item.description or ""),
+                            fontSize = 11,
+                            fontColor = { 150, 170, 190, 210 },
+                        },
+                    },
+                },
+                UI.Panel {
+                    flexDirection = "row",
+                    gap = 6,
+                    children = isConsumable and {
+                        UI.Button {
+                            text = "-",
+                            width = 32,
+                            height = 28,
+                            onClick = function()
+                                OnSetLoadoutConsumable(itemId, item.loadoutCount - 1)
+                            end,
+                        },
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = { 200, 200, 210, 210 },
+                        },
+                        UI.Button {
+                            text = "+",
+                            width = 32,
+                            height = 28,
+                            onClick = function()
+                                OnSetLoadoutConsumable(itemId, item.loadoutCount + 1)
+                            end,
+                        },
+                    } or {
+                        UI.Label {
+                            text = statusText,
+                            fontSize = 11,
+                            fontColor = { 200, 200, 210, 210 },
+                        },
+                        UI.Button {
+                            text = item.isEquipped and "卸下" or "装备",
+                            width = 60,
+                            height = 28,
+                            onClick = function()
+                                OnEquipItemClick(itemId)
+                            end,
+                        },
+                    },
+                },
+            },
+        })
+    end
+end
+
+function RefreshRecoveryPage()
+    local summary = MetaProgress.GetTerminalSummary()
+    local label = uiRoot_ and uiRoot_:FindById("recoverySummaryLabel")
+    if label then
+        label:SetText("累计带回 " .. summary.recovery.totalItems .. " 件 | 历史估值 " .. summary.recovery.totalValue)
+    end
+    local recent = uiRoot_ and uiRoot_:FindById("recoveryRecentLabel")
+    if recent then
+        recent:SetText(summary.recentText)
+    end
+end
+
+function OnBuyConsumable(itemId, count)
+    local ok, result = MetaProgress.BuyConsumable(itemId, count)
+    if ok then
+        ShowMessage("后勤申领成功: " .. itemId .. " x" .. result.count)
+    else
+        ShowMessage("申领失败: " .. tostring(result))
+    end
+    RefreshCurrentMenuPage()
+    RefreshTerminalSummary()
+end
+
+function OnSetLoadoutConsumable(itemId, count)
+    local ok, result = MetaProgress.SetLoadoutConsumable(itemId, count)
+    if ok then
+        if result.clamped then
+            ShowMessage("库存不足, 已调整带入数量。")
+        else
+            ShowMessage("出勤配置已更新。")
+        end
+    else
+        ShowMessage("配置失败: " .. tostring(result))
+    end
+    RefreshLoadoutPage()
+    RefreshTerminalSummary()
 end
 
 -- ============================================================================
@@ -766,11 +1134,65 @@ local function mergeConfig(base, override)
     return base
 end
 
-function StartNewGame(override)
-    Tutorial.Reset()
+local function defaultTalentEffects()
+    return {
+        mineDmgReduce = 0,
+        monsterFleeBonus = 0,
+        failureGoldBonus = 0,
+        tradePrice = 15,
+        mapHighlight = false,
+    }
+end
 
+function GetActiveTalentEffects()
+    if currentRunConfig and currentRunConfig.applyMetaProgress == false then
+        return defaultTalentEffects()
+    end
+    return MetaProgress.GetTalentEffects()
+end
+
+function StartNormalRun()
+    Tutorial.Reset()
+    StartNewGame({
+        mode = "normal",
+        useLoadout = true,
+        applyMetaProgress = true,
+        allowWarehouseRewards = true,
+        allowFailureRewards = true,
+    })
+end
+
+function ConfirmDeploy()
+    local ok, loadout = MetaProgress.ValidateLoadout()
+    if not ok then
+        ShowMessage("出勤配置校验失败: " .. tostring(loadout))
+        return false
+    end
+
+    local adjusted = false
+    for itemId, count in pairs((loadout and loadout.consumables) or {}) do
+        local stock = MetaProgress.GetConsumableCount(itemId)
+        if count > stock then
+            MetaProgress.SetLoadoutConsumable(itemId, stock)
+            adjusted = true
+        end
+    end
+    if adjusted then
+        ShowMessage("后勤库存不足，已夹紧本次带入数量。")
+        RefreshCurrentMenuPage()
+    end
+
+    StartNormalRun()
+    return true
+end
+
+function StartNewGame(override)
     local config = mergeConfig({
         mode = "normal",
+        useLoadout = true,
+        applyMetaProgress = true,
+        allowWarehouseRewards = true,
+        allowFailureRewards = true,
         width = 10,
         height = 10,
         mineCount = 20,
@@ -790,6 +1212,15 @@ function StartNewGame(override)
         revealOnMove = true,
         moveRequiresRevealed = false,
     }, override)
+    currentRunConfig = config
+
+    local loadoutReceipt = { consumables = {} }
+    if config.useLoadout ~= false and not config.skipLoadout then
+        local ok, receipt = MetaProgress.ConsumeLoadoutForRun()
+        if ok and receipt then
+            loadoutReceipt = receipt
+        end
+    end
 
     run = ExtractionRun.New(config)
     minefield = run.minefield
@@ -800,6 +1231,7 @@ function StartNewGame(override)
     visitedCells[tostring(spawn.x) .. "," .. tostring(spawn.y)] = true
     minefield:Explore(spawn.x, spawn.y)
     RunInventory.Reset()
+    RunInventory.SetConsumables(loadoutReceipt.consumables)
     Combat.Reset()
     Protocol.Reset()
     DungeonRoom.ResetPlayer()
@@ -809,32 +1241,43 @@ function StartNewGame(override)
     failureSettlementRecorded = false
 
     -- 应用装备加成
-    local equipBonus = MetaProgress.GetEquipBonus()
-    if equipBonus.bonusHP > 0 then
-        Combat.maxHp = Combat.maxHp + equipBonus.bonusHP
-        Combat.hp = Combat.maxHp
-    end
-    if equipBonus.bonusPower > 0 then
-        Combat.power = Combat.power + equipBonus.bonusPower
-    end
-    if equipBonus.mineImmunity then
-        Combat.mineImmunity = true
-    end
-    if equipBonus.searchBonus > 0 then
-        RunInventory.searchBonus = equipBonus.searchBonus
-    end
-    if equipBonus.mineDmgReduce and equipBonus.mineDmgReduce > 0 then
-        Combat.mineDmgReduce = Combat.mineDmgReduce + equipBonus.mineDmgReduce
-    end
+    local equipBonus = {
+        bonusHP = 0,
+        bonusPower = 0,
+        mineImmunity = false,
+        showExitHint = false,
+        searchBonus = 0,
+    }
+    if config.applyMetaProgress ~= false then
+        equipBonus = MetaProgress.GetEquipBonus()
+        if equipBonus.bonusHP > 0 then
+            Combat.maxHp = Combat.maxHp + equipBonus.bonusHP
+            Combat.hp = Combat.maxHp
+        end
+        if equipBonus.bonusPower > 0 then
+            Combat.power = Combat.power + equipBonus.bonusPower
+        end
+        if equipBonus.mineImmunity then
+            Combat.mineImmunity = true
+        end
+        if equipBonus.searchBonus > 0 then
+            RunInventory.searchBonus = equipBonus.searchBonus
+        end
+        if equipBonus.mineDmgReduce and equipBonus.mineDmgReduce > 0 then
+            Combat.mineDmgReduce = Combat.mineDmgReduce + equipBonus.mineDmgReduce
+        end
 
-    -- 应用天赋效果
-    local talentEffects = MetaProgress.GetTalentEffects()
-    if talentEffects.mineDmgReduce > 0 then
-        Combat.mineDmgReduce = talentEffects.mineDmgReduce
+        -- 应用天赋效果
+        local talentEffects = MetaProgress.GetTalentEffects()
+        if talentEffects.mineDmgReduce > 0 then
+            Combat.mineDmgReduce = Combat.mineDmgReduce + talentEffects.mineDmgReduce
+        end
     end
 
     -- 记录出击
-    MetaProgress.RecordRun()
+    if config.applyMetaProgress ~= false then
+        MetaProgress.RecordRun()
+    end
 
     phase = PHASE.PLAYING
 
@@ -859,7 +1302,10 @@ function StartNewGame(override)
     -- 计算小地图布局
     MiniMap.ComputeLayout(minefield.width, minefield.height)
 
-    ShowMessage("左上角看扫雷数字避雷;WASD 走门, F 搜索, M 地图, E 撤离." .. compassHint)
+    local runConsumables = RunInventory.GetConsumables()
+    local consumableHint = (runConsumables.emergency_bandage or 0) > 0 and (" 带入止血贴 x" .. runConsumables.emergency_bandage) or ""
+    local tutorialHint = config.mode == "tutorial" and " 训练工单:不消耗后勤物资,不登记回收记录." or ""
+    ShowMessage("左上角看扫雷数字避雷;WASD 走门, F 搜索, Q 止血贴, M 地图, E 撤离." .. compassHint .. consumableHint .. tutorialHint)
     UpdateHUD()
 
     -- 隐藏菜单
@@ -872,6 +1318,11 @@ end
 function StartJudgeDemo()
     StartNewGame({
         mode = "judge",
+        useLoadout = false,
+        applyMetaProgress = false,
+        allowWarehouseRewards = false,
+        allowFailureRewards = false,
+        skipLoadout = true,
         seed = 20260530,
         mineDensity = 0,
         mineCount = 0,
@@ -882,14 +1333,23 @@ function StartJudgeDemo()
 end
 
 --- 启动新手教程
-function StartTutorial()
+function StartTutorialRun()
     Tutorial.Reset()
-    StartNewGame(Tutorial.GetMapConfig())
+    local config = Tutorial.GetMapConfig()
+    config.mode = "tutorial"
+    config.useLoadout = false
+    config.applyMetaProgress = false
+    config.allowWarehouseRewards = false
+    config.allowFailureRewards = false
+    config.skipLoadout = true
+    StartNewGame(config)
     Tutorial.Start()
-    ShowMessage("")  -- 清除默认提示,教程对话框接管
+    ShowMessage("训练工单:不消耗后勤物资,不登记回收记录。")
 end
 
-local RecordFailureSalvageToMeta
+function StartTutorial()
+    StartTutorialRun()
+end
 
 function ShowFailurePanel(reason)
     phase = PHASE.GAME_OVER
@@ -898,6 +1358,7 @@ function ShowFailurePanel(reason)
     local stats = RunInventory.GetRunStats(run)
     local options = RunInventory.GetFailureSalvageOptions()
     local protocol = Protocol.GetStatus()
+    local allowFailureRewards = not (currentRunConfig and currentRunConfig.allowFailureRewards == false)
 
     ShowMessage(reason)
     setVisible("gameOverPanel", true)
@@ -930,6 +1391,19 @@ function ShowFailurePanel(reason)
         end
     end
 
+    if not allowFailureRewards then
+        setVisible("failureChoicePanel", false)
+        setVisible("restartAfterFailureButton", true)
+        local goldLine = uiRoot_:FindById("failureGoldLine")
+        if goldLine then goldLine:SetText("训练工单不结算局外金币") end
+        local partsLine = uiRoot_:FindById("failurePartsLine")
+        if partsLine then partsLine:SetText("训练工单不登记回收记录") end
+        local protocolLine = uiRoot_:FindById("failureProtocolLine")
+        if protocolLine then protocolLine:SetText("不触发失败保底或保险金") end
+        ShowMessage("训练工单失败:已返回结算,不消耗也不登记后勤资源。")
+        return
+    end
+
     -- 如果有零件可以抢救, 显示选择面板;否则直接结算并显示重开按钮
     if options.canSalvagePart then
         setVisible("failureChoicePanel", true)
@@ -940,10 +1414,20 @@ function ShowFailurePanel(reason)
     else
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
+        -- 无零件可抢救, 直接结算金币
         local salvage = RunInventory.ApplyFailureSalvage("accept")
-        RecordFailureSalvageToMeta(salvage)
-        local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
+        local talentBonus = GetActiveTalentEffects().failureGoldBonus
         local finalGold = (salvage.gold or 0) + talentBonus
+        if not failureSettlementRecorded then
+            if finalGold > 0 then
+                MetaProgress.AddGold(finalGold)
+            end
+            if salvage.carriedItems and #salvage.carriedItems > 0 then
+                MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
+                MetaProgress.Save()
+            end
+            failureSettlementRecorded = true
+        end
         local goInfo2 = uiRoot_:FindById("gameOverInfo")
         if goInfo2 then
             local reasonLine = uiRoot_:FindById("failureReasonLine")
@@ -972,6 +1456,13 @@ function ShowFailurePanel(reason)
 end
 
 function ApplyFailureSalvage(choice)
+    if currentRunConfig and currentRunConfig.allowFailureRewards == false then
+        setVisible("failureChoicePanel", false)
+        setVisible("restartAfterFailureButton", true)
+        ShowMessage("训练工单不触发失败保底或保险金。")
+        return
+    end
+
     local salvage = RunInventory.ApplyFailureSalvage(choice)
     local stats = RunInventory.GetRunStats(run)
 
@@ -979,10 +1470,20 @@ function ApplyFailureSalvage(choice)
     setVisible("restartAfterFailureButton", true)
 
     -- 天赋额外失败保底金币
-    local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
+    local talentBonus = GetActiveTalentEffects().failureGoldBonus
     local finalGold = salvage.gold + talentBonus
 
-    RecordFailureSalvageToMeta(salvage)
+    -- 写入局外金币
+    if not failureSettlementRecorded then
+        if finalGold > 0 then
+            MetaProgress.AddGold(finalGold)
+        end
+        if salvage.carriedItems and #salvage.carriedItems > 0 then
+            MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
+            MetaProgress.Save()
+        end
+        failureSettlementRecorded = true
+    end
 
     local text = "保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")"
     if salvage.bonus > 0 then
@@ -1027,33 +1528,6 @@ function ApplyFailureSalvage(choice)
     ShowMessage(text)
 end
 
-function RecordFailureSalvageToMeta(salvage)
-    if not salvage or failureSettlementRecorded then return end
-    local talentBonus = MetaProgress.GetTalentEffects().failureGoldBonus
-    local finalGold = (salvage.gold or 0) + talentBonus
-    if finalGold > 0 then
-        MetaProgress.AddGold(finalGold)
-    end
-    if salvage.carriedItems and #salvage.carriedItems > 0 then
-        MetaProgress.AddWarehouseItems(salvage.carriedItems, "recovered")
-        MetaProgress.Save()
-    end
-    failureSettlementRecorded = true
-end
-
-local function ApplyMonsterClearRewards(result)
-    if not result or not result.fought then return 0, nil end
-    RunInventory.RecordCombat(result)
-    local powerGain = Combat.GrantMonsterKillPower(result)
-    local pressureResult = nil
-    local enemy = result.enemy
-    if not result.dead and enemy and not enemy.killPressureApplied then
-        enemy.killPressureApplied = true
-        pressureResult = Protocol.AddPressure(result.pressureDelta or Balance.pressure.monsterKill)
-    end
-    return powerGain, pressureResult
-end
-
 --- 启动 VS 战斗演出(替代直接结算)
 ---@param enemy table 敌人信息
 ---@param cx number 格子 x
@@ -1084,7 +1558,11 @@ function FinishBattle()
     battleState.phase = "none"
 
     if not result or not result.fought then return end
-    local powerGain, pressureResult = ApplyMonsterClearRewards(result)
+    Combat.GrantMonsterKillPower(result)
+    RunInventory.RecordCombat(result)
+    if result.pressureDelta and result.pressureDelta > 0 then
+        Protocol.AddPressure(result.pressureDelta)
+    end
 
     local playerPower = result.playerPower or enemy.playerPower or Combat.power
     local enemyPower = result.enemyPower or enemy.power
@@ -1096,12 +1574,6 @@ function FinishBattle()
     end
     if (reward.parts or 0) > 0 then
         rewardText = rewardText .. " 零件 +" .. reward.parts
-    end
-    if powerGain and powerGain > 0 then
-        rewardText = rewardText .. " 战力 +" .. powerGain
-    end
-    if pressureResult and pressureResult.changed then
-        rewardText = rewardText .. " " .. GameText.protocol.downgrade .. pressureResult.level
     end
 
     if result.dead then
@@ -1139,15 +1611,16 @@ end
 
 local function CompleteActiveMonsterClear(result, cx, cy)
     if not result or not result.fought then return end
-    local powerGain, pressureResult = ApplyMonsterClearRewards(result)
+    Combat.GrantMonsterKillPower(result)
+    RunInventory.RecordCombat(result)
+    if result.pressureDelta and result.pressureDelta > 0 then
+        Protocol.AddPressure(result.pressureDelta)
+    end
     if minefield then
         minefield:ClearRoom(cx, cy)
     end
     local enemyName = result.enemy and result.enemy.name or "异常体"
-    local extra = ""
-    if powerGain and powerGain > 0 then extra = extra .. " 战力 +" .. powerGain end
-    if pressureResult and pressureResult.changed then extra = extra .. " " .. GameText.protocol.downgrade .. pressureResult.level end
-    ShowMessage(enemyName .. " 已清理. 区域风险下降." .. buildRewardText(result.reward) .. extra)
+    ShowMessage(enemyName .. " 已清理. 区域风险下降." .. buildRewardText(result.reward))
     UpdateHUD()
 end
 
@@ -1272,7 +1745,7 @@ function MovePlayer(dx, dy)
         visitedCells[tostring(p.x) .. "," .. tostring(p.y)] = true
         local firstExplore = minefield:Explore(p.x, p.y)
         if firstExplore then
-            local protoResult = Protocol.AddPressure()
+            local protoResult = Protocol.AddPressure(Balance.pressure.explore)
             if protoResult.changed then
                 ShowMessage("协议降至 " .. protoResult.level .. " - " .. protoResult.description)
             end
@@ -1311,9 +1784,9 @@ function MovePlayer(dx, dy)
             local mineResult = Combat.TakeMineHit()
             if result.mineTriggered then
                 RunInventory.RecordMineHit(mineResult.immuneUsed)
-                local protoResult = Protocol.AddPressure(Balance.pressure.mine)
-                if protoResult.changed then
-                    ShowMessage(GameText.protocol.downgrade .. protoResult.level .. " - " .. protoResult.description)
+                local minePressure = Protocol.AddPressure(Balance.pressure.mine)
+                if minePressure.changed then
+                    ShowMessage("协议降至 " .. minePressure.level .. " - " .. minePressure.description)
                 end
             end
             DungeonRoom.TriggerMineFlash()
@@ -1466,7 +1939,7 @@ function SearchCurrentRoom()
 
     -- 搜索后可能获得战斗力加成
     local p = run:GetPlayer()
-    local powerUp = 0
+    local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
 
     local msg = reward.isChest and ("宝箱开启! 金币 +" .. reward.gold) or ("搜索完成:金币 +" .. reward.gold)
     if reward.parts > 0 then
@@ -1563,28 +2036,39 @@ function ConfirmExtract()
         phase = PHASE.EXTRACTED
         local reward = RunInventory.GetExtractionReward()
         local stats = RunInventory.GetRunStats(run)
+        local allowWarehouseRewards = not (currentRunConfig and currentRunConfig.allowWarehouseRewards == false)
 
         local receipt = nil
-        if not extractionSettlementRecorded then
+        if allowWarehouseRewards and not extractionSettlementRecorded then
             receipt = MetaProgress.RecordExtractionReward(reward, stats)
             extractionSettlementRecorded = true
         else
             receipt = { goldAfter = MetaProgress.GetGold(), itemCount = 0, itemValue = 0 }
         end
 
-        ShowMessage("撤离成功!共获得 " .. reward.totalGold .. " 金币.")
+        if allowWarehouseRewards then
+            ShowMessage("撤离成功!共获得 " .. reward.totalGold .. " 金币.")
+        else
+            ShowMessage("训练工单完成:不消耗后勤物资,不登记回收记录。")
+        end
         local confirmPanel = uiRoot_:FindById("extractConfirmPanel")
         if confirmPanel then confirmPanel:Hide() end
         local winPanel = uiRoot_:FindById("winPanel")
         if winPanel then winPanel:Show() end
         local winGoldLine = uiRoot_:FindById("winGoldLine")
         if winGoldLine then
-            winGoldLine:SetText("获得金币:+" .. reward.totalGold .. " (总计 " .. (receipt.goldAfter or MetaProgress.GetGold()) .. ")")
+            if allowWarehouseRewards then
+                winGoldLine:SetText("获得金币:+" .. reward.totalGold .. " (总计 " .. (receipt.goldAfter or MetaProgress.GetGold()) .. ")")
+            else
+                winGoldLine:SetText("训练工单:局外金币 +0")
+            end
         end
 
         local winConvertLine = uiRoot_:FindById("winConvertLine")
         if winConvertLine then
-            if reward.carriedItemCount > 0 then
+            if not allowWarehouseRewards then
+                winConvertLine:SetText("训练工单不会写入后勤仓库或回收资历")
+            elseif reward.carriedItemCount > 0 then
                 local looseText = reward.looseParts > 0 and (" | 零散零件折算 +" .. reward.loosePartsGold) or ""
                 winConvertLine:SetText("后勤已登记: " .. reward.carriedItemCount .. " 件 | 估值 +" .. reward.carriedItemValue .. looseText .. " | " .. reward.carriedSummary)
             elseif reward.looseParts > 0 then
@@ -1622,11 +2106,11 @@ local function GetEventContext()
         pendingGold = totals.pendingGold,
         safeGold = totals.safeGold,
         parts = totals.looseParts or 0,
+        tradableItems = RunInventory.GetTradableItems(),
         hp = Combat.hp,
         maxHp = Combat.maxHp,
-        tradePrice = MetaProgress.GetTalentEffects().tradePrice,
+        tradePrice = GetActiveTalentEffects().tradePrice,
         power = Combat.power,
-        tradableItems = RunInventory.GetTradableItems(),
     }
 end
 
@@ -1680,12 +2164,12 @@ local function ApplyEventResult(result, x, y)
         RunInventory.RemoveTradableItem(result.sellItemId, result.sellCount or 1)
     end
     if result.rewardItemQuality then
-        RunInventory.AddRewardItemByQuality(result.rewardItemQuality, "altar")
+        RunInventory.AddRewardItemByQuality(result.rewardItemQuality, "event")
     end
     for _, rewardItem in ipairs(result.rewardItems or {}) do
-        local count = rewardItem.count or 1
+        local count = math.max(1, math.floor(tonumber(rewardItem.count) or 1))
         for _ = 1, count do
-            RunInventory.AddRewardItemByQuality(rewardItem.quality or "common", result.eventType or "event")
+            RunInventory.AddRewardItemByQuality(rewardItem.quality, "event")
         end
     end
     if result.hpDelta ~= 0 then
@@ -1769,6 +2253,26 @@ function ShowMessage(text)
     message = text
     messageTimer = 3.0
     messageDuration = 3.0
+end
+
+local function UseEmergencyBandage()
+    local ok, result = RunInventory.UseConsumable("emergency_bandage", {
+        hp = Combat.hp,
+        maxHp = Combat.maxHp,
+        applyHpDelta = function(delta)
+            return Combat.ApplyHpDelta(delta)
+        end,
+    })
+    if ok then
+        ShowMessage("使用应急止血贴, 生命 +" .. result.heal .. "。剩余 " .. result.count .. "。")
+        UpdateHUD()
+    elseif result == "hp_full" then
+        ShowMessage("生命已满, 暂不需要止血贴。")
+    elseif result == "not_enough" then
+        ShowMessage("没有可用的应急止血贴。")
+    else
+        ShowMessage("当前无法使用止血贴。")
+    end
 end
 
 function CountVisitedCells()
@@ -2043,8 +2547,7 @@ local function ExecuteSettingsOption()
     if opt.action == "resume" then
         phase = PHASE.PLAYING
     elseif opt.action == "restart" then
-        phase = PHASE.PLAYING
-        StartNewGame()
+        ConfirmDeploy()
     elseif opt.action == "menu" then
         ReturnToMenu()
     end
@@ -2322,11 +2825,10 @@ function HandleNanoVGRender(eventType, eventData)
         local invTotals = RunInventory.GetTotals()
         local invStatus = {
             gold = invTotals.gold,
-            pendingGold = invTotals.pendingGold,
-            safeGold = invTotals.safeGold,
             parts = invTotals.parts,
             carriedItemCount = invTotals.carriedItemCount,
             carriedItemValue = invTotals.carriedItemValue,
+            consumables = invTotals.consumables,
         }
 
         -- 中央游戏区(带偏移和裁剪)
@@ -2343,7 +2845,7 @@ function HandleNanoVGRender(eventType, eventData)
             eventTraded = EventSystem.IsCompleted(p.x, p.y),
             eventType = (cell and cell.roomType == "event") and EventSystem.GetEventType(p.x, p.y) or nil,
             inventory = invStatus,
-            tradePrice = MetaProgress.GetTalentEffects().tradePrice,
+            tradePrice = GetActiveTalentEffects().tradePrice,
             monsterFleeActive = monsterFleeActive,
             monsterFleeTimer = monsterFleeTimer,
         })
@@ -2404,6 +2906,7 @@ function HandleNanoVGRender(eventType, eventData)
             interactHint = interactHint,
             exitDistance = exitDist,
             exitDirection = exitDir,
+            consumables = invTotals.consumables,
         })
 
         -- VS 战斗演出叠加层
@@ -2477,101 +2980,68 @@ function CreateUI()
                                 variant = "primary",
                                 height = 40,
                                 onClick = function()
-                                    StartNewGame()
+                                    OpenDeployTerminal()
                                 end,
                             },
                             UI.Button {
                                 text = "新手教程",
                                 height = 40,
                                 onClick = function()
-                                    StartTutorial()
+                                    OpenTutorial()
                                 end,
                             },
                             UI.Button {
-                                text = "装备/天赋",
+                                text = "调整终端",
                                 height = 40,
                                 onClick = function()
-                                    ShowMenuPage("equip")
+                                    OpenSettingsTerminal()
                                 end,
-                            },
-                            UI.Button {
-                                text = "设置",
-                                height = 40,
-                                onClick = function()
-                                    ShowMenuPage("gm")
-                                end,
-                            },
-                        }
-                    },
-                    -- 左下角金币/装备信息
-                    UI.Panel {
-                        position = "absolute",
-                        left = 16,
-                        bottom = 16,
-                        gap = 4,
-                        children = {
-                            UI.Label {
-                                id = "menuGoldLabel",
-                                text = "金币: 0",
-                                fontSize = 13,
-                                fontColor = { 255, 220, 80, 255 },
-                            },
-                            UI.Label {
-                                id = "menuEquippedLabel",
-                                text = "装备: 无",
-                                fontSize = 11,
-                                fontColor = { 160, 200, 255, 200 },
-                            },
-                            UI.Label {
-                                id = "menuStatsLabel",
-                                text = "",
-                                fontSize = 11,
-                                fontColor = { 120, 130, 150, 180 },
-                            },
-                            UI.Label {
-                                id = "menuRecoveryLabel",
-                                text = "后勤回收: 0 件 | 估值 0",
-                                fontSize = 11,
-                                fontColor = { 150, 220, 190, 210 },
-                            },
-                            UI.Label {
-                                id = "menuRecentRecoveryLabel",
-                                text = "最近带回: 无",
-                                fontSize = 11,
-                                fontColor = { 150, 170, 190, 190 },
-                            },
-                            UI.Label {
-                                id = "menuWarehouseLabel",
-                                text = "后勤仓库: 0 件 | 可售估值 0",
-                                fontSize = 11,
-                                fontColor = { 170, 205, 240, 210 },
-                            },
-                            UI.Panel {
-                                flexDirection = "row",
-                                gap = 8,
-                                marginTop = 4,
-                                children = {
-                                    UI.Button {
-                                        text = "仓库",
-                                        width = 68,
-                                        height = 28,
-                                        onClick = function()
-                                            ShowMenuPage("warehouse")
-                                        end,
-                                    },
-                                    UI.Button {
-                                        text = "天赋",
-                                        width = 68,
-                                        height = 28,
-                                        onClick = function()
-                                            ShowMenuPage("talent")
-                                        end,
-                                    },
-                                },
                             },
                         }
                     },
                 }
+            },
+            UI.Panel {
+                id = "menuPage_deployOverview",
+                visible = false,
+                width = "92%",
+                maxWidth = 620,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 18, 26, 36, 242 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 90, 160, 210, 120 },
+                children = {
+                    UI.Label { text = "出勤准备", fontSize = 20, fontColor = { 180, 230, 255, 255 } },
+                    UI.Label { id = "deployGoldLabel", text = "后勤账户: 0 金币", fontSize = 13, fontColor = { 255, 220, 100, 240 } },
+                    UI.Label { id = "deployLoadoutLabel", text = "当前装备 无 | 本次带入 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                    UI.Label { id = "deployWarehouseLabel", text = "仓库库存 0 件 | 可售估值 0", fontSize = 12, fontColor = { 170, 210, 220, 220 } },
+                    UI.Label { id = "deployRecentLabel", text = "最近带回: 无", fontSize = 12, fontColor = { 170, 185, 200, 220 } },
+                    UI.Label { id = "deployBonusLabel", text = "当前主要加成: 无", fontSize = 12, fontColor = { 210, 220, 170, 230 } },
+                    UI.Panel {
+                        flexDirection = "row",
+                        flexWrap = "wrap",
+                        gap = 8,
+                        marginTop = 8,
+                        children = {
+                            UI.Button { text = "后勤仓库", width = 100, height = 30, onClick = function() OpenDeployWarehouse() end },
+                            UI.Button { text = "后勤申领", width = 100, height = 30, onClick = function() OpenDeployShop() end },
+                            UI.Button { text = "出勤配置", width = 100, height = 30, onClick = function() OpenDeployLoadout() end },
+                            UI.Button { text = "回收资历", width = 100, height = 30, onClick = function() OpenDeployRecovery() end },
+                            UI.Button { text = "天赋", width = 80, height = 30, onClick = function() OpenDeployTalents() end },
+                        },
+                    },
+                    UI.Panel {
+                        flexDirection = "row",
+                        gap = 10,
+                        marginTop = 10,
+                        children = {
+                            UI.Button { text = "确认出发", variant = "primary", width = 120, height = 36, onClick = function() ConfirmDeploy() end },
+                            UI.Button { text = "返回主界面", width = 120, height = 36, onClick = function() BackToMainMenu() end },
+                        },
+                    },
+                },
             },
             -- === GM 调试面板 ===
             UI.Panel {
@@ -2696,7 +3166,7 @@ function CreateUI()
                         width = 100,
                         marginTop = 8,
                         onClick = function()
-                            ShowMenuPage("main")
+                            BackToMainMenu()
                         end,
                     },
                 }
@@ -2754,21 +3224,21 @@ function CreateUI()
                                 text = "天赋",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("talent")
+                                    OpenDeployTalents()
                                 end,
                             },
                             UI.Button {
                                 text = "仓库",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("warehouse")
+                                    OpenDeployWarehouse()
                                 end,
                             },
                             UI.Button {
                                 text = "返回",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("main")
+                                    OpenDeployOverview()
                                 end,
                             },
                         },
@@ -2828,21 +3298,21 @@ function CreateUI()
                                 text = "装备",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("equip")
+                                    OpenDeployShop()
                                 end,
                             },
                             UI.Button {
                                 text = "仓库",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("warehouse")
+                                    OpenDeployWarehouse()
                                 end,
                             },
                             UI.Button {
                                 text = "返回",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("main")
+                                    OpenDeployOverview()
                                 end,
                             },
                         },
@@ -2850,6 +3320,78 @@ function CreateUI()
                 }
             },
             -- === 后勤仓库页 ===
+            UI.Panel {
+                id = "menuPage_requisition",
+                visible = false,
+                width = "92%",
+                maxWidth = 620,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 20, 25, 40, 240 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 80, 140, 190, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label { text = "后勤申领", fontSize = 18, fontColor = { 170, 220, 255, 255 } },
+                            UI.Label { id = "requisitionGoldLabel", text = "金币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
+                        },
+                    },
+                    UI.Label { id = "requisitionLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                    UI.Panel { id = "requisitionItemList", gap = 6, width = "100%", marginTop = 4, children = {} },
+                    UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() OpenDeployOverview() end },
+                },
+            },
+            UI.Panel {
+                id = "menuPage_loadout",
+                visible = false,
+                width = "92%",
+                maxWidth = 620,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 18, 28, 34, 242 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 90, 180, 150, 120 },
+                children = {
+                    UI.Panel {
+                        flexDirection = "row",
+                        justifyContent = "space-between",
+                        alignItems = "center",
+                        width = "100%",
+                        children = {
+                            UI.Label { text = "出勤配置", fontSize = 18, fontColor = { 180, 235, 210, 255 } },
+                            UI.Label { id = "loadoutGoldLabel", text = "金币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
+                        },
+                    },
+                    UI.Label { id = "loadoutLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                    UI.Panel { id = "loadoutItemList", gap = 6, width = "100%", marginTop = 4, children = {} },
+                    UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() OpenDeployOverview() end },
+                },
+            },
+            UI.Panel {
+                id = "menuPage_recovery",
+                visible = false,
+                width = "90%",
+                maxWidth = 460,
+                padding = 24,
+                gap = 10,
+                backgroundColor = { 24, 28, 36, 242 },
+                borderRadius = 14,
+                borderWidth = 1,
+                borderColor = { 130, 170, 120, 120 },
+                children = {
+                    UI.Label { text = "回收资历", fontSize = 18, fontColor = { 210, 235, 170, 255 } },
+                    UI.Label { id = "recoverySummaryLabel", text = "累计带回 0 件 | 历史估值 0", fontSize = 13, fontColor = { 200, 220, 210, 230 } },
+                    UI.Label { id = "recoveryRecentLabel", text = "最近带回: 无", fontSize = 12, fontColor = { 170, 185, 200, 220 } },
+                    UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() OpenDeployOverview() end },
+                },
+            },
             UI.Panel {
                 id = "menuPage_warehouse",
                 visible = false,
@@ -2888,6 +3430,18 @@ function CreateUI()
                         fontColor = { 150, 170, 190, 210 },
                     },
                     UI.Panel {
+                        flexDirection = "row",
+                        gap = 6,
+                        children = {
+                            UI.Label { id = "warehouseFilterLabel", text = "分类: 全部", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                            UI.Button { text = "全部", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("all") end },
+                            UI.Button { text = "回收", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("recovered") end },
+                            UI.Button { text = "消耗", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("consumable") end },
+                            UI.Button { text = "装备", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("equipment") end },
+                        },
+                    },
+                    UI.Label { id = "warehouseLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                    UI.Panel {
                         id = "warehouseItemList",
                         gap = 6,
                         width = "100%",
@@ -2903,25 +3457,43 @@ function CreateUI()
                                 text = "装备",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("equip")
+                                    OpenDeployShop()
                                 end,
                             },
                             UI.Button {
                                 text = "天赋",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("talent")
+                                    OpenDeployTalents()
                                 end,
                             },
                             UI.Button {
                                 text = "返回",
                                 width = 80,
                                 onClick = function()
-                                    ShowMenuPage("main")
+                                    OpenDeployOverview()
                                 end,
                             },
                         },
                     },
+                },
+            },
+            UI.Panel {
+                id = "terminalNavOverlay",
+                position = "absolute",
+                left = 18,
+                top = 18,
+                width = 150,
+                gap = 8,
+                padding = 12,
+                backgroundColor = { 10, 18, 28, 225 },
+                borderRadius = 10,
+                borderWidth = 1,
+                borderColor = { 100, 180, 220, 120 },
+                children = {
+                    UI.Button { text = "接受工单", variant = "primary", height = 38, onClick = function() OpenDeployTerminal() end },
+                    UI.Button { text = "展示工单", height = 30, onClick = function() OpenTutorial() end },
+                    UI.Button { text = "调整终端", height = 30, onClick = function() OpenSettingsTerminal() end },
                 },
             },
         }
@@ -3358,6 +3930,13 @@ function HandleKeyDown(eventType, eventData)
         return
     end
 
+    if phase == PHASE.MENU then
+        if key == KEY_ESCAPE then
+            HandleMenuEscape()
+        end
+        return
+    end
+
     -- 菜单或结束阶段忽略
     if phase ~= PHASE.PLAYING then return end
 
@@ -3392,6 +3971,8 @@ function HandleKeyDown(eventType, eventData)
         else
             SearchCurrentRoom()
         end
+    elseif key == KEY_Q then
+        UseEmergencyBandage()
     elseif key == KEY_T then
         DoTrade()
     elseif key == KEY_M then
