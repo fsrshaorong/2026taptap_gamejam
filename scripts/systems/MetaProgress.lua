@@ -144,8 +144,8 @@ MetaProgress.TALENTS = {
     {
         id = "talent_extract",
         direction = "撤离",
-        name = "旧保险金",
-        desc = "失败时旧保险金额外 +10 结算币",
+        name = "抢救条款",
+        desc = "信号中断时抢救条款额外保留 +10 结算币",
         price = Balance.talents.talent_extract,
     },
     {

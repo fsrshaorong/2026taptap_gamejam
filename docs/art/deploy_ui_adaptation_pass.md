@@ -9,7 +9,7 @@ Date: 2026-05-31
 - Deploy preparation now has a 1536x864 logical layout basis with letterbox/pillarbox coordinate mapping.
 - The deploy preparation page is decoupled from the main-menu scene and uses a dark terminal backdrop plus approved A-level panel, nav, summary, back, icon, and confirm-deploy assets when available.
 - Warehouse, requisition, loadout, recovery, and talent modules all render into one fixed central display area using a shared filter bar and three-column card grid.
-- HUD work this pass is asset registration only; full in-run HUD refactor is intentionally deferred.
+- In-run HUD keeps the existing gameplay data sources while moving protocol pressure to the top-right dispatch panel, moving nearby mine risk below the main scene, and skinning the bottom control strip with the prepared key prompts.
 
 ## Runtime Asset Paths
 
@@ -41,7 +41,11 @@ Date: 2026-05-31
 
 - `UITheme` treats missing images as non-fatal and falls back to NanoVG rectangles/text.
 - Detailed module content uses dynamic card text over approved blank deploy/card shell assets; old per-module list panels are no longer visible in the deploy flow.
-- In-run HUD image skinning is not applied yet; registered key-prompt assets are prepared for a later HUD pass.
+- Missing HUD key-prompt images still fall back to compact NanoVG keycaps.
+
+## Follow-up
+
+- The underlying `failureGoldBonus` field remains unchanged for save compatibility. Player-facing UI now presents it as `抢救条款`; a future save migration may rename the internal field after the jam.
 
 ## Guardrails
 

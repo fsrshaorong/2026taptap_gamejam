@@ -18,7 +18,7 @@
 | 放大地图 | 已实现查看、插旗、已访问安全格传送 | `scripts/ui/MapOverlay.lua` |
 | 血量/战斗力 | 已实现 HP、战斗力、独立怪物房检定、VS 战斗演出 | `scripts/systems/Combat.lua` |
 | 搜刮收益 | 已实现普通房搜索、宝箱房奖励、金币、零件 | `scripts/systems/RunInventory.lua` |
-| 失败保底 | 已实现安全金币自动保留，可抢救 1 零件换金币 | `scripts/systems/RunInventory.lua` |
+| 失败抢救条款 | 已实现已锁定收益自动保留，可抢救 1 零件换结算币 | `scripts/systems/RunInventory.lua` |
 | 五四三二一协议 | 已实现按探索房间数推进的基础 HUD，尚未切到 v0.3 压力值 | `scripts/systems/Protocol.lua` |
 | 四区 HUD | 已实现左栏、中央主画面、右上协议、底部交互栏 | `scripts/ui/HUD.lua` |
 | 自测 | 已覆盖地图生成、撤离、非致命雷房、协议推进 | `scripts/tests/minefield_selftest.lua` |
@@ -85,7 +85,7 @@
 
 ### P0：立刻做/刚完成
 
-1. **失败保底结算**
+1. **失败抢救条款结算**
    - 血量归零后进入失败面板。
    - 展示本局物资。
    - Demo 当前规则：局内金币是安全资产，失败自动入账；零件是风险资产，失败默认丢失。
@@ -187,7 +187,7 @@
 | `talent_map` | 小地图 | 邻域感知 | 进入房间时高亮 8 邻域已探索状态 | 100g |
 | `talent_mine` | 雷房 | 厚皮 | 雷伤降低 10 点（25→15） | 80g |
 | `talent_monster` | 怪物 | 威压 | 怪物逃跑时间 +2 秒 | 80g |
-| `talent_extract` | 撤离 | 保险金 | 失败保底额外 +10g | 100g |
+| `talent_extract` | 撤离 | 抢救条款 | 信号中断时额外保留 +10 结算币 | 100g |
 | `talent_event` | 事件 | 议价 | NPC 交易价格 15→20 金币/零件 | 120g |
 
 规则：

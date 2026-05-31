@@ -6,6 +6,7 @@
 local MiniMap = require("ui.MiniMap")
 local Protocol = require("systems.Protocol")
 local GameText = require("systems.GameText")
+local UITheme = require("ui.UITheme")
 
 local HUD = {}
 
@@ -15,17 +16,17 @@ local HUD = {}
 
 local LAYOUT = {
     -- 左侧信息栏
-    sidebarWidthRatio = 0.35,  -- 屏幕宽度 35%
-    sidebarMinW = 280,
-    sidebarMaxW = 460,
+    sidebarWidthRatio = 0.28,
+    sidebarMinW = 272,
+    sidebarMaxW = 360,
     sidebarPadding = 12,
 
     -- 底部栏
-    bottomBarH = 56,
+    bottomBarH = 68,
 
     -- 右上协议面板
-    protocolW = 140,
-    protocolH = 100,
+    protocolW = 196,
+    protocolH = 132,
     protocolMargin = 10,
 
     -- 面板样式
@@ -45,6 +46,7 @@ local LAYOUT = {
 function HUD.ComputeLayout(w, h)
     -- 左侧栏宽度
     local sidebarW = math.floor(w * LAYOUT.sidebarWidthRatio)
+    sidebarW = math.max(LAYOUT.sidebarMinW, math.min(LAYOUT.sidebarMaxW, sidebarW))
 
     local bottomH = LAYOUT.bottomBarH
 
@@ -52,7 +54,7 @@ function HUD.ComputeLayout(w, h)
         -- 左侧信息栏
         sidebar = {
             x = 0, y = 0,
-            w = sidebarW, h = h,
+            w = sidebarW, h = h - bottomH,
         },
         -- 中央主游戏区(避开左栏和底栏)
         center = {
@@ -72,6 +74,12 @@ function HUD.ComputeLayout(w, h)
         bottom = {
             x = 0, y = h - bottomH,
             w = w, h = bottomH,
+        },
+        danger = {
+            x = sidebarW,
+            y = h - bottomH - 34,
+            w = w - sidebarW,
+            h = 28,
         },
         -- 全屏尺寸
         screenW = w,
@@ -129,6 +137,7 @@ end
 
 -- 协议降级动画状态
 HUD.protocolFlashTimer = 0
+HUD.lastProtocolLevel = nil
 
 -- ============================================================================
 -- 左侧信息栏
@@ -270,78 +279,29 @@ function HUD.DrawLeftSidebar(vg, layout, context)
     nvgStroke(vg)
     curY = curY + 8
 
-    -- 当前目标
-    nvgFontSize(vg, 15)
-    nvgFillColor(vg, nvgRGBA(120, 230, 160, 255))
-    nvgText(vg, contentX, curY, GameText.hud.targetTitle)
+    -- 轻量作业包摘要
+    nvgFontSize(vg, 14)
+    nvgFillColor(vg, nvgRGBA(130, 220, 205, 245))
+    nvgText(vg, contentX, curY, "作业包摘要")
     curY = curY + 19
-    nvgFillColor(vg, nvgRGBA(200, 220, 200, 220))
-    nvgText(vg, contentX, curY, GameText.hud.target)
-    curY = curY + 23
 
-    -- 附近危险
-    local adjacent = context.adjacent or 0
-    if adjacent > 0 and context.roomType ~= "mine" then
-        nvgFontSize(vg, 16)
-        local dangerColor = adjacent >= 3 and nvgRGBA(255, 80, 60, 255) or nvgRGBA(255, 200, 80, 255)
-        nvgFillColor(vg, dangerColor)
-        nvgText(vg, contentX, curY, GameText.hud.nearbyDanger .. adjacent .. " 格")
-        curY = curY + 23
+    nvgFontSize(vg, 12)
+    local carried = inv.carriedItems or {}
+    if #carried == 0 then
+        nvgFillColor(vg, nvgRGBA(150, 170, 180, 210))
+        nvgText(vg, contentX, curY, "[回收] 暂无待结算回收物")
+        curY = curY + 17
+    else
+        for index = 1, math.min(2, #carried) do
+            local stack = carried[index]
+            local def = stack.def or {}
+            nvgFillColor(vg, nvgRGBA(190, 210, 220, 230))
+            nvgText(vg, contentX, curY, "[回收] " .. (def.name or stack.itemId or "回收物") .. " x" .. (stack.count or 1))
+            curY = curY + 17
+        end
     end
-
-    -- 协议等级(内联)
-    local protocolStatus = context.protocolStatus
-    if protocolStatus then
-        local level = protocolStatus.level or 5
-        local pColor = PROTOCOL_COLORS[level] or { 180, 180, 180 }
-        local pTitle = PROTOCOL_TITLES[level] or ""
-
-        -- 降级闪烁
-        local dt = context.dt or (1.0 / 60.0)
-        if protocolStatus.changed then
-            HUD.protocolFlashTimer = 0.8
-        end
-        if HUD.protocolFlashTimer > 0 then
-            HUD.protocolFlashTimer = HUD.protocolFlashTimer - dt
-        end
-
-        -- 分隔线
-        nvgBeginPath(vg)
-        nvgMoveTo(vg, contentX, curY)
-        nvgLineTo(vg, contentX + sb.w - pad * 2, curY)
-        nvgStrokeColor(vg, nvgRGBA(60, 80, 110, 100))
-        nvgStrokeWidth(vg, 1)
-        nvgStroke(vg)
-        curY = curY + 8
-
-        nvgFontSize(vg, 15)
-        nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
-        nvgText(vg, contentX, curY, GameText.hud.protocol)
-
-        -- 等级数字(右侧对齐)
-        local numScale = 1.0
-        if HUD.protocolFlashTimer > 0 then
-            numScale = 1.0 + 0.2 * math.abs(math.sin(HUD.protocolFlashTimer * 8))
-        end
-        nvgFontSize(vg, 26 * numScale)
-        nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
-        nvgFillColor(vg, nvgRGBA(pColor[1], pColor[2], pColor[3], 255))
-        nvgText(vg, contentX + sb.w - pad * 2, curY - 4, tostring(level))
-
-        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
-        curY = curY + 18
-
-        nvgFontSize(vg, 14)
-        nvgFillColor(vg, nvgRGBA(pColor[1], pColor[2], pColor[3], 200))
-        nvgText(vg, contentX, curY, pTitle)
-        curY = curY + 18
-
-        nvgFillColor(vg, nvgRGBA(160, 170, 190, 160))
-        nvgText(vg, contentX, curY, PROTOCOL_DESCS[level] or "")
-        curY = curY + 20
-    end
-
-
+    nvgFillColor(vg, nvgRGBA(170, 220, 205, 225))
+    nvgText(vg, contentX, curY, "[消耗] 应急止血贴 x" .. bandageCount)
 end
 
 -- ============================================================================
@@ -359,9 +319,10 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     local color = PROTOCOL_COLORS[level] or { 180, 180, 180 }
 
     -- 降级闪烁
-    if protocolStatus.changed then
+    if protocolStatus.changed and HUD.lastProtocolLevel ~= level then
         HUD.protocolFlashTimer = 0.8
     end
+    HUD.lastProtocolLevel = level
     if HUD.protocolFlashTimer > 0 then
         HUD.protocolFlashTimer = HUD.protocolFlashTimer - dt
         local flash = math.abs(math.sin(HUD.protocolFlashTimer * 12))
@@ -379,30 +340,70 @@ function HUD.DrawProtocolPanel(vg, layout, protocolStatus, dt)
     -- 标题
     nvgFontFace(vg, "sans")
     nvgFontSize(vg, 11)
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(160, 170, 190, 220))
-    nvgText(vg, p.x + p.w / 2, p.y + 8, GameText.hud.protocol)
+    nvgText(vg, p.x + 12, p.y + 10, GameText.protocol.panelTitle)
 
     -- 大号等级数字
     local numScale = 1.0
     if HUD.protocolFlashTimer > 0 then
         numScale = 1.0 + 0.3 * math.abs(math.sin(HUD.protocolFlashTimer * 8))
     end
-    nvgFontSize(vg, 32 * numScale)
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFontSize(vg, 28 * numScale)
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
     nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 255))
-    nvgText(vg, p.x + p.w / 2, p.y + 44, tostring(level))
+    nvgText(vg, p.x + 12, p.y + 48, "协议 " .. tostring(level))
 
     -- 阶段名称
     nvgFontSize(vg, 12)
-    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_TOP)
+    nvgTextAlign(vg, NVG_ALIGN_RIGHT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 230))
-    nvgText(vg, p.x + p.w / 2, p.y + 64, PROTOCOL_TITLES[level] or "")
+    nvgText(vg, p.x + p.w - 12, p.y + 39, PROTOCOL_TITLES[level] or "")
 
-    -- 短描述
+    -- 压力值
     nvgFontSize(vg, 10)
+    nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_TOP)
     nvgFillColor(vg, nvgRGBA(160, 170, 190, 180))
-    nvgText(vg, p.x + p.w / 2, p.y + 80, PROTOCOL_DESCS[level] or "")
+    nvgText(vg, p.x + 12, p.y + 70, "封锁压力: " .. (protocolStatus.pressure or 0) .. " / " .. (protocolStatus.maxPressure or 100))
+    local pressureRatio = math.max(0, math.min(1, (protocolStatus.pressure or 0) / math.max(1, protocolStatus.maxPressure or 100)))
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, p.x + 12, p.y + 88, p.w - 24, 8, 3)
+    nvgFillColor(vg, nvgRGBA(36, 45, 52, 230))
+    nvgFill(vg)
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, p.x + 12, p.y + 88, (p.w - 24) * pressureRatio, 8, 3)
+    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 245))
+    nvgFill(vg)
+
+    nvgFontSize(vg, 10)
+    nvgFillColor(vg, nvgRGBA(172, 185, 192, 205))
+    nvgText(vg, p.x + 12, p.y + 106, PROTOCOL_DESCS[level] or "")
+end
+
+-- ============================================================================
+-- 主场景下方雷险标签
+-- ============================================================================
+
+function HUD.DrawNearbyDanger(vg, layout, context)
+    local d = layout.danger
+    local adjacent = context.adjacent or 0
+    local triggered = context.roomType == "mine"
+    local color = triggered and { 255, 100, 78 } or (adjacent >= 3 and { 255, 120, 78 } or { 246, 204, 112 })
+    local text = triggered and "周围雷险: 已触发" or (GameText.hud.nearbyDanger .. adjacent)
+
+    nvgBeginPath(vg)
+    nvgRoundedRect(vg, d.x + d.w / 2 - 88, d.y, 176, d.h, 4)
+    nvgFillColor(vg, nvgRGBA(16, 24, 29, adjacent > 0 and 220 or 170))
+    nvgFill(vg)
+    nvgStrokeColor(vg, nvgRGBA(color[1], color[2], color[3], adjacent > 0 and 190 or 110))
+    nvgStrokeWidth(vg, 1)
+    nvgStroke(vg)
+
+    nvgFontFace(vg, "sans")
+    nvgFontSize(vg, 13)
+    nvgTextAlign(vg, NVG_ALIGN_CENTER + NVG_ALIGN_MIDDLE)
+    nvgFillColor(vg, nvgRGBA(color[1], color[2], color[3], 245))
+    nvgText(vg, d.x + d.w / 2, d.y + d.h / 2, text)
 end
 
 -- ============================================================================
@@ -425,17 +426,46 @@ function HUD.DrawBottomBar(vg, layout, context)
     if hint ~= "" then
         nvgFontSize(vg, 13)
         nvgFillColor(vg, nvgRGBA(255, 240, 180, 255))
-        nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 - 8, hint)
+        nvgText(vg, b.x + b.w / 2, b.y + 15, hint)
     end
 
-    -- 底部次要操作
-    nvgFontSize(vg, 10)
-    nvgFillColor(vg, nvgRGBA(140, 150, 170, 180))
-    local useText = ""
-    if context.consumables and (context.consumables.emergency_bandage or 0) > 0 then
-        useText = "  Q:止血贴"
+    local commands = {
+        { key = "WASD", label = "移动" },
+        { key = "M", image = "hud_key_m", label = "扫描图" },
+        { key = "F", image = "hud_key_f", label = "搜索/攻击" },
+        { key = "E", image = "hud_key_e", label = "撤离" },
+        { key = "T", image = "hud_key_t", label = "事件" },
+        { key = "Q", image = "hud_key_q", label = "止血贴" },
+    }
+    local groupW = 112
+    local totalW = #commands * groupW
+    local startX = b.x + (b.w - totalW) / 2
+    for index, command in ipairs(commands) do
+        local x = startX + (index - 1) * groupW
+        if command.image then
+            UITheme.DrawImage(command.image, x, b.y + 36, 20, 20, {
+                vg = vg,
+                fill = { 22, 34, 42, 230 },
+                border = { 100, 150, 160, 180 },
+                radius = 3,
+            })
+        else
+            nvgBeginPath(vg)
+            nvgRoundedRect(vg, x, b.y + 36, 34, 20, 3)
+            nvgFillColor(vg, nvgRGBA(22, 34, 42, 230))
+            nvgFill(vg)
+            nvgStrokeColor(vg, nvgRGBA(100, 150, 160, 180))
+            nvgStrokeWidth(vg, 1)
+            nvgStroke(vg)
+            nvgFontSize(vg, 9)
+            nvgFillColor(vg, nvgRGBA(210, 226, 226, 240))
+            nvgText(vg, x + 17, b.y + 46, command.key)
+        end
+        nvgFontSize(vg, 10)
+        nvgTextAlign(vg, NVG_ALIGN_LEFT + NVG_ALIGN_MIDDLE)
+        nvgFillColor(vg, nvgRGBA(164, 184, 192, 225))
+        nvgText(vg, x + (command.image and 26 or 40), b.y + 46, command.label)
     end
-    nvgText(vg, b.x + b.w / 2, b.y + b.h / 2 + 12, GameText.hud.controls .. useText)
 
     -- 右侧: 撤离距离
     if context.exitDistance then
@@ -443,7 +473,7 @@ function HUD.DrawBottomBar(vg, layout, context)
         nvgFontSize(vg, 11)
         nvgFillColor(vg, nvgRGBA(100, 255, 150, 230))
         local dirText = context.exitDirection or ""
-        nvgText(vg, b.x + b.w - 14, b.y + b.h / 2,
+        nvgText(vg, b.x + b.w - 14, b.y + 15,
             "撤离信标 " .. dirText .. " 距离 " .. context.exitDistance)
     end
 end

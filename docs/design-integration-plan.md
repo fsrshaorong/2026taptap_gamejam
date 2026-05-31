@@ -213,7 +213,7 @@
 8. 当前事件系统支持事件状态和选项状态，但多数事件执行后立即 `MarkCompleted`。赌徒和祭坛若要多次或递增，需要改完成条件和 optionState。
 9. 当前怪物击杀奖励有两个胜利路径：即时攻击 `CompleteActiveMonsterClear` 和旧战斗 `ResolveBattle`，最终都可能调用 `RunInventory.RecordCombat`。新增压力/攻击成长要放在唯一收口，避免重复。
 10. 当前协议 1 扣血由 `Protocol.AddPressure` 返回 `penalty`，再由 `main.lua:MovePlayer` 扣血；没有发现其他协议 1 扣血路径，但事件压力广播也读 `AddPressure` 结果，移除 penalty 时要查完整调用。
-11. 当前局外商店价格和效果均与数值案不一致。价格目标上调到 90~220，但当前收益将明显收紧，必须同步处理旅商、仓库出售和失败保底，否则成长节奏可能断档。
+11. 当前局外商店价格和效果均与数值案不一致。价格目标上调到 90~220，但当前收益将明显收紧，必须同步处理旅商、仓库出售和失败抢救条款，否则成长节奏可能断档。
 12. 当前主菜单、结算、教程、HUD、事件文本没有集中管理，散落在 `main.lua`、`HUD.lua`、`Tutorial.lua`、`EventSystem.lua`、`DungeonRoom.lua`、`MetaProgress.lua`。
 13. 文案策划案 P0 文案较完整，但部分目标键位写“E 交互/开启/交易”，当前游戏实际使用 F 搜索/攻击、T 事件、E 撤离；若不改交互键，文案需要本地化为现有键位。
 14. 事件房背景当前是统一 `Textures/room_event.png`，具体旅商/赌徒/祭坛/机关靠前景道具和标签区分；若目标是每类事件独立背景，需要额外资源与映射，不属于纯文案数值。

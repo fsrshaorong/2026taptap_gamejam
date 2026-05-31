@@ -324,6 +324,8 @@ function Start()
     UITheme.Register("hud_key_q", "ui/keys/ui_key_q.png")
     UITheme.Register("hud_key_e", "ui/keys/ui_key_e.png")
     UITheme.Register("hud_key_f", "ui/keys/ui_key_f.png")
+    UITheme.Register("hud_key_m", "ui/keys/ui_key_m.png")
+    UITheme.Register("hud_key_t", "ui/keys/ui_key_t.png")
     UITheme.LoadRegistered(nvgScene)
     imgBattlePlayer = nvgCreateImage(nvgScene, "Textures/generated/characters/huanxiong/frames/00_front_idle.png", 0)
     imgBattleEnemy = nvgCreateImage(nvgScene, "Textures/enemy_slime.png", 0)
@@ -571,7 +573,7 @@ function RefreshDeployOverview()
         if equipBonus.showExitHint then table.insert(bonuses, "罗盘提示") end
         if equipBonus.searchBonus > 0 then table.insert(bonuses, "搜索+" .. equipBonus.searchBonus) end
         if talentEffects.mineDmgReduce > 0 then table.insert(bonuses, "雷伤-" .. talentEffects.mineDmgReduce) end
-        if talentEffects.failureGoldBonus > 0 then table.insert(bonuses, "旧保险金+" .. talentEffects.failureGoldBonus) end
+        if talentEffects.failureGoldBonus > 0 then table.insert(bonuses, "抢救条款+" .. talentEffects.failureGoldBonus) end
         if #bonuses == 0 then
             bonusLabel:SetText("当前主要加成: 无")
         else
@@ -690,6 +692,14 @@ local DEPLOY_MODULE_NAMES = {
     talent = "天赋",
 }
 
+local DEPLOY_MODULE_NAV_IDS = {
+    warehouse = "deployNavWarehouseButton",
+    requisition = "deployNavRequisitionButton",
+    loadout = "deployNavLoadoutButton",
+    recovery = "deployNavRecoveryButton",
+    talent = "deployNavTalentButton",
+}
+
 local function setLabelText(id, text)
     local label = uiRoot_ and uiRoot_:FindById(id)
     if label then label:SetText(text or "") end
@@ -767,11 +777,15 @@ local function getDeploySummaryLines()
     if equipBonus.showExitHint then table.insert(effects, "罗盘提示") end
     if equipBonus.searchBonus > 0 then table.insert(effects, "搜索+" .. equipBonus.searchBonus) end
     if talentEffects.mineDmgReduce > 0 then table.insert(effects, "雷伤-" .. talentEffects.mineDmgReduce) end
-    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "旧保险金+" .. talentEffects.failureGoldBonus) end
+    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "抢救条款+" .. talentEffects.failureGoldBonus) end
+    local equipmentText = summary.loadout.equipmentText
+    if equipmentText == "无" then equipmentText = "未配置作业装备" end
+    local consumableText = summary.loadout.consumableText
+    if consumableText == "无" then consumableText = "未携带作业消耗品" end
     return {
-        equipment = "已带作业装备: " .. summary.loadout.equipmentText,
-        consumable = "已带消耗品: " .. summary.loadout.consumableText,
-        effects = "本局效果: " .. (#effects > 0 and table.concat(effects, " / ") or "无"),
+        equipment = "装备: " .. equipmentText,
+        consumable = "消耗品: " .. consumableText,
+        effects = "本局效果: " .. (#effects > 0 and table.concat(effects, " / ") or "本局无额外加成"),
     }
 end
 
@@ -943,9 +957,9 @@ local function buildTalentCards()
                 effect = talent.desc,
                 desc = unlocked and "当前效果已生效" or "解锁后在正式局生效",
                 countLine = "Lv." .. (unlocked and "1" or "0") .. "/1",
-                status = unlocked and "已登记" or ("登记费 " .. talent.price .. " 结算币"),
+                status = unlocked and "已解锁" or ("解锁费用 " .. talent.price .. " 结算币"),
                 talent = talent,
-                actions = unlocked and {} or { { text = "登记", action = "unlock" } },
+                actions = unlocked and {} or { { text = "解锁", action = "unlock" } },
             })
         end
     end
@@ -1005,11 +1019,11 @@ local function makeDeployCard(card, index)
                         backgroundColor = { 28, 48, 56, 180 },
                         borderRadius = 4,
                     },
-                    UI.Button {
-                        text = (card.title or ""),
+                    UI.Label {
+                        text = textShort(card.title, 18),
                         width = 176,
-                        height = 28,
-                        onClick = function() SelectDeployCard(cardKey(card)) end,
+                        fontSize = 14,
+                        fontColor = selected and { 228, 252, 245, 255 } or { 210, 232, 238, 245 },
                     },
                 },
             },
@@ -1026,6 +1040,8 @@ end
 local function refreshDeployDetails()
     local detail = uiRoot_ and uiRoot_:FindById("deployCardDetailLabel")
     if not detail then return end
+    local title = uiRoot_ and uiRoot_:FindById("deployCardDetailTitleLabel")
+    local status = uiRoot_ and uiRoot_:FindById("deployCardDetailStatusLabel")
     local selected = nil
     for _, card in ipairs(deployTerminal.cards or {}) do
         if cardKey(card) == deployTerminal.selectedKey then
@@ -1034,9 +1050,35 @@ local function refreshDeployDetails()
         end
     end
     if selected then
-        detail:SetText((selected.title or "") .. " | " .. (selected.typeLine or "") .. " | " .. (selected.effect or "") .. " | " .. (selected.status or ""))
+        if title then title:SetText("当前选中: " .. (selected.title or "")) end
+        detail:SetText((selected.typeLine or "") .. " | " .. (selected.effect or selected.desc or ""))
+        if status then status:SetText("状态: " .. (selected.status or "可查看")) end
     else
-        detail:SetText("点击卡片可查看详情；滚轮只滚动中央显示屏内卡片。")
+        if title then title:SetText("当前选中: 暂无") end
+        detail:SetText("点击卡片查看效果与状态。滚轮只作用于中央卡片区。")
+        if status then status:SetText("状态: 等待选择") end
+    end
+end
+
+local function OpenDeployModule(module)
+    SetDeployPage(module)
+    ShowMenuPage(module)
+end
+
+local function refreshDeployModuleNav()
+    local nav = uiRoot_ and uiRoot_:FindById("deployModuleNavBar")
+    if not nav then return end
+    nav:RemoveAllChildren()
+    for _, item in ipairs(DEPLOY_MODULES) do
+        local moduleId = item.id
+        nav:AddChild(UI.Button {
+            id = DEPLOY_MODULE_NAV_IDS[moduleId],
+            text = item.label,
+            width = 134,
+            height = 40,
+            variant = deployTerminal.module == moduleId and "primary" or "default",
+            onClick = function() OpenDeployModule(moduleId) end,
+        })
     end
 end
 
@@ -1098,6 +1140,8 @@ function RefreshDeployModulePage(module)
 
     setLabelText("deployModuleTitleLabel", DEPLOY_MODULE_NAMES[module] or "出勤准备")
     setLabelText("deployModuleMetaLabel", GameText.meta.account .. MetaProgress.GetGold() .. " | " .. (#deployTerminal.cards) .. " 项")
+    setLabelText("deployActiveTabLabel", "当前页签 / " .. (DEPLOY_MODULE_NAMES[module] or "出勤准备"))
+    refreshDeployModuleNav()
     RefreshDeploySummaryPanel()
 
     local filterBar = uiRoot_ and uiRoot_:FindById("deployFilterBar")
@@ -1260,7 +1304,7 @@ function RefreshTalentPage()
     for _, talent in ipairs(MetaProgress.TALENTS) do
         local unlocked = MetaProgress.HasTalent(talent.id)
 
-        local statusText = unlocked and "[已登记]" or (talent.price .. " 结算币")
+        local statusText = unlocked and "[已解锁]" or (talent.price .. " 结算币")
         local talentId = talent.id  -- 闭包捕获
 
         local row = UI.Panel {
@@ -1298,7 +1342,7 @@ function RefreshTalentPage()
                             fontColor = unlocked and { 100, 220, 140, 255 } or { 200, 200, 210, 200 },
                         },
                         unlocked and UI.Label { text = "", fontSize = 1 } or UI.Button {
-                            text = "登记",
+                            text = "解锁",
                             variant = "primary",
                             width = 60,
                             height = 28,
@@ -1343,7 +1387,7 @@ function RefreshWarehousePage()
     local items = MetaProgress.GetWarehouseDisplayList({ category = warehouseFilter })
     if #items == 0 then
         listPanel:AddChild(UI.Label {
-            text = "当前分类暂无登记物品。",
+            text = "当前分类暂无可用物品。",
             fontSize = 12,
             fontColor = { 160, 170, 190, 220 },
         })
@@ -1957,8 +2001,10 @@ function StartTutorialRun()
     StartNewGame(config)
     Tutorial.Start()
     -- 触发出生点教程弹窗
-    local spawn = minefield:GetSpawn()
-    Tutorial.OnEnterRoom(spawn.x, spawn.y, nil, "spawn")
+    local spawn = minefield and minefield:GetSpawn() or nil
+    if spawn then
+        Tutorial.OnEnterRoom(spawn.x, spawn.y, nil, "spawn")
+    end
     ShowMessage("训练工单:不消耗后勤物资,不登记回收记录。")
 end
 
@@ -2017,7 +2063,7 @@ function ShowFailurePanel(reason)
         local partsLine = uiRoot_:FindById("failurePartsLine")
         if partsLine then partsLine:SetText("训练工单不登记回收记录") end
         local protocolLine = uiRoot_:FindById("failureProtocolLine")
-        if protocolLine then protocolLine:SetText("不触发失败抢救条款或旧保险金") end
+        if protocolLine then protocolLine:SetText("不触发失败抢救条款或回收资历加成") end
         ShowMessage("训练工单失败:已返回结算,不消耗也不登记后勤资源。")
         return
     end
@@ -2059,7 +2105,7 @@ function ShowFailurePanel(reason)
 
             local protocolLine = uiRoot_:FindById("failureProtocolLine")
             if talentBonus > 0 then
-                if protocolLine then protocolLine:SetText("旧保险金 +" .. talentBonus) end
+                if protocolLine then protocolLine:SetText("抢救条款 +" .. talentBonus) end
             else
                 if protocolLine then protocolLine:SetText("") end
             end
@@ -2077,7 +2123,7 @@ function ApplyFailureSalvage(choice)
     if currentRunConfig and currentRunConfig.allowFailureRewards == false then
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
-        ShowMessage("训练工单不触发失败抢救条款或旧保险金。")
+        ShowMessage("训练工单不触发失败抢救条款或回收资历加成。")
         return
     end
 
@@ -2087,7 +2133,7 @@ function ApplyFailureSalvage(choice)
     setVisible("failureChoicePanel", false)
     setVisible("restartAfterFailureButton", true)
 
-    -- 旧保险金仍沿用原有结算能力
+    -- 抢救条款仍沿用原有结算能力
     local talentBonus = GetActiveTalentEffects().failureGoldBonus
     local finalGold = salvage.gold + talentBonus
 
@@ -2108,7 +2154,7 @@ function ApplyFailureSalvage(choice)
         text = text .. " | 含抢救物资 +" .. salvage.bonus
     end
     if talentBonus > 0 then
-        text = text .. " | 旧保险金 +" .. talentBonus
+        text = text .. " | 抢救条款 +" .. talentBonus
     end
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
@@ -2131,7 +2177,7 @@ function ApplyFailureSalvage(choice)
             if salvage.bonus > 0 then bonusText = "抢救物资 +" .. salvage.bonus end
             if talentBonus > 0 then
                 if bonusText ~= "" then bonusText = bonusText .. " | " end
-                bonusText = bonusText .. "旧保险金 +" .. talentBonus
+                bonusText = bonusText .. "抢救条款 +" .. talentBonus
             end
             protocolLine:SetText(bonusText)
         end
@@ -3463,9 +3509,12 @@ function HandleNanoVGRender(eventType, eventData)
         local invTotals = RunInventory.GetTotals()
         local invStatus = {
             gold = invTotals.gold,
+            pendingGold = invTotals.pendingGold,
+            safeGold = invTotals.safeGold,
             parts = invTotals.parts,
             carriedItemCount = invTotals.carriedItemCount,
             carriedItemValue = invTotals.carriedItemValue,
+            carriedItems = invTotals.carriedItems,
             consumables = invTotals.consumables,
         }
 
@@ -3490,7 +3539,7 @@ function HandleNanoVGRender(eventType, eventData)
         nvgRestore(nvgScene)
 
         -- HUD: 左侧信息栏
-        local exploredCount = Protocol.exploredRooms or 0
+        local exploredCount = minefield and minefield:GetExploredCount() or 0
 
         local dt = 1.0 / 60.0
         HUD.DrawLeftSidebar(nvgScene, hudLayout, {
@@ -3505,8 +3554,11 @@ function HandleNanoVGRender(eventType, eventData)
             message = message,
             adjacent = cell and cell.adjacent or 0,
             roomType = cell and cell.roomType or "normal",
-            protocolStatus = Protocol.GetStatus(),
-            dt = dt,
+        })
+        HUD.DrawProtocolPanel(nvgScene, hudLayout, Protocol.GetStatus(), dt)
+        HUD.DrawNearbyDanger(nvgScene, hudLayout, {
+            adjacent = cell and cell.adjacent or 0,
+            roomType = cell and cell.roomType or "normal",
         })
 
         -- HUD: 底部交互栏
@@ -3645,6 +3697,44 @@ function CreateUI()
                 top = 1, left = -1, right = 1, bottom = -1,
                 backgroundColor = { 6, 10, 14, 245 },
                 children = {
+                    UI.Panel {
+                        position = "absolute",
+                        left = 188,
+                        top = 104,
+                        width = 1330,
+                        height = 716,
+                        backgroundColor = { 12, 22, 28, 238 },
+                        borderRadius = 10,
+                        borderWidth = 2,
+                        borderColor = { 78, 120, 132, 190 },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        left = 204,
+                        top = 120,
+                        width = 1298,
+                        height = 8,
+                        backgroundColor = { 178, 116, 52, 180 },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        left = 330,
+                        top = 66,
+                        width = 944,
+                        height = 24,
+                        backgroundColor = { 18, 35, 42, 245 },
+                        borderWidth = 1,
+                        borderColor = { 88, 145, 154, 190 },
+                    },
+                    UI.Label {
+                        id = "deployActiveTabLabel",
+                        text = "当前页签 / 天赋",
+                        position = "absolute",
+                        left = 360,
+                        top = 72,
+                        fontSize = 11,
+                        fontColor = { 164, 218, 216, 245 },
+                    },
                     UI.Button {
                         id = "deployBackButton",
                         text = "",
@@ -3666,14 +3756,8 @@ function CreateUI()
                         flexDirection = "row",
                         flexWrap = "wrap",
                         justifyContent = "center",
-                        gap = 10,
-                        children = {
-                            UI.Button { id = "deployNavWarehouseButton", text = "", width = 116, height = 42, backgroundImage = "ui/deploy/ui_button_nav_warehouse.png", onClick = function() OpenDeployWarehouse() end },
-                            UI.Button { id = "deployNavRequisitionButton", text = "", width = 111, height = 42, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
-                            UI.Button { id = "deployNavLoadoutButton", text = "", width = 106, height = 42, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
-                            UI.Button { id = "deployNavRecoveryButton", text = "", width = 128, height = 45, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
-                            UI.Button { id = "deployNavTalentButton", text = "", width = 171, height = 46, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
-                        },
+                        gap = 8,
+                        children = {},
                     },
                     UI.Panel {
                         id = "deployOverviewLegacyPanel",
@@ -3725,8 +3809,25 @@ function CreateUI()
                             },
                             UI.Panel { id = "deployFilterBar", flexDirection = "row", flexWrap = "wrap", gap = 7, width = "87.2%", left = 67, children = {} },
                             UI.Panel { id = "deployCardGrid", gap = 12, width = "87.9%", height = 325, left = 60, top = 5, children = {} },
-                            UI.Label { id = "deployCardDetailLabel", text = "点击卡片可查看详情；滚轮只滚动中央显示屏内卡片。", fontSize = 11, left = 72, top = 23, fontColor = { 160, 190, 200, 230 } },
-                            UI.Label { id = "deployScrollLabel", text = "滚动 0/0", fontSize = 10, width = 68, height = 31, left = 74, top = 15, fontColor = { 120, 158, 170, 220 } },
+                            UI.Panel {
+                                position = "absolute",
+                                left = 28,
+                                top = 522,
+                                width = 878,
+                                height = 96,
+                                padding = 12,
+                                gap = 4,
+                                backgroundColor = { 10, 18, 25, 238 },
+                                borderRadius = 4,
+                                borderWidth = 1,
+                                borderColor = { 84, 138, 148, 170 },
+                                children = {
+                                    UI.Label { id = "deployCardDetailTitleLabel", text = "当前选中: 暂无", fontSize = 13, fontColor = { 206, 238, 232, 245 } },
+                                    UI.Label { id = "deployCardDetailLabel", text = "点击卡片查看效果与状态。滚轮只作用于中央卡片区。", fontSize = 11, fontColor = { 160, 190, 200, 230 } },
+                                    UI.Label { id = "deployCardDetailStatusLabel", text = "状态: 等待选择", fontSize = 11, fontColor = { 210, 190, 128, 235 } },
+                                },
+                            },
+                            UI.Label { id = "deployScrollLabel", text = "滚动 0/0", fontSize = 10, width = 68, height = 31, left = 780, top = 15, fontColor = { 120, 158, 170, 220 } },
                         },
                     },
                     UI.Panel {
@@ -3764,11 +3865,30 @@ function CreateUI()
                         borderWidth = 1,
                         borderColor = { 110, 190, 180, 155 },
                         children = {
-                            UI.Label { text = "出勤摘要", fontSize = 16, left = 21, top = 1, fontColor = { 210, 240, 230, 255 } },
-                            UI.Label { id = "deploySummaryEquipmentLabel", text = "已带作业装备: 无", fontSize = 12, left = 20, top = 1, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { id = "deploySummaryConsumableLabel", text = "已带消耗品: 无", fontSize = 12, left = 22, top = 3, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 无", fontSize = 11, left = 23, top = 11, fontColor = { 150, 190, 175, 220 } },
+                            UI.Label { text = "出勤摘要 / 待命", fontSize = 16, left = 21, top = 1, fontColor = { 210, 240, 230, 255 } },
+                            UI.Label { id = "deploySummaryEquipmentLabel", text = "装备: 未配置作业装备", fontSize = 12, left = 20, top = 1, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryConsumableLabel", text = "消耗品: 未携带作业消耗品", fontSize = 12, left = 22, top = 3, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 本局无额外加成", fontSize = 11, left = 23, top = 11, fontColor = { 150, 190, 175, 220 } },
                         },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        left = 1208,
+                        top = 704,
+                        width = 266,
+                        height = 120,
+                        backgroundColor = { 12, 24, 29, 238 },
+                        borderRadius = 8,
+                        borderWidth = 1,
+                        borderColor = { 112, 174, 164, 180 },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        left = 1138,
+                        top = 750,
+                        width = 86,
+                        height = 5,
+                        backgroundColor = { 176, 116, 50, 190 },
                     },
                     UI.Panel {
                         position = "absolute",
@@ -3860,7 +3980,7 @@ function CreateUI()
                                 end,
                             },
                             UI.Button {
-                                text = "登记全部资历",
+                                text = "解锁全部资历",
                                 width = 120,
                                 onClick = function()
                                     GMUnlockAllTalents()
@@ -4024,7 +4144,7 @@ function CreateUI()
                         }
                     },
                     UI.Label {
-                        text = "作业许可记录，登记后在正式局生效",
+                        text = "作业许可记录，解锁后在正式局生效",
                         fontSize = 11,
                         fontColor = { 140, 150, 170, 180 },
                     },
