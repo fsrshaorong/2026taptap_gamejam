@@ -13,6 +13,8 @@ local RunInventory = require("systems.RunInventory")
 local Combat = require("systems.Combat")
 local Tutorial = require("systems.Tutorial")
 local MetaProgress = require("systems.MetaProgress")
+local UILayout = require("ui.UILayout")
+local UITheme = require("ui.UITheme")
 
 local function assertEq(actual, expected, message)
     if actual ~= expected then
@@ -910,6 +912,36 @@ local function testConsumablePurchaseLoadoutAndRunUse()
     end)
 end
 
+local function testUILayoutRoundTrip()
+    local cases = {
+        { w = 1536, h = 864 },
+        { w = 1920, h = 1080 },
+        { w = 1280, h = 720 },
+        { w = 1600, h = 900 },
+        { w = 1366, h = 768 },
+    }
+
+    local baseW, baseH = UILayout.GetBaseSize()
+    assertEq(baseW, 1536, "ui layout base width")
+    assertEq(baseH, 864, "ui layout base height")
+
+    for _, c in ipairs(cases) do
+        UILayout.SetViewport(c.w, c.h)
+        local sx, sy, sw, sh = UILayout.ToScreen(120, 80, 360, 180)
+        local lx, ly = UILayout.ToLogic(sx, sy)
+        assertTrue(math.abs(lx - 120) < 0.001, "layout x round trip at " .. c.w .. "x" .. c.h)
+        assertTrue(math.abs(ly - 80) < 0.001, "layout y round trip at " .. c.w .. "x" .. c.h)
+        assertTrue(sw > 0 and sh > 0, "layout screen size should be positive")
+        assertTrue(UILayout.ContainsLogic(130, 90, { x = 120, y = 80, w = 360, h = 180 }), "layout hit test")
+    end
+end
+
+local function testUIThemeMissingImageSafe()
+    assertTrue(UITheme.LoadImage("missing_test_asset", "ui/missing/nope.png") == false, "missing image should not load")
+    assertTrue(UITheme.Has("missing_test_asset") == false, "missing image should not be reported as present")
+    assertTrue(UITheme.GetImage("missing_test_asset") == -1, "missing image should use sentinel")
+end
+
 local function testMainEntrySourceContract()
     local oldPreload = package.preload["urhox-libs/UI"]
     local oldLoaded = package.loaded["urhox-libs/UI"]
@@ -996,26 +1028,19 @@ local function testMainEntrySourceContract()
     end
 
     local mainButtons = visibleButtons()
-    assertTrue(mainButtons["接受工单"] ~= nil, "main should show accept work order")
-    assertTrue(mainButtons["展示工单"] ~= nil, "main should show tutorial entry")
-    assertTrue(mainButtons["调整终端"] ~= nil, "main should show settings entry")
+    assertTrue(mainButtons["接受工单"] == nil, "main should not show top-left accept button")
+    assertTrue(mainButtons["展示工单"] == nil, "main should not show top-left tutorial button")
+    assertTrue(mainButtons["调整终端"] == nil, "main should not show top-left settings button")
     assertTrue(mainButtons["后勤仓库"] == nil, "main should not show warehouse entry")
     assertTrue(mainButtons["后勤申领"] == nil, "main should not show requisition entry")
     assertTrue(mainButtons["出勤配置"] == nil, "main should not show loadout entry")
     assertTrue(mainButtons["回收资历"] == nil, "main should not show recovery entry")
+    assertEq(GetMainMenuHotspotCount(), 3, "main should keep three logical hotspots")
     assertTrue(_G.__testUiRoot:FindById("menuGoldLabel") == nil, "main should not define gold summary label")
     assertTrue(_G.__testUiRoot:FindById("menuWarehouseLabel") == nil, "main should not define warehouse summary label")
     assertTrue(_G.__testUiRoot:FindById("menuLoadoutLabel") == nil, "main should not define loadout summary label")
 
-    local acceptButton = nil
-    for _, button in ipairs(buttons) do
-        if button.text == "接受工单" then
-            acceptButton = button
-            break
-        end
-    end
-    assertTrue(acceptButton ~= nil, "accept work order button should exist")
-    acceptButton.onClick()
+    OpenDeployTerminal()
     assertEq(directStartCount, 0, "top-level accept should open deploy terminal, not start a run")
 
     local deployButtons = visibleButtons()
@@ -1027,15 +1052,7 @@ local function testMainEntrySourceContract()
     assertTrue(deployButtons["返回主界面"] ~= nil, "deploy should show return to main")
     assertEq(_G.__testUiRoot:FindById("menuPage_deployOverview").visible, true, "accept should open deploy overview")
 
-    local tutorialButton = nil
-    for _, button in ipairs(buttons) do
-        if button.text == "展示工单" then
-            tutorialButton = button
-            break
-        end
-    end
-    assertTrue(tutorialButton ~= nil, "tutorial button should exist")
-    tutorialButton.onClick()
+    OpenTutorial()
     assertEq(directStartCount, 1, "tutorial should enter through StartTutorialRun config")
     assertEq(capturedStartConfig.mode, "tutorial", "tutorial start config should stay tutorial mode")
     assertEq(capturedStartConfig.useLoadout, false, "tutorial should not use loadout")
@@ -1684,6 +1701,8 @@ local tests = {
     { name = "meta progress load consumable and loadout defaults", fn = testMetaProgressLoadConsumableAndLoadoutDefaults },
     { name = "unified display and warehouse categories", fn = testUnifiedDisplayAndWarehouseCategories },
     { name = "consumable purchase loadout and run use", fn = testConsumablePurchaseLoadoutAndRunUse },
+    { name = "ui layout round trip", fn = testUILayoutRoundTrip },
+    { name = "ui theme missing image safe", fn = testUIThemeMissingImageSafe },
     { name = "main entry source contract", fn = testMainEntrySourceContract },
     { name = "equipment requires equipped for bonus", fn = testEquipmentRequiresEquippedForBonus },
     { name = "consumable loadout zero does not enter run", fn = testConsumableLoadoutZeroDoesNotEnterRun },
