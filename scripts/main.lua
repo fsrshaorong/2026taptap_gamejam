@@ -155,7 +155,41 @@ local deployPage = "overview"
 local menuPage = "main"  -- "main" | "deployOverview" | "equip" | "talent" | "warehouse" | "requisition" | "loadout" | "recovery" | "gm"
 local warehouseSelectedIndex = 1
 local warehouseFilter = "all"
+local deployTerminal = {
+    module = "talent",
+    filter = "all",
+    scroll = 0,
+    selectedKey = nil,
+    cards = {},
+    hitRects = {},
+}
 local currentRunConfig = nil
+
+local DEPLOY_MODULES = {
+    { id = "warehouse", label = "后勤仓库" },
+    { id = "requisition", label = "后勤申领" },
+    { id = "loadout", label = "出勤配置" },
+    { id = "recovery", label = "回收资历" },
+    { id = "talent", label = "天赋" },
+}
+
+local DEPLOY_FILTERS = nil
+
+local DEPLOY_LAYOUT = {
+    baseW = 1536,
+    baseH = 864,
+    back = { x = 46, y = 34, w = 132, h = 42 },
+    nav = { x = 322, y = 34, w = 892, h = 42 },
+    central = { x = 230, y = 148, w = 820, h = 612 },
+    cardArea = { x = 260, y = 292, w = 760, h = 320 },
+    cardW = 236,
+    cardH = 142,
+    cardGap = 22,
+    columns = 3,
+    rowsVisible = 2,
+    summary = { x = 1122, y = 150, w = 330, h = 246 },
+    confirm = { x = 1190, y = 704, w = 220, h = 64 },
+}
 
 local JUDGE_DEMO_MAP = {
     width = 15,
@@ -220,6 +254,31 @@ function GetMainMenuHotspotCount()
     return #MENU_HOTSPOTS
 end
 
+function GetDeployTerminalLayoutInfo()
+    return {
+        back = DEPLOY_LAYOUT.back,
+        nav = DEPLOY_LAYOUT.nav,
+        central = DEPLOY_LAYOUT.central,
+        cardArea = DEPLOY_LAYOUT.cardArea,
+        summary = DEPLOY_LAYOUT.summary,
+        confirm = DEPLOY_LAYOUT.confirm,
+        columns = DEPLOY_LAYOUT.columns,
+        rowsVisible = DEPLOY_LAYOUT.rowsVisible,
+        module = deployTerminal.module,
+        filter = deployTerminal.filter,
+        cardCount = #(deployTerminal.cards or {}),
+        hitRectCount = #(deployTerminal.hitRects or {}),
+    }
+end
+
+function GetDeployTerminalModules()
+    return DEPLOY_MODULES
+end
+
+function GetDeployTerminalFilters(module)
+    return DEPLOY_FILTERS[module or deployTerminal.module or "talent"] or DEPLOY_FILTERS.talent
+end
+
 local function HandleMenuHotspotClick(mx, my)
     if phase ~= PHASE.MENU or menuPage ~= "main" then return false end
 
@@ -258,7 +317,6 @@ function Start()
         return
     end
     nvgCreateFont(nvgScene, "sans", "Fonts/FusionPixel.otf")
-    UITheme.Register("main_menu_bg_no_text", "ui/main_menu/main_menu_bg_no_text.png")
     UITheme.Register("deploy_panel_main", "ui/deploy/ui_panel_deploy_main_blank.png")
     UITheme.Register("deploy_panel_summary", "ui/deploy/ui_panel_deploy_summary_blank.png")
     UITheme.Register("deploy_confirm", "ui/deploy/ui_button_confirm_deploy_large.png")
@@ -318,6 +376,7 @@ function Start()
     SubscribeToEvent(nvgScene, "NanoVGRender", "HandleNanoVGRender")
     SubscribeToEvent("Update", "HandleUpdate")
     SubscribeToEvent("MouseButtonDown", "HandleMouseDown")
+    SubscribeToEvent("MouseWheel", "HandleMouseWheel")
     SubscribeToEvent("KeyDown", "HandleKeyDown")
 
     print("=== 扫雷搜打撤 已启动 ===")
@@ -344,6 +403,9 @@ end
 
 function SetDeployPage(page)
     deployPage = page or "overview"
+    if deployPage ~= "overview" and deployPage ~= "equip" then
+        deployTerminal.module = deployPage
+    end
     SetMenuMode("deploy")
 end
 
@@ -368,33 +430,28 @@ function ShowMenuPage(page)
         SetDeployPage(page == "deployOverview" and "overview" or page)
     end
     setVisible("terminalNavOverlay", page == "main")
-    setVisible("deployShellOverlay", page ~= "main" and page ~= "gm" and page ~= "deployOverview")
+    local isDeployPage = page ~= "main" and page ~= "gm"
+    setVisible("deployShellOverlay", false)
     setVisible("menuPage_main", page == "main")
-    setVisible("menuPage_deployOverview", page == "deployOverview")
-    setVisible("menuPage_equip", page == "equip")
-    setVisible("menuPage_talent", page == "talent")
-    setVisible("menuPage_warehouse", page == "warehouse")
-    setVisible("menuPage_requisition", page == "requisition")
-    setVisible("menuPage_loadout", page == "loadout")
-    setVisible("menuPage_recovery", page == "recovery")
+    setVisible("menuPage_deployOverview", isDeployPage)
+    setVisible("menuPage_equip", false)
+    setVisible("menuPage_talent", false)
+    setVisible("menuPage_warehouse", false)
+    setVisible("menuPage_requisition", false)
+    setVisible("menuPage_loadout", false)
+    setVisible("menuPage_recovery", false)
     setVisible("menuPage_gm", page == "gm")
 
     if page == "main" then
         RefreshMainMenu()
-    elseif page == "deployOverview" then
-        RefreshDeployOverview()
-    elseif page == "equip" then
-        RefreshEquipPage()
-    elseif page == "talent" then
-        RefreshTalentPage()
-    elseif page == "warehouse" then
-        RefreshWarehousePage()
-    elseif page == "requisition" then
-        RefreshRequisitionPage()
-    elseif page == "loadout" then
-        RefreshLoadoutPage()
-    elseif page == "recovery" then
-        RefreshRecoveryPage()
+    elseif isDeployPage then
+        if page == "deployOverview" or page == "overview" then
+            RefreshDeployOverview()
+        elseif page == "equip" then
+            RefreshDeployModulePage("requisition")
+        else
+            RefreshDeployModulePage(page)
+        end
     elseif page == "gm" then
         RefreshGMPanel()
     end
@@ -418,6 +475,7 @@ end
 
 function OpenDeployOverview()
     SetDeployPage("overview")
+    deployTerminal.module = deployTerminal.module or "talent"
     ShowMenuPage("deployOverview")
 end
 
@@ -477,6 +535,8 @@ function RefreshMainMenu()
 end
 
 function RefreshDeployOverview()
+    RefreshDeployModulePage(deployTerminal.module or "talent")
+
     local summary = MetaProgress.GetTerminalSummary()
 
     local goldLabel = uiRoot_ and uiRoot_:FindById("deployGoldLabel")
@@ -562,6 +622,530 @@ local function DisplayIconText(item)
         iconText = ""
     end
     return iconText
+end
+
+local function DeployIconImage(item)
+    local id = item and item.id or ""
+    local itemType = item and item.type or ""
+    if id == "armor" or id == "insulated_gloves" or id == "whetstone" or itemType == "equipment" then
+        return "ui/deploy/ui_icon_armor.png"
+    end
+    if id == "compass" then
+        return "ui/deploy/ui_icon_compass.png"
+    end
+    if id == "backpack" then
+        return "ui/deploy/ui_icon_backpack.png"
+    end
+    if id == "emergency_bandage" or itemType == "consumable" then
+        return "ui/deploy/ui_icon_bandage.png"
+    end
+    return "ui/deploy/ui_frame_highlight.png"
+end
+
+DEPLOY_FILTERS = {
+    warehouse = {
+        { id = "all", label = "全部" },
+        { id = "common", label = "一般" },
+        { id = "rare", label = "稀有" },
+        { id = "epic", label = "史诗" },
+        { id = "anomaly", label = "异常" },
+        { id = "equipment", label = "装备" },
+        { id = "consumable", label = "消耗" },
+        { id = "recovered", label = "回收" },
+    },
+    requisition = {
+        { id = "all", label = "全部" },
+        { id = "common", label = "一般" },
+        { id = "rare", label = "稀有" },
+        { id = "equipment", label = "装备" },
+        { id = "consumable", label = "消耗" },
+    },
+    loadout = {
+        { id = "all", label = "全部" },
+        { id = "equipment", label = "装备" },
+        { id = "consumable", label = "消耗品" },
+    },
+    recovery = {
+        { id = "all", label = "全部" },
+        { id = "common", label = "一般" },
+        { id = "rare", label = "稀有" },
+        { id = "anomaly", label = "异常" },
+        { id = "recent", label = "最近" },
+    },
+    talent = {
+        { id = "all", label = "全部" },
+        { id = "survival", label = "生存" },
+        { id = "explore", label = "探索" },
+        { id = "profit", label = "收益" },
+        { id = "event", label = "事件" },
+    },
+}
+
+local DEPLOY_MODULE_NAMES = {
+    warehouse = "后勤仓库",
+    requisition = "后勤申领",
+    loadout = "出勤配置",
+    recovery = "回收资历",
+    talent = "天赋",
+}
+
+local function setLabelText(id, text)
+    local label = uiRoot_ and uiRoot_:FindById(id)
+    if label then label:SetText(text or "") end
+end
+
+local function getRarity(item)
+    local rarity = item and item.rarity or "common"
+    if rarity == "logistics" then return "common" end
+    if rarity == "uncommon" then return "rare" end
+    if rarity == "" then return "common" end
+    return rarity
+end
+
+local function itemMatchesDeployFilter(item, filter)
+    if not item or filter == "all" then return true end
+    if filter == "equipment" then return item.type == "equipment" end
+    if filter == "consumable" then return item.type == "consumable" end
+    if filter == "recovered" then return item.source == "recovered" or item.type == "relic" end
+    if filter == "recent" then return item.recent == true end
+    local rarity = getRarity(item)
+    if filter == "common" then return rarity == "common" end
+    if filter == "rare" then return rarity == "rare" end
+    if filter == "epic" then return rarity == "epic" end
+    if filter == "anomaly" then return rarity == "anomaly" or rarity == "rare" end
+    return true
+end
+
+local function talentFilterTag(talent)
+    local id = talent and talent.id or ""
+    if id == "talent_mine" or id == "talent_monster" then return "survival" end
+    if id == "talent_map" then return "explore" end
+    if id == "talent_extract" then return "profit" end
+    if id == "talent_event" then return "event" end
+    return "all"
+end
+
+local function textShort(text, maxLen)
+    text = tostring(text or "")
+    maxLen = maxLen or 34
+    if utf8 and utf8.len then
+        local ok, len = pcall(utf8.len, text)
+        if ok and len and len > maxLen then
+            local byteIndex = utf8.offset(text, maxLen + 1)
+            if byteIndex then
+                return string.sub(text, 1, byteIndex - 1) .. "..."
+            end
+        elseif ok then
+            return text
+        end
+    end
+    if #text <= maxLen then return text end
+    return string.sub(text, 1, maxLen) .. "..."
+end
+
+local function cardKey(card)
+    return (card.module or "") .. ":" .. tostring(card.id or card.title or "")
+end
+
+local function resetDeployScrollIfNeeded(module)
+    if deployTerminal.module ~= module then
+        deployTerminal.scroll = 0
+        deployTerminal.filter = "all"
+        deployTerminal.selectedKey = nil
+    end
+end
+
+local function getDeploySummaryLines()
+    local summary = MetaProgress.GetTerminalSummary()
+    local equipBonus = MetaProgress.GetEquipBonus()
+    local talentEffects = MetaProgress.GetTalentEffects()
+    local effects = {}
+    if equipBonus.bonusHP > 0 then table.insert(effects, "HP+" .. equipBonus.bonusHP) end
+    if equipBonus.bonusPower > 0 then table.insert(effects, "战力+" .. equipBonus.bonusPower) end
+    if equipBonus.mineImmunity then table.insert(effects, "首雷免疫") end
+    if equipBonus.showExitHint then table.insert(effects, "罗盘提示") end
+    if equipBonus.searchBonus > 0 then table.insert(effects, "搜索+" .. equipBonus.searchBonus) end
+    if talentEffects.mineDmgReduce > 0 then table.insert(effects, "雷伤-" .. talentEffects.mineDmgReduce) end
+    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "保险金+" .. talentEffects.failureGoldBonus) end
+    return {
+        equipment = "已带装备: " .. summary.loadout.equipmentText,
+        consumable = "已带消耗品: " .. summary.loadout.consumableText,
+        effects = "本局效果: " .. (#effects > 0 and table.concat(effects, " / ") or "无"),
+    }
+end
+
+function RefreshDeploySummaryPanel()
+    local lines = getDeploySummaryLines()
+    setLabelText("deploySummaryEquipmentLabel", lines.equipment)
+    setLabelText("deploySummaryConsumableLabel", lines.consumable)
+    setLabelText("deploySummaryEffectLabel", lines.effects)
+end
+
+local function makeCard(module, item, opts)
+    opts = opts or {}
+    local typeName = item.typeName or item.category or opts.typeName or "物品"
+    local rarityName = item.rarityName or opts.rarityName or "一般"
+    local status = opts.status or ""
+    local countLine = opts.countLine or ""
+    return {
+        module = module,
+        id = item.id,
+        title = item.name or item.id,
+        icon = DisplayIconText(item),
+        typeLine = typeName .. " - " .. rarityName,
+        effect = item.effectText or item.desc or opts.effect or "",
+        desc = item.description or item.desc or opts.desc or "",
+        countLine = countLine,
+        status = status,
+        item = item,
+        iconImage = opts.iconImage or DeployIconImage(item),
+        actions = opts.actions or {},
+        recent = opts.recent,
+        rarity = item.rarity or "common",
+        source = item.source,
+        type = item.type,
+    }
+end
+
+local function buildWarehouseCards()
+    local list = MetaProgress.GetWarehouseDisplayList({ category = "all" })
+    local cards = {}
+    for _, item in ipairs(list) do
+        if itemMatchesDeployFilter(item, deployTerminal.filter) then
+            local status = item.isEquipped and "已装备" or ((item.loadoutCount or 0) > 0 and ("已带入 x" .. item.loadoutCount) or (item.canSell and "可出售" or "不可出售"))
+            local actions = {}
+            if item.canSell then table.insert(actions, { text = "出售", action = "sell" }) end
+            if item.type == "equipment" then table.insert(actions, { text = item.isEquipped and "卸下" or "装备", action = "equip" }) end
+            if item.type == "consumable" then
+                table.insert(actions, { text = "-", action = "loadout_dec" })
+                table.insert(actions, { text = "+", action = "loadout_inc" })
+            end
+            table.insert(cards, makeCard("warehouse", item, {
+                countLine = "数量 x" .. (item.count or 0) .. " / 估值 " .. (item.totalValue or item.value or 0),
+                status = status,
+                actions = actions,
+            }))
+        end
+    end
+    return cards
+end
+
+local function buildRequisitionCards()
+    local list = MetaProgress.GetShopDisplayList({ type = "all" })
+    local cards = {}
+    for _, item in ipairs(list) do
+        if itemMatchesDeployFilter(item, deployTerminal.filter) then
+            local owned = item.type == "equipment" and (item.owned and 1 or 0) or (item.count or 0)
+            local status = MetaProgress.GetGold() >= (item.price or 0) and "可申领" or "结算币不足"
+            local buttonText = "购买"
+            if item.type == "equipment" then
+                status = item.owned and (item.isEquipped and "已装备" or "已拥有") or status
+                buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
+            end
+            table.insert(cards, makeCard("requisition", item, {
+                countLine = "拥有 x" .. owned .. " / 价格 " .. (item.price or 0),
+                status = status,
+                actions = {
+                    { text = "-", action = "noop" },
+                    { text = "+", action = "noop" },
+                    { text = buttonText, action = item.type == "equipment" and "equip_or_buy" or "buy" },
+                },
+            }))
+        end
+    end
+    return cards
+end
+
+local function buildLoadoutCards()
+    local list = MetaProgress.GetLoadoutDisplayList()
+    local cards = {}
+    for _, item in ipairs(list) do
+        if itemMatchesDeployFilter(item, deployTerminal.filter) then
+            local actions = {}
+            local countLine
+            local status
+            if item.type == "consumable" then
+                countLine = "拥有 x" .. (item.count or 0) .. " / 本次带入 x" .. (item.loadoutCount or 0)
+                status = (item.loadoutCount or 0) > 0 and "已带入" or "未带入"
+                actions = { { text = "-", action = "loadout_dec" }, { text = "+", action = "loadout_inc" } }
+            else
+                countLine = "拥有 x" .. (item.owned and 1 or 0)
+                status = item.isEquipped and "已装备" or (item.owned and "未装备" or "未申领")
+                actions = { { text = item.isEquipped and "卸下" or "装备", action = "equip" } }
+            end
+            table.insert(cards, makeCard("loadout", item, {
+                countLine = countLine,
+                status = status,
+                actions = actions,
+            }))
+        end
+    end
+    return cards
+end
+
+local function buildRecoveryCards()
+    local summary = MetaProgress.GetRecoverySummary()
+    local cards = {}
+    local recentItems = summary.recentItems or {}
+    for index, item in ipairs(recentItems) do
+        local display = {
+            id = (item.id or item.name or "recent") .. "_" .. index,
+            name = item.name or item.id or "回收物",
+            type = "relic",
+            typeName = "异常回收物",
+            rarity = "common",
+            rarityName = item.rarityName or "一般",
+            value = item.value or 0,
+            description = "最近带回记录",
+        }
+        display.recent = true
+        if itemMatchesDeployFilter(display, deployTerminal.filter) then
+            table.insert(cards, makeCard("recovery", display, {
+                countLine = "估值 " .. (display.value or 0),
+                status = "最近带回",
+                actions = { { text = "查看", action = "select" } },
+                recent = true,
+            }))
+        end
+    end
+    if #cards == 0 and (deployTerminal.filter == "all" or deployTerminal.filter == "recent") then
+        table.insert(cards, makeCard("recovery", {
+            id = "summary",
+            name = "回收资历总览",
+            type = "record",
+            typeName = "历史记录",
+            rarity = "common",
+            rarityName = "一般",
+            description = "累计带回 " .. summary.totalItems .. " 件",
+            effectText = "历史估值 " .. summary.totalValue,
+        }, {
+            countLine = "带回批次 " .. summary.totalExtractionsWithItems,
+            status = "记录中",
+            actions = { { text = "查看", action = "select" } },
+        }))
+    end
+    return cards
+end
+
+local function buildTalentCards()
+    local cards = {}
+    for _, talent in ipairs(MetaProgress.TALENTS) do
+        if deployTerminal.filter == "all" or talentFilterTag(talent) == deployTerminal.filter then
+            local unlocked = MetaProgress.HasTalent(talent.id)
+            table.insert(cards, {
+                module = "talent",
+                id = talent.id,
+                title = talent.name,
+                icon = "*",
+                iconImage = "ui/deploy/ui_frame_highlight.png",
+                typeLine = (talent.direction or "天赋") .. " / " .. talentFilterTag(talent),
+                effect = talent.desc,
+                desc = unlocked and "当前效果已生效" or "解锁后在正式局生效",
+                countLine = "Lv." .. (unlocked and "1" or "0") .. "/1",
+                status = unlocked and "已满级" or ("价格 " .. talent.price),
+                talent = talent,
+                actions = unlocked and {} or { { text = "解锁", action = "unlock" } },
+            })
+        end
+    end
+    return cards
+end
+
+local function buildDeployCards(module)
+    if module == "warehouse" then return buildWarehouseCards() end
+    if module == "requisition" then return buildRequisitionCards() end
+    if module == "loadout" then return buildLoadoutCards() end
+    if module == "recovery" then return buildRecoveryCards() end
+    return buildTalentCards()
+end
+
+local function makeDeployActionButton(card, action)
+    return UI.Button {
+        text = action.text,
+        width = 54,
+        height = 24,
+        variant = action.variant or "default",
+        onClick = function()
+            OnDeployCardAction(cardKey(card), action.action)
+        end,
+    }
+end
+
+local function makeDeployCard(card, index)
+    local selected = deployTerminal.selectedKey == cardKey(card)
+    local actions = {}
+    if #card.actions == 0 then
+        table.insert(actions, UI.Label { text = card.status or "", fontSize = 11, fontColor = { 160, 185, 190, 220 } })
+    else
+        for _, action in ipairs(card.actions) do
+            table.insert(actions, makeDeployActionButton(card, action))
+        end
+    end
+    return UI.Panel {
+        width = DEPLOY_LAYOUT.cardW,
+        height = DEPLOY_LAYOUT.cardH,
+        padding = 10,
+        gap = 4,
+        backgroundColor = selected and { 42, 72, 82, 225 } or { 22, 31, 42, 218 },
+        borderRadius = 6,
+        borderWidth = selected and 2 or 1,
+        borderColor = selected and { 150, 235, 230, 240 } or { 72, 126, 150, 150 },
+        children = {
+            UI.Panel {
+                flexDirection = "row",
+                alignItems = "center",
+                gap = 6,
+                width = "100%",
+                children = {
+                    UI.Panel {
+                        width = 28,
+                        height = 28,
+                        backgroundImage = card.iconImage,
+                        backgroundColor = { 28, 48, 56, 180 },
+                        borderRadius = 4,
+                    },
+                    UI.Button {
+                        text = (card.title or ""),
+                        width = 176,
+                        height = 28,
+                        onClick = function() SelectDeployCard(cardKey(card)) end,
+                    },
+                },
+            },
+            UI.Label { text = textShort(card.typeLine, 32), fontSize = 11, fontColor = { 160, 190, 200, 230 } },
+            UI.Label { text = textShort(card.effect, 34), fontSize = 11, fontColor = { 218, 226, 194, 235 } },
+            UI.Label { text = textShort(card.desc, 34), fontSize = 10, fontColor = { 154, 168, 178, 215 } },
+            UI.Label { text = textShort(card.countLine, 34), fontSize = 10, fontColor = { 220, 194, 126, 230 } },
+            UI.Label { text = textShort(card.status, 34), fontSize = 10, fontColor = { 135, 225, 176, 230 } },
+            UI.Panel { flexDirection = "row", gap = 5, children = actions },
+        },
+    }
+end
+
+local function refreshDeployDetails()
+    local detail = uiRoot_ and uiRoot_:FindById("deployCardDetailLabel")
+    if not detail then return end
+    local selected = nil
+    for _, card in ipairs(deployTerminal.cards or {}) do
+        if cardKey(card) == deployTerminal.selectedKey then
+            selected = card
+            break
+        end
+    end
+    if selected then
+        detail:SetText((selected.title or "") .. " | " .. (selected.typeLine or "") .. " | " .. (selected.effect or "") .. " | " .. (selected.status or ""))
+    else
+        detail:SetText("点击卡片可查看详情；滚轮只滚动中央显示屏内卡片。")
+    end
+end
+
+function SelectDeployCard(key)
+    deployTerminal.selectedKey = key
+    RefreshDeployModulePage(deployTerminal.module)
+end
+
+function OnDeployCardAction(key, action)
+    local card = nil
+    for _, c in ipairs(deployTerminal.cards or {}) do
+        if cardKey(c) == key then
+            card = c
+            break
+        end
+    end
+    if not card then return end
+    deployTerminal.selectedKey = key
+    local item = card.item or {}
+    if action == "sell" then
+        OnSellWarehouseItem(item.id, 1)
+    elseif action == "equip" or action == "equip_or_buy" then
+        OnEquipItemClick(item.id)
+    elseif action == "buy" then
+        OnBuyConsumable(item.id, 1)
+    elseif action == "loadout_inc" then
+        OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) + 1)
+    elseif action == "loadout_dec" then
+        OnSetLoadoutConsumable(item.id, (item.loadoutCount or 0) - 1)
+    elseif action == "unlock" and card.talent then
+        OnTalentClick(card.talent.id)
+    else
+        RefreshDeployModulePage(deployTerminal.module)
+    end
+end
+
+function ScrollDeployCards(delta)
+    local maxScroll = math.max(0, math.ceil(#(deployTerminal.cards or {}) / DEPLOY_LAYOUT.columns) - DEPLOY_LAYOUT.rowsVisible)
+    deployTerminal.scroll = deployTerminal.scroll + (delta or 0)
+    if deployTerminal.scroll < 0 then deployTerminal.scroll = 0 end
+    if deployTerminal.scroll > maxScroll then deployTerminal.scroll = maxScroll end
+    RefreshDeployModulePage(deployTerminal.module)
+end
+
+function SetDeployFilter(filter)
+    deployTerminal.filter = filter or "all"
+    deployTerminal.scroll = 0
+    deployTerminal.selectedKey = nil
+    RefreshDeployModulePage(deployTerminal.module)
+end
+
+function RefreshDeployModulePage(module)
+    module = module or deployTerminal.module or "talent"
+    resetDeployScrollIfNeeded(module)
+    deployTerminal.module = module
+    deployTerminal.cards = buildDeployCards(module)
+    local maxScroll = math.max(0, math.ceil(#deployTerminal.cards / DEPLOY_LAYOUT.columns) - DEPLOY_LAYOUT.rowsVisible)
+    if deployTerminal.scroll > maxScroll then deployTerminal.scroll = maxScroll end
+
+    setLabelText("deployModuleTitleLabel", DEPLOY_MODULE_NAMES[module] or "出勤准备")
+    setLabelText("deployModuleMetaLabel", "后勤账户 " .. MetaProgress.GetGold() .. " | " .. (#deployTerminal.cards) .. " 项")
+    RefreshDeploySummaryPanel()
+
+    local filterBar = uiRoot_ and uiRoot_:FindById("deployFilterBar")
+    if filterBar then
+        filterBar:RemoveAllChildren()
+        for _, filter in ipairs(DEPLOY_FILTERS[module] or DEPLOY_FILTERS.talent) do
+            filterBar:AddChild(UI.Button {
+                text = filter.label,
+                width = 58,
+                height = 26,
+                variant = deployTerminal.filter == filter.id and "primary" or "default",
+                onClick = function() SetDeployFilter(filter.id) end,
+            })
+        end
+    end
+
+    local grid = uiRoot_ and uiRoot_:FindById("deployCardGrid")
+    if not grid then return end
+    grid:RemoveAllChildren()
+    deployTerminal.hitRects = {}
+
+    if #deployTerminal.cards == 0 then
+        grid:AddChild(UI.Label { text = "暂无", fontSize = 14, fontColor = { 160, 175, 185, 230 } })
+    else
+        local startIndex = deployTerminal.scroll * DEPLOY_LAYOUT.columns + 1
+        local endIndex = math.min(#deployTerminal.cards, startIndex + DEPLOY_LAYOUT.columns * DEPLOY_LAYOUT.rowsVisible - 1)
+        for rowStart = startIndex, endIndex, DEPLOY_LAYOUT.columns do
+            local rowChildren = {}
+            for i = rowStart, math.min(rowStart + DEPLOY_LAYOUT.columns - 1, endIndex) do
+                local visibleIndex = i - startIndex
+                local col = visibleIndex % DEPLOY_LAYOUT.columns
+                local row = math.floor(visibleIndex / DEPLOY_LAYOUT.columns)
+                local rect = {
+                    x = DEPLOY_LAYOUT.cardArea.x + col * (DEPLOY_LAYOUT.cardW + DEPLOY_LAYOUT.cardGap),
+                    y = DEPLOY_LAYOUT.cardArea.y + row * (DEPLOY_LAYOUT.cardH + 18),
+                    w = DEPLOY_LAYOUT.cardW,
+                    h = DEPLOY_LAYOUT.cardH,
+                    key = cardKey(deployTerminal.cards[i]),
+                }
+                table.insert(deployTerminal.hitRects, rect)
+                table.insert(rowChildren, makeDeployCard(deployTerminal.cards[i], i))
+            end
+            grid:AddChild(UI.Panel { flexDirection = "row", gap = DEPLOY_LAYOUT.cardGap, children = rowChildren })
+        end
+    end
+
+    local scrollText = "滚动 " .. deployTerminal.scroll .. "/" .. maxScroll
+    setLabelText("deployScrollLabel", scrollText)
+    refreshDeployDetails()
 end
 
 function SetTerminalSummaryLabels(prefix)
@@ -661,6 +1245,8 @@ end
 
 --- 刷新天赋页
 function RefreshTalentPage()
+    RefreshDeployModulePage("talent")
+
     local goldLabel = uiRoot_ and uiRoot_:FindById("talentGoldLabel")
     if goldLabel then
         goldLabel:SetText("金币 " .. MetaProgress.GetGold())
@@ -729,6 +1315,8 @@ end
 
 --- 装备物品点击处理
 function RefreshWarehousePage()
+    RefreshDeployModulePage("warehouse")
+
     local goldLabel = uiRoot_ and uiRoot_:FindById("warehouseGoldLabel")
     if goldLabel then
         goldLabel:SetText("金币 " .. MetaProgress.GetGold())
@@ -885,6 +1473,8 @@ function OnSetWarehouseFilter(filter)
 end
 
 function RefreshRequisitionPage()
+    RefreshDeployModulePage("requisition")
+
     SetTerminalSummaryLabels("requisition")
     local listPanel = uiRoot_ and uiRoot_:FindById("requisitionItemList")
     if not listPanel then return end
@@ -958,6 +1548,8 @@ function RefreshRequisitionPage()
 end
 
 function RefreshLoadoutPage()
+    RefreshDeployModulePage("loadout")
+
     SetTerminalSummaryLabels("loadout")
     local listPanel = uiRoot_ and uiRoot_:FindById("loadoutItemList")
     if not listPanel then return end
@@ -1042,6 +1634,8 @@ function RefreshLoadoutPage()
 end
 
 function RefreshRecoveryPage()
+    RefreshDeployModulePage("recovery")
+
     local summary = MetaProgress.GetTerminalSummary()
     local label = uiRoot_ and uiRoot_:FindById("recoverySummaryLabel")
     if label then
@@ -2981,7 +3575,7 @@ function CreateUI()
                 id = "menuPage_main",
                 position = "absolute",
                 top = 0, left = 0, right = 0, bottom = 0,
-                backgroundImage = "Textures/menu_bg_no_text.png", -- fallback asset kept: Textures/menu_bg.png
+                backgroundImage = "Textures/menu_bg.png",
                 backgroundFit = "fit",
                 children = {
                     -- 右侧按钮区域，对应图片中"灰尾公司"招牌位置
@@ -3025,24 +3619,26 @@ function CreateUI()
                 visible = false,
                 position = "absolute",
                 top = 0, left = 0, right = 0, bottom = 0,
-                backgroundImage = "ui/main_menu/main_menu_bg_no_text.png",
-                backgroundFit = "fit",
+                backgroundColor = { 6, 10, 14, 245 },
                 children = {
                     UI.Button {
+                        id = "deployBackButton",
                         text = "返回主界面",
                         position = "absolute",
-                        left = "3%",
-                        top = "4%",
-                        width = 132,
-                        height = 42,
+                        left = DEPLOY_LAYOUT.back.x,
+                        top = DEPLOY_LAYOUT.back.y,
+                        width = DEPLOY_LAYOUT.back.w,
+                        height = DEPLOY_LAYOUT.back.h,
                         backgroundImage = "ui/deploy/ui_button_back_main.png",
                         onClick = function() BackToMainMenu() end,
                     },
                     UI.Panel {
+                        id = "deployModuleNavBar",
                         position = "absolute",
-                        top = "4%",
-                        left = "21%",
-                        width = "56%",
+                        top = DEPLOY_LAYOUT.nav.y,
+                        left = DEPLOY_LAYOUT.nav.x,
+                        width = DEPLOY_LAYOUT.nav.w,
+                        height = DEPLOY_LAYOUT.nav.h,
                         flexDirection = "row",
                         flexWrap = "wrap",
                         justifyContent = "center",
@@ -3056,13 +3652,15 @@ function CreateUI()
                         },
                     },
                     UI.Panel {
+                        id = "deployOverviewLegacyPanel",
+                        visible = false,
                         position = "absolute",
-                        left = "14%",
-                        top = "18%",
-                        width = "52%",
-                        height = "64%",
-                        padding = 24,
-                        gap = 10,
+                        left = DEPLOY_LAYOUT.central.x,
+                        top = DEPLOY_LAYOUT.central.y,
+                        width = DEPLOY_LAYOUT.central.w,
+                        height = DEPLOY_LAYOUT.central.h,
+                        padding = 22,
+                        gap = 8,
                         backgroundImage = "ui/deploy/ui_panel_deploy_main_blank.png",
                         backgroundColor = { 18, 26, 36, 232 },
                         borderRadius = 8,
@@ -3077,11 +3675,43 @@ function CreateUI()
                         },
                     },
                     UI.Panel {
+                        id = "deployCentralDisplay",
                         position = "absolute",
-                        right = "4%",
-                        top = "17%",
-                        width = "26%",
-                        height = "30%",
+                        left = DEPLOY_LAYOUT.central.x,
+                        top = DEPLOY_LAYOUT.central.y,
+                        width = DEPLOY_LAYOUT.central.w,
+                        height = DEPLOY_LAYOUT.central.h,
+                        padding = 22,
+                        gap = 8,
+                        backgroundImage = "ui/deploy/ui_panel_deploy_main_blank.png",
+                        backgroundColor = { 12, 20, 28, 246 },
+                        borderRadius = 8,
+                        borderWidth = 1,
+                        borderColor = { 90, 160, 210, 160 },
+                        children = {
+                            UI.Panel {
+                                flexDirection = "row",
+                                justifyContent = "space-between",
+                                alignItems = "center",
+                                width = "100%",
+                                children = {
+                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, fontColor = { 210, 238, 245, 255 } },
+                                    UI.Label { id = "deployModuleMetaLabel", text = "后勤账户 0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
+                                },
+                            },
+                            UI.Panel { id = "deployFilterBar", flexDirection = "row", flexWrap = "wrap", gap = 7, width = "100%", children = {} },
+                            UI.Panel { id = "deployCardGrid", gap = 12, width = "100%", height = 330, children = {} },
+                            UI.Label { id = "deployCardDetailLabel", text = "点击卡片可查看详情；滚轮只滚动中央显示屏内卡片。", fontSize = 11, fontColor = { 160, 190, 200, 230 } },
+                            UI.Label { id = "deployScrollLabel", text = "滚动 0/0", fontSize = 10, fontColor = { 120, 158, 170, 220 } },
+                        },
+                    },
+                    UI.Panel {
+                        visible = false,
+                        position = "absolute",
+                        left = DEPLOY_LAYOUT.summary.x,
+                        top = DEPLOY_LAYOUT.summary.y,
+                        width = DEPLOY_LAYOUT.summary.w,
+                        height = DEPLOY_LAYOUT.summary.h,
                         padding = 18,
                         gap = 8,
                         backgroundImage = "ui/deploy/ui_panel_deploy_summary_blank.png",
@@ -3096,15 +3726,38 @@ function CreateUI()
                         },
                     },
                     UI.Panel {
+                        id = "deploySummaryFixedPanel",
                         position = "absolute",
-                        right = "5%",
-                        bottom = "7%",
+                        left = DEPLOY_LAYOUT.summary.x,
+                        top = DEPLOY_LAYOUT.summary.y,
+                        width = DEPLOY_LAYOUT.summary.w,
+                        height = DEPLOY_LAYOUT.summary.h,
+                        padding = 18,
+                        gap = 8,
+                        backgroundImage = "ui/deploy/ui_panel_deploy_summary_blank.png",
+                        backgroundColor = { 10, 20, 28, 242 },
+                        borderRadius = 8,
+                        borderWidth = 1,
+                        borderColor = { 110, 190, 180, 155 },
+                        children = {
+                            UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
+                            UI.Label { id = "deploySummaryEquipmentLabel", text = "已带装备: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryConsumableLabel", text = "已带消耗品: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                        },
+                    },
+                    UI.Panel {
+                        position = "absolute",
+                        id = "deployConfirmPanel",
+                        left = DEPLOY_LAYOUT.confirm.x,
+                        top = DEPLOY_LAYOUT.confirm.y,
                         children = {
                             UI.Button {
+                                id = "deployConfirmButton",
                                 text = "确认出发",
                                 variant = "primary",
-                                width = 190,
-                                height = 58,
+                                width = DEPLOY_LAYOUT.confirm.w,
+                                height = DEPLOY_LAYOUT.confirm.h,
                                 backgroundImage = "ui/deploy/ui_button_confirm_deploy_large.png",
                                 onClick = function() ConfirmDeploy() end,
                             },
@@ -4112,6 +4765,27 @@ function HandleKeyDown(eventType, eventData)
 end
 
 ---@param eventType string
+---@param eventData MouseWheelEventData
+function HandleMouseWheel(eventType, eventData)
+    if phase ~= PHASE.MENU or menuMode ~= "deploy" then return end
+    local wheel = 0
+    if eventData["Wheel"] then
+        wheel = eventData["Wheel"]:GetInt()
+    end
+    local pos = input and input:GetMousePosition()
+    local mx = pos and pos.x / dpr or 0
+    local my = pos and pos.y / dpr or 0
+    local lx, ly = UILayout.ToLogic(mx, my)
+    if UILayout.ContainsLogic(lx, ly, DEPLOY_LAYOUT.central) or UILayout.ContainsLogic(lx, ly, DEPLOY_LAYOUT.cardArea) then
+        if wheel > 0 then
+            ScrollDeployCards(-1)
+        elseif wheel < 0 then
+            ScrollDeployCards(1)
+        end
+    end
+end
+
+---@param eventType string
 ---@param eventData MouseButtonDownEventData
 function HandleMouseDown(eventType, eventData)
     local button = eventData["Button"]:GetInt()
@@ -4143,6 +4817,16 @@ function HandleMouseDown(eventType, eventData)
     if phase == PHASE.LOOT_RESULT and button == MOUSEB_LEFT then
         CloseLootResultPanel()
         return
+    end
+
+    if phase == PHASE.MENU and button == MOUSEB_LEFT and menuMode == "deploy" then
+        local lx, ly = UILayout.ToLogic(mx, my)
+        for _, rect in ipairs(deployTerminal.hitRects or {}) do
+            if UILayout.ContainsLogic(lx, ly, rect) then
+                SelectDeployCard(rect.key)
+                return
+            end
+        end
     end
 
     -- 设置面板点击
