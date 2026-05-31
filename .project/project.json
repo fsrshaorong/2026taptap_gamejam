@@ -5,7 +5,7 @@
     "id": "1840787851"
   },
   "entry": "main.lua",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "taptap_publish": {
     "title": "灰尾公司：格外危险",
     "description": "一款融合扫雷与地牢探索的策略冒险游戏",
@@ -39,7 +39,11 @@
     "cover_vertical_url": "https://tapcode-sce.spark.xd.com/assets/game_material/灰尾公司：格外危险/COVER_VERTICAL_2026-05-30T17-16-53_01.png"
   },
   "metadata": {
-    "updated_at": "2026-05-30T17:18:06.345Z",
+    "updated_at": "2026-05-31T03:18:30.784Z",
     "promo_dependent_hash": "a73da3e20d9b20b1e794aa3364d6eeb2"
+  },
+  "test_qrcode": {
+    "url": "https://tapcode-sce.spark.xd.com/qrcode/p_7j21_1780197510669.png",
+    "generated_at": "2026-05-31T03:18:30.784Z"
   }
 }
