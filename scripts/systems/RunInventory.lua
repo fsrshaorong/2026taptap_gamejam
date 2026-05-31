@@ -51,7 +51,7 @@ RunInventory.ITEM_DEFS = {
         rarity = "rare",
         rarityName = "稀有",
         icon = "assets/items/whisper_wick.png",
-        value = 24,
+        value = 45,
         effectText = nil,
         description = "它在没有电源的情况下发光，并且偶尔像在催你下班。",
     },
@@ -63,7 +63,7 @@ RunInventory.ITEM_DEFS = {
         rarity = "rare",
         rarityName = "稀有",
         icon = "assets/items/sealed_core_shard.png",
-        value = 30,
+        value = 45,
         effectText = nil,
         description = "被封条压住的裂片仍在缓慢发热。",
     },
@@ -83,9 +83,9 @@ RunInventory.ITEM_DEFS = {
         id = "static_lens",
         name = "静电透镜",
         type = "tool",
-        typeName = "作业器材",
+        typeName = "异常回收物",
         rarity = "uncommon",
-        rarityName = "少见",
+        rarityName = "稀有",
         icon = "assets/items/static_lens.png",
         value = 16,
         effectText = "可作为后续扫描设备材料。",
@@ -95,9 +95,9 @@ RunInventory.ITEM_DEFS = {
         id = "blackbox_tag",
         name = "黑匣标签",
         type = "record",
-        typeName = "记录残片",
+        typeName = "异常回收物",
         rarity = "uncommon",
-        rarityName = "少见",
+        rarityName = "稀有",
         icon = "assets/items/blackbox_tag.png",
         value = 18,
         effectText = nil,
@@ -688,8 +688,8 @@ function RunInventory.GetRunStats(run)
     }
 end
 
---- 撤离成功时的结算:零件按比例转金币
----@param partsToGoldRate? number 每个零件转换的金币数(默认10)
+--- 撤离成功时的结算:待结算与已锁定收益入账
+---@param partsToGoldRate? number 旧兼容参数，当前不再折算零散回收物
 ---@return table { totalGold: number, convertedGold: number, directGold: number, parts: number }
 function RunInventory.GetExtractionReward(partsToGoldRate)
     partsToGoldRate = partsToGoldRate or 10
@@ -715,9 +715,8 @@ function RunInventory.GetExtractionReward(partsToGoldRate)
     }
 end
 
---- 失败保底选项
---- 新机制:金币自动保留(安全资产), 零件全部丢失(风险资产)
---- 保底选择:是否用1个零件换取额外金币(10g)
+--- 失败抢救条款选项
+--- 新机制:待结算失败丢失，已锁定收益保留，回收物按抢救条款处理
 function RunInventory.GetFailureSalvageOptions()
     local carriedItemCount = RunInventory.GetCarriedItemCount()
     local carriedItemValue = RunInventory.GetCarriedItemValue()

@@ -1,5 +1,5 @@
 -- ============================================================================
--- 扫雷搜打撤 — 2026 TapTap GameJam
+-- 灰尾回收 — 2026 TapTap GameJam
 -- 架构:NanoVG context 绘制场景/地图 + UI 系统做 HUD 叠层
 -- ============================================================================
 
@@ -10,6 +10,7 @@ local Combat = require("systems.Combat")
 local Protocol = require("systems.Protocol")
 local Balance = require("systems.Balance")
 local MetaProgress = require("systems.MetaProgress")
+local GameText = require("systems.GameText")
 local MiniMap = require("ui.MiniMap")
 local MapOverlay = require("ui.MapOverlay")
 local HUD = require("ui.HUD")
@@ -170,7 +171,7 @@ local DEPLOY_MODULES = {
     { id = "requisition", label = "后勤申领" },
     { id = "loadout", label = "出勤配置" },
     { id = "recovery", label = "回收资历" },
-    { id = "talent", label = "天赋" },
+    { id = "talent", label = "回收资历" },
 }
 
 local DEPLOY_FILTERS = nil
@@ -303,7 +304,7 @@ end
 -- ============================================================================
 
 function Start()
-    graphics.windowTitle = "扫雷搜打撤"
+    graphics.windowTitle = GameText.title
 
     screenW = graphics:GetWidth()
     screenH = graphics:GetHeight()
@@ -379,7 +380,7 @@ function Start()
     SubscribeToEvent("MouseWheel", "HandleMouseWheel")
     SubscribeToEvent("KeyDown", "HandleKeyDown")
 
-    print("=== 扫雷搜打撤 已启动 ===")
+    print("=== " .. GameText.title .. " 已启动 ===")
 end
 
 function Stop()
@@ -541,12 +542,12 @@ function RefreshDeployOverview()
 
     local goldLabel = uiRoot_ and uiRoot_:FindById("deployGoldLabel")
     if goldLabel then
-        goldLabel:SetText("后勤账户: " .. summary.inventory.gold .. " 金币")
+        goldLabel:SetText(GameText.meta.account .. summary.inventory.gold)
     end
 
     local loadoutLabel = uiRoot_ and uiRoot_:FindById("deployLoadoutLabel")
     if loadoutLabel then
-        loadoutLabel:SetText("当前装备 " .. summary.loadout.equipmentText .. " | 本次带入 " .. summary.loadout.consumableText)
+        loadoutLabel:SetText("当前作业装备 " .. summary.loadout.equipmentText .. " | 本次带入 " .. summary.loadout.consumableText)
     end
 
     local warehouseLabel = uiRoot_ and uiRoot_:FindById("deployWarehouseLabel")
@@ -570,7 +571,7 @@ function RefreshDeployOverview()
         if equipBonus.showExitHint then table.insert(bonuses, "罗盘提示") end
         if equipBonus.searchBonus > 0 then table.insert(bonuses, "搜索+" .. equipBonus.searchBonus) end
         if talentEffects.mineDmgReduce > 0 then table.insert(bonuses, "雷伤-" .. talentEffects.mineDmgReduce) end
-        if talentEffects.failureGoldBonus > 0 then table.insert(bonuses, "保险金+" .. talentEffects.failureGoldBonus) end
+        if talentEffects.failureGoldBonus > 0 then table.insert(bonuses, "旧保险金+" .. talentEffects.failureGoldBonus) end
         if #bonuses == 0 then
             bonusLabel:SetText("当前主要加成: 无")
         else
@@ -649,7 +650,7 @@ DEPLOY_FILTERS = {
         { id = "rare", label = "稀有" },
         { id = "epic", label = "史诗" },
         { id = "anomaly", label = "异常" },
-        { id = "equipment", label = "装备" },
+        { id = "equipment", label = "作业装备" },
         { id = "consumable", label = "消耗" },
         { id = "recovered", label = "回收" },
     },
@@ -657,12 +658,12 @@ DEPLOY_FILTERS = {
         { id = "all", label = "全部" },
         { id = "common", label = "一般" },
         { id = "rare", label = "稀有" },
-        { id = "equipment", label = "装备" },
+        { id = "equipment", label = "作业装备" },
         { id = "consumable", label = "消耗" },
     },
     loadout = {
         { id = "all", label = "全部" },
-        { id = "equipment", label = "装备" },
+        { id = "equipment", label = "作业装备" },
         { id = "consumable", label = "消耗品" },
     },
     recovery = {
@@ -686,7 +687,7 @@ local DEPLOY_MODULE_NAMES = {
     requisition = "后勤申领",
     loadout = "出勤配置",
     recovery = "回收资历",
-    talent = "天赋",
+    talent = "回收资历",
 }
 
 local function setLabelText(id, text)
@@ -766,9 +767,9 @@ local function getDeploySummaryLines()
     if equipBonus.showExitHint then table.insert(effects, "罗盘提示") end
     if equipBonus.searchBonus > 0 then table.insert(effects, "搜索+" .. equipBonus.searchBonus) end
     if talentEffects.mineDmgReduce > 0 then table.insert(effects, "雷伤-" .. talentEffects.mineDmgReduce) end
-    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "保险金+" .. talentEffects.failureGoldBonus) end
+    if talentEffects.failureGoldBonus > 0 then table.insert(effects, "旧保险金+" .. talentEffects.failureGoldBonus) end
     return {
-        equipment = "已带装备: " .. summary.loadout.equipmentText,
+        equipment = "已带作业装备: " .. summary.loadout.equipmentText,
         consumable = "已带消耗品: " .. summary.loadout.consumableText,
         effects = "本局效果: " .. (#effects > 0 and table.concat(effects, " / ") or "无"),
     }
@@ -812,10 +813,10 @@ local function buildWarehouseCards()
     local cards = {}
     for _, item in ipairs(list) do
         if itemMatchesDeployFilter(item, deployTerminal.filter) then
-            local status = item.isEquipped and "已装备" or ((item.loadoutCount or 0) > 0 and ("已带入 x" .. item.loadoutCount) or (item.canSell and "可出售" or "不可出售"))
+            local status = item.isEquipped and "已配置" or ((item.loadoutCount or 0) > 0 and ("已带入 x" .. item.loadoutCount) or (item.canSell and "可出售" or "不可出售"))
             local actions = {}
             if item.canSell then table.insert(actions, { text = "出售", action = "sell" }) end
-            if item.type == "equipment" then table.insert(actions, { text = item.isEquipped and "卸下" or "装备", action = "equip" }) end
+            if item.type == "equipment" then table.insert(actions, { text = item.isEquipped and "卸下" or "配置", action = "equip" }) end
             if item.type == "consumable" then
                 table.insert(actions, { text = "-", action = "loadout_dec" })
                 table.insert(actions, { text = "+", action = "loadout_inc" })
@@ -837,13 +838,13 @@ local function buildRequisitionCards()
         if itemMatchesDeployFilter(item, deployTerminal.filter) then
             local owned = item.type == "equipment" and (item.owned and 1 or 0) or (item.count or 0)
             local status = MetaProgress.GetGold() >= (item.price or 0) and "可申领" or "结算币不足"
-            local buttonText = "购买"
+            local buttonText = "申领"
             if item.type == "equipment" then
-                status = item.owned and (item.isEquipped and "已装备" or "已拥有") or status
-                buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
+                status = item.owned and (item.isEquipped and "已配置" or "已申领") or status
+                buttonText = item.owned and (item.isEquipped and "卸下" or "配置") or "申领"
             end
             table.insert(cards, makeCard("requisition", item, {
-                countLine = "拥有 x" .. owned .. " / 价格 " .. (item.price or 0),
+                countLine = "持有 x" .. owned .. " / 申领价 " .. (item.price or 0) .. " 结算币",
                 status = status,
                 actions = {
                     { text = "-", action = "noop" },
@@ -870,8 +871,8 @@ local function buildLoadoutCards()
                 actions = { { text = "-", action = "loadout_dec" }, { text = "+", action = "loadout_inc" } }
             else
                 countLine = "拥有 x" .. (item.owned and 1 or 0)
-                status = item.isEquipped and "已装备" or (item.owned and "未装备" or "未申领")
-                actions = { { text = item.isEquipped and "卸下" or "装备", action = "equip" } }
+                status = item.isEquipped and "已配置" or (item.owned and "未配置" or "未申领")
+                actions = { { text = item.isEquipped and "卸下" or "配置", action = "equip" } }
             end
             table.insert(cards, makeCard("loadout", item, {
                 countLine = countLine,
@@ -938,13 +939,13 @@ local function buildTalentCards()
                 title = talent.name,
                 icon = "*",
                 iconImage = "ui/deploy/ui_frame_highlight.png",
-                typeLine = (talent.direction or "天赋") .. " / " .. talentFilterTag(talent),
+                typeLine = (talent.direction or "回收资历") .. " / " .. talentFilterTag(talent),
                 effect = talent.desc,
                 desc = unlocked and "当前效果已生效" or "解锁后在正式局生效",
                 countLine = "Lv." .. (unlocked and "1" or "0") .. "/1",
-                status = unlocked and "已满级" or ("价格 " .. talent.price),
+                status = unlocked and "已登记" or ("登记费 " .. talent.price .. " 结算币"),
                 talent = talent,
-                actions = unlocked and {} or { { text = "解锁", action = "unlock" } },
+                actions = unlocked and {} or { { text = "登记", action = "unlock" } },
             })
         end
     end
@@ -1096,7 +1097,7 @@ function RefreshDeployModulePage(module)
     if deployTerminal.scroll > maxScroll then deployTerminal.scroll = maxScroll end
 
     setLabelText("deployModuleTitleLabel", DEPLOY_MODULE_NAMES[module] or "出勤准备")
-    setLabelText("deployModuleMetaLabel", "后勤账户 " .. MetaProgress.GetGold() .. " | " .. (#deployTerminal.cards) .. " 项")
+    setLabelText("deployModuleMetaLabel", GameText.meta.account .. MetaProgress.GetGold() .. " | " .. (#deployTerminal.cards) .. " 项")
     RefreshDeploySummaryPanel()
 
     local filterBar = uiRoot_ and uiRoot_:FindById("deployFilterBar")
@@ -1151,10 +1152,10 @@ end
 function SetTerminalSummaryLabels(prefix)
     local summary = MetaProgress.GetTerminalSummary()
     local goldLabel = uiRoot_ and uiRoot_:FindById(prefix .. "GoldLabel")
-    if goldLabel then goldLabel:SetText("金币 " .. summary.inventory.gold) end
+    if goldLabel then goldLabel:SetText(GameText.meta.gold .. " " .. summary.inventory.gold) end
     local loadoutLabel = uiRoot_ and uiRoot_:FindById(prefix .. "LoadoutLabel")
     if loadoutLabel then
-        loadoutLabel:SetText("装备 " .. summary.loadout.equipmentText .. " | 带入 " .. summary.loadout.consumableText)
+        loadoutLabel:SetText("作业装备 " .. summary.loadout.equipmentText .. " | 带入 " .. summary.loadout.consumableText)
     end
 end
 
@@ -1162,7 +1163,7 @@ end
 function RefreshEquipPage()
     local goldLabel = uiRoot_ and uiRoot_:FindById("equipGoldLabel")
     if goldLabel then
-        goldLabel:SetText("金币 " .. MetaProgress.GetGold())
+        goldLabel:SetText(GameText.meta.gold .. " " .. MetaProgress.GetGold())
     end
     SetTerminalSummaryLabels("equip")
 
@@ -1179,15 +1180,15 @@ function RefreshEquipPage()
         local btnVariant = "default"
 
         if equipped then
-            statusText = "[已装备]"
+            statusText = "[已配置]"
             btnText = "卸下"
         elseif owned then
             statusText = "已拥有"
-            btnText = "装备"
+            btnText = "配置"
             btnVariant = "primary"
         else
-            statusText = item.price .. "g"
-            btnText = "购买"
+            statusText = item.price .. " 结算币"
+            btnText = "申领"
             btnVariant = "primary"
         end
 
@@ -1249,7 +1250,7 @@ function RefreshTalentPage()
 
     local goldLabel = uiRoot_ and uiRoot_:FindById("talentGoldLabel")
     if goldLabel then
-        goldLabel:SetText("金币 " .. MetaProgress.GetGold())
+        goldLabel:SetText(GameText.meta.gold .. " " .. MetaProgress.GetGold())
     end
 
     local listPanel = uiRoot_ and uiRoot_:FindById("talentList")
@@ -1259,7 +1260,7 @@ function RefreshTalentPage()
     for _, talent in ipairs(MetaProgress.TALENTS) do
         local unlocked = MetaProgress.HasTalent(talent.id)
 
-        local statusText = unlocked and "[已解锁]" or (talent.price .. "g")
+        local statusText = unlocked and "[已登记]" or (talent.price .. " 结算币")
         local talentId = talent.id  -- 闭包捕获
 
         local row = UI.Panel {
@@ -1297,7 +1298,7 @@ function RefreshTalentPage()
                             fontColor = unlocked and { 100, 220, 140, 255 } or { 200, 200, 210, 200 },
                         },
                         unlocked and UI.Label { text = "", fontSize = 1 } or UI.Button {
-                            text = "解锁",
+                            text = "登记",
                             variant = "primary",
                             width = 60,
                             height = 28,
@@ -1319,7 +1320,7 @@ function RefreshWarehousePage()
 
     local goldLabel = uiRoot_ and uiRoot_:FindById("warehouseGoldLabel")
     if goldLabel then
-        goldLabel:SetText("金币 " .. MetaProgress.GetGold())
+        goldLabel:SetText(GameText.meta.gold .. " " .. MetaProgress.GetGold())
     end
     SetTerminalSummaryLabels("warehouse")
 
@@ -1331,7 +1332,7 @@ function RefreshWarehousePage()
 
     local filterLabel = uiRoot_ and uiRoot_:FindById("warehouseFilterLabel")
     if filterLabel then
-        local names = { all = "全部", recovered = "异常回收物", consumable = "消耗品", equipment = "装备" }
+        local names = { all = "全部", recovered = "异常回收物", consumable = "消耗品", equipment = "作业装备" }
         filterLabel:SetText("分类: " .. (names[warehouseFilter] or warehouseFilter))
     end
 
@@ -1486,11 +1487,11 @@ function RefreshRequisitionPage()
         local statusText = ""
         local buttonText = ""
         if isEquipment then
-            statusText = item.isEquipped and "[已装备]" or (item.owned and "已拥有" or (item.price .. "g"))
-            buttonText = item.owned and (item.isEquipped and "卸下" or "装备") or "购买"
+            statusText = item.isEquipped and "[已配置]" or (item.owned and "已申领" or (item.price .. " 结算币"))
+            buttonText = item.owned and (item.isEquipped and "卸下" or "配置") or "申领"
         else
-            statusText = "库存 " .. item.count .. " | 带入 " .. item.loadoutCount .. " | " .. item.price .. "g"
-            buttonText = "买1"
+            statusText = "库存 " .. item.count .. " | 带入 " .. item.loadoutCount .. " | " .. item.price .. " 结算币"
+            buttonText = "申领1"
         end
 
         listPanel:AddChild(UI.Panel {
@@ -1560,7 +1561,7 @@ function RefreshLoadoutPage()
         local isConsumable = item.type == "consumable"
         local statusText = isConsumable
             and ("库存 " .. item.count .. " | 带入 " .. item.loadoutCount)
-            or (item.isEquipped and "[已装备]" or (item.owned and "已拥有" or "未申领"))
+            or (item.isEquipped and "[已配置]" or (item.owned and "已申领" or "未申领"))
 
         listPanel:AddChild(UI.Panel {
             flexDirection = "row",
@@ -1619,7 +1620,7 @@ function RefreshLoadoutPage()
                             fontColor = { 200, 200, 210, 210 },
                         },
                         UI.Button {
-                            text = item.isEquipped and "卸下" or "装备",
+                            text = item.isEquipped and "卸下" or "配置",
                             width = 60,
                             height = 28,
                             onClick = function()
@@ -1680,7 +1681,7 @@ end
 function RefreshGMPanel()
     local goldLabel = uiRoot_ and uiRoot_:FindById("gmGoldLabel")
     if goldLabel then
-        goldLabel:SetText("当前金币: " .. MetaProgress.GetGold())
+        goldLabel:SetText("当前结算币: " .. MetaProgress.GetGold())
     end
 
     local statusLabel = uiRoot_ and uiRoot_:FindById("gmStatusLabel")
@@ -1696,8 +1697,8 @@ function RefreshGMPanel()
         end
         statusLabel:SetText(
             "物品: " .. itemCount .. "/" .. #MetaProgress.ITEMS ..
-            " | 装备中: " .. #equipped ..
-            " | 天赋: " .. talentCount .. "/" .. #MetaProgress.TALENTS
+            " | 作业装备: " .. #equipped ..
+            " | 回收资历: " .. talentCount .. "/" .. #MetaProgress.TALENTS
         )
     end
 end
@@ -1906,7 +1907,7 @@ function StartNewGame(override)
                 if exit.x < centerX then dir = dir .. "西" else dir = dir .. "东" end
                 table.insert(hints, dir)
             end
-            compassHint = " 罗盘提示:撤离点在" .. table.concat(hints, ",") .. "方向"
+            compassHint = " 罗盘提示:撤离信标在" .. table.concat(hints, ",") .. "方向"
         end
     end
 
@@ -1981,15 +1982,18 @@ function ShowFailurePanel(reason)
         if reasonLine then reasonLine:SetText(reason) end
 
         local goldLine = uiRoot_:FindById("failureGoldLine")
-        if goldLine then goldLine:SetText("金币 " .. totals.gold .. " (已安全保留)") end
+        if goldLine then
+            goldLine:SetText(GameText.settlement.pending .. "已丢失 " .. (totals.pendingGold or 0) ..
+                " | " .. GameText.settlement.safe .. "保留 " .. (totals.safeGold or 0))
+        end
 
         local partsLine = uiRoot_:FindById("failurePartsLine")
         if totals.carriedItemCount and totals.carriedItemCount > 0 then
-            if partsLine then partsLine:SetText("遗失回收物 " .. totals.carriedItemCount .. " 件 (估值 " .. totals.carriedItemValue .. ")") end
+            if partsLine then partsLine:SetText(GameText.settlement.lostItems .. " " .. totals.carriedItemCount .. " 件 (估值 " .. totals.carriedItemValue .. ")") end
         elseif totals.parts > 0 then
-            if partsLine then partsLine:SetText("零件 " .. totals.parts .. " (将丢失)") end
+            if partsLine then partsLine:SetText("回收物 " .. totals.parts .. " 件已丢失") end
         else
-            if partsLine then partsLine:SetText("没有零件损失") end
+            if partsLine then partsLine:SetText("没有回收物遗失") end
         end
 
         local protocolLine = uiRoot_:FindById("failureProtocolLine")
@@ -2006,26 +2010,26 @@ function ShowFailurePanel(reason)
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
         local goldLine = uiRoot_:FindById("failureGoldLine")
-        if goldLine then goldLine:SetText("训练工单不结算局外金币") end
+        if goldLine then goldLine:SetText("训练工单不结算局外结算币") end
         local partsLine = uiRoot_:FindById("failurePartsLine")
         if partsLine then partsLine:SetText("训练工单不登记回收记录") end
         local protocolLine = uiRoot_:FindById("failureProtocolLine")
-        if protocolLine then protocolLine:SetText("不触发失败保底或保险金") end
+        if protocolLine then protocolLine:SetText("不触发失败抢救条款或旧保险金") end
         ShowMessage("训练工单失败:已返回结算,不消耗也不登记后勤资源。")
         return
     end
 
-    -- 如果有零件可以抢救, 显示选择面板;否则直接结算并显示重开按钮
+    -- 如果有物资可以抢救, 显示选择面板;否则直接结算并显示重开按钮
     if options.canSalvagePart then
         setVisible("failureChoicePanel", true)
         local salvageInfo = uiRoot_:FindById("failureSalvageInfo")
         if salvageInfo then
-            salvageInfo:SetText("遗失回收物 " .. options.lostItemCount .. " 件; 可抢救 1 件折算 " .. options.salvageBonus .. " 金币")
+            salvageInfo:SetText("遗失物资 " .. options.lostItemCount .. " 件；可抢救 1 件折算 " .. options.salvageBonus .. " 结算币")
         end
     else
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
-        -- 无零件可抢救, 直接结算金币
+        -- 无回收物可抢救, 直接结算已锁定收益
         local salvage = RunInventory.ApplyFailureSalvage("accept")
         local talentBonus = GetActiveTalentEffects().failureGoldBonus
         local finalGold = (salvage.gold or 0) + talentBonus
@@ -2045,14 +2049,14 @@ function ShowFailurePanel(reason)
             if reasonLine then reasonLine:SetText(reason) end
 
             local goldLine = uiRoot_:FindById("failureGoldLine")
-            if goldLine then goldLine:SetText("保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")") end
+            if goldLine then goldLine:SetText("已锁定收益保留 +" .. finalGold .. " (结算币 " .. MetaProgress.GetGold() .. ")") end
 
             local partsLine = uiRoot_:FindById("failurePartsLine")
             if partsLine then partsLine:SetText("回收包已遗失: " .. options.lostItemCount .. " 件") end
 
             local protocolLine = uiRoot_:FindById("failureProtocolLine")
             if talentBonus > 0 then
-                if protocolLine then protocolLine:SetText("天赋保险金 +" .. talentBonus) end
+                if protocolLine then protocolLine:SetText("旧保险金 +" .. talentBonus) end
             else
                 if protocolLine then protocolLine:SetText("") end
             end
@@ -2070,7 +2074,7 @@ function ApplyFailureSalvage(choice)
     if currentRunConfig and currentRunConfig.allowFailureRewards == false then
         setVisible("failureChoicePanel", false)
         setVisible("restartAfterFailureButton", true)
-        ShowMessage("训练工单不触发失败保底或保险金。")
+        ShowMessage("训练工单不触发失败抢救条款或旧保险金。")
         return
     end
 
@@ -2080,11 +2084,11 @@ function ApplyFailureSalvage(choice)
     setVisible("failureChoicePanel", false)
     setVisible("restartAfterFailureButton", true)
 
-    -- 天赋额外失败保底金币
+    -- 旧保险金仍沿用原有结算能力
     local talentBonus = GetActiveTalentEffects().failureGoldBonus
     local finalGold = salvage.gold + talentBonus
 
-    -- 写入局外金币
+    -- 写入局外结算币
     if not failureSettlementRecorded then
         if finalGold > 0 then
             MetaProgress.AddGold(finalGold)
@@ -2096,21 +2100,21 @@ function ApplyFailureSalvage(choice)
         failureSettlementRecorded = true
     end
 
-    local text = "保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")"
+    local text = "已锁定收益保留 +" .. finalGold .. " (结算币 " .. MetaProgress.GetGold() .. ")"
     if salvage.bonus > 0 then
-        text = text .. " | 含抢救零件 +" .. salvage.bonus
+        text = text .. " | 含抢救物资 +" .. salvage.bonus
     end
     if talentBonus > 0 then
-        text = text .. " | 天赋保险金 +" .. talentBonus
+        text = text .. " | 旧保险金 +" .. talentBonus
     end
 
     local goInfo = uiRoot_:FindById("gameOverInfo")
     if goInfo then
         local reasonLine = uiRoot_:FindById("failureReasonLine")
-        if reasonLine then reasonLine:SetText("撤离失败结算") end
+            if reasonLine then reasonLine:SetText(GameText.settlement.failure) end
 
         local goldLine = uiRoot_:FindById("failureGoldLine")
-        if goldLine then goldLine:SetText("保留金币:+" .. finalGold .. " (总计 " .. MetaProgress.GetGold() .. ")") end
+        if goldLine then goldLine:SetText("已锁定收益保留 +" .. finalGold .. " (结算币 " .. MetaProgress.GetGold() .. ")") end
 
         local partsLine = uiRoot_:FindById("failurePartsLine")
         if partsLine then
@@ -2121,10 +2125,10 @@ function ApplyFailureSalvage(choice)
         local protocolLine = uiRoot_:FindById("failureProtocolLine")
         if protocolLine then
             local bonusText = ""
-            if salvage.bonus > 0 then bonusText = "抢救零件 +" .. salvage.bonus end
+            if salvage.bonus > 0 then bonusText = "抢救物资 +" .. salvage.bonus end
             if talentBonus > 0 then
                 if bonusText ~= "" then bonusText = bonusText .. " | " end
-                bonusText = bonusText .. "天赋保险金 +" .. talentBonus
+                bonusText = bonusText .. "旧保险金 +" .. talentBonus
             end
             protocolLine:SetText(bonusText)
         end
@@ -2181,10 +2185,10 @@ function FinishBattle()
     local reward = result.reward or { gold = 0, parts = 0 }
     local rewardText = ""
     if (reward.gold or 0) > 0 then
-        rewardText = rewardText .. " 获得结算币 +" .. reward.gold
+        rewardText = rewardText .. " 待结算 +" .. reward.gold
     end
     if (reward.parts or 0) > 0 then
-        rewardText = rewardText .. " 零件 +" .. reward.parts
+        rewardText = rewardText .. " 回收物 +" .. reward.parts
     end
 
     if result.dead then
@@ -2212,10 +2216,10 @@ local function buildRewardText(reward)
     reward = reward or { gold = 0, parts = 0 }
     local rewardText = ""
     if (reward.gold or 0) > 0 then
-        rewardText = rewardText .. " 获得结算币 +" .. reward.gold
+        rewardText = rewardText .. " 待结算 +" .. reward.gold
     end
     if (reward.parts or 0) > 0 then
-        rewardText = rewardText .. " 零件 +" .. reward.parts
+        rewardText = rewardText .. " 回收物 +" .. reward.parts
     end
     return rewardText
 end
@@ -2409,10 +2413,10 @@ function MovePlayer(dx, dy)
             elseif mineResult.immuneUsed then
                 ShowMessage("急救包发动!踩雷免疫一次伤害!")
             else
-                ShowMessage("踩雷!-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. "), 该雷房已触发.")
+                ShowMessage("雷险触发！-" .. mineResult.damage .. " HP (剩余 " .. Combat.hp .. ")，该雷险区已确认。")
             end
         elseif result.status == "entered_triggered_mine" then
-            ShowMessage("穿过已触发的雷房, 不再触发.")
+            ShowMessage("穿过已确认雷险区，不再触发。")
         else
             -- 0格自动展开:如果 Reveal 触发了 BFS 展开, 高亮展开区域
             local didExpand = false
@@ -2444,9 +2448,9 @@ function MovePlayer(dx, dy)
                 DungeonRoom.TriggerExitPulse()
                 MiniMap.SetHighlight({ { x = p.x, y = p.y } })
                 if cell and cell.randomExit then
-                    ShowMessage("发现隐藏撤离点! 信标已点亮, 按 E 撤离.")
+                    ShowMessage("发现隐藏撤离信标！信标已点亮，按 E 撤离。")
                 else
-                    ShowMessage("你到达了撤离点! 按 E 撤离.")
+                    ShowMessage("你到达了撤离信标！按 E 撤离。")
                 end
             else
                 -- 根据房型显示不同提示
@@ -2533,9 +2537,9 @@ function SearchCurrentRoom()
         elseif result.status == "spawn" then
             ShowMessage("出生点没有可带走的物资.")
         elseif result.status == "event" then
-            ShowMessage("事件房没有宝箱，按 T 处理事件。")
+            ShowMessage(GameText.room.eventNoChest)
         elseif result.status == "exit" then
-            ShowMessage("这里是撤离点, 准备好就按 E 撤离.")
+            ShowMessage("这里是撤离信标，准备好就按 E 撤离。")
         else
             ShowMessage("当前房间无法搜索.")
         end
@@ -2548,11 +2552,11 @@ function SearchCurrentRoom()
     -- 教程:通知搜索完成
     Tutorial.NotifyAction("search")
 
-    -- 搜索后可能获得战斗力加成
+    -- 搜索只结算物资；战斗成长由异常体清理路径处理。
     local p = run:GetPlayer()
     local powerUp = Combat.TryPowerUp(minefield, p.x, p.y)
 
-    local msg = reward.isChest and ("宝箱开启! 金币 +" .. reward.gold) or ("搜索完成:金币 +" .. reward.gold)
+    local msg = reward.isChest and ("物资箱开启！待结算 +" .. reward.gold) or ("搜索完成：待结算 +" .. reward.gold)
     if reward.parts > 0 then
         msg = msg .. ", 回收物 +" .. reward.parts
     end
@@ -2612,7 +2616,10 @@ function DoExtract()
 
     -- 更新确认面板信息. 分成多个 Label, 避免像素字体把换行符画成缺字方块.
     local goldLine = uiRoot_:FindById("extractGoldLine")
-    if goldLine then goldLine:SetText("安全金币:+" .. totals.gold) end
+    if goldLine then
+        goldLine:SetText(GameText.extraction.pending .. " " .. (totals.pendingGold or 0) ..
+            " | " .. GameText.extraction.safe .. " " .. (totals.safeGold or 0))
+    end
 
     local partsLine = uiRoot_:FindById("extractPartsLine")
     if partsLine then
@@ -2621,7 +2628,7 @@ function DoExtract()
 
     local totalLine = uiRoot_:FindById("extractTotalLine")
     if totalLine then
-        totalLine:SetText("预计金币收益:+" .. reward.totalGold .. " 金币")
+        totalLine:SetText(GameText.extraction.expected .. " +" .. reward.totalGold)
     end
 
     local searchLine = uiRoot_:FindById("extractSearchLine")
@@ -2632,7 +2639,7 @@ function DoExtract()
 
     local protocolLine = uiRoot_:FindById("extractProtocolLine")
     if protocolLine then
-        protocolLine:SetText("协议等级:" .. protocol.level .. " (" .. protocol.description .. ")")
+        protocolLine:SetText(GameText.extraction.protocol .. "：" .. protocol.level .. " (" .. protocol.description .. ")")
     end
 
     local panel = uiRoot_:FindById("extractConfirmPanel")
@@ -2658,7 +2665,7 @@ function ConfirmExtract()
         end
 
         if allowWarehouseRewards then
-            ShowMessage("撤离成功!共获得 " .. reward.totalGold .. " 金币.")
+            ShowMessage("作业完成。结算币入账 +" .. reward.totalGold .. "。")
         else
             ShowMessage("训练工单完成:不消耗后勤物资,不登记回收记录。")
         end
@@ -2669,9 +2676,9 @@ function ConfirmExtract()
         local winGoldLine = uiRoot_:FindById("winGoldLine")
         if winGoldLine then
             if allowWarehouseRewards then
-                winGoldLine:SetText("获得金币:+" .. reward.totalGold .. " (总计 " .. (receipt.goldAfter or MetaProgress.GetGold()) .. ")")
+                winGoldLine:SetText(GameText.settlement.successGold .. " +" .. reward.totalGold .. " (结算币 " .. (receipt.goldAfter or MetaProgress.GetGold()) .. ")")
             else
-                winGoldLine:SetText("训练工单:局外金币 +0")
+                winGoldLine:SetText("训练工单：局外结算币 +0")
             end
         end
 
@@ -2680,10 +2687,10 @@ function ConfirmExtract()
             if not allowWarehouseRewards then
                 winConvertLine:SetText("训练工单不会写入后勤仓库或回收资历")
             elseif reward.carriedItemCount > 0 then
-                local looseText = reward.looseParts > 0 and (" | 零散零件折算 +" .. reward.loosePartsGold) or ""
+                local looseText = reward.looseParts > 0 and (" | 零散回收物折算 +" .. reward.loosePartsGold) or ""
                 winConvertLine:SetText("后勤已登记: " .. reward.carriedItemCount .. " 件 | 估值 +" .. reward.carriedItemValue .. looseText .. " | " .. reward.carriedSummary)
             elseif reward.looseParts > 0 then
-                winConvertLine:SetText("局内金币 " .. reward.directGold .. " + 零散零件 " .. reward.looseParts .. " 个 -> +" .. reward.convertedGold)
+                winConvertLine:SetText("待结算 " .. reward.directGold .. " + 零散回收物 " .. reward.looseParts .. " 件 -> +" .. reward.convertedGold)
             else
                 winConvertLine:SetText("没有回收物折算")
             end
@@ -3048,7 +3055,7 @@ function DrawBattleOverlay(vg, w, h)
 
             nvgFontSize(vg, 14)
             nvgFillColor(vg, nvgRGBA(255, 220, 150, 220))
-            nvgText(vg, cx, cy + 20, "击败敌人, 损失 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
+            nvgText(vg, cx, cy + 20, "清理异常体，生命 -" .. result.damage .. " HP (剩余 " .. result.hp .. ")")
         end
 
         -- 底部提示
@@ -3561,7 +3568,7 @@ end
 function CreateUI()
     -- (statusPanel, messageBar, bottomBar 已迁移到 NanoVG HUD, 不再创建)
 
-    -- 开始菜单(三屏结构:主菜单 / 装备商店 / 天赋面板)
+    -- 开始菜单(三屏结构:主菜单 / 后勤申领 / 回收资历面板)
     local menuOverlay = UI.Panel {
         id = "menuOverlay",
         position = "absolute",
@@ -3589,7 +3596,7 @@ function CreateUI()
                         alignItems = "stretch",
                         children = {
                             UI.Button {
-                                text = "出发探索",
+                                text = GameText.menu.start,
                                 variant = "primary",
                                 height = 40,
                                 onClick = function()
@@ -3597,7 +3604,7 @@ function CreateUI()
                                 end,
                             },
                             UI.Button {
-                                text = "新手教程",
+                                text = GameText.menu.tutorial,
                                 height = 40,
                                 onClick = function()
                                     OpenTutorial()
@@ -3648,7 +3655,7 @@ function CreateUI()
                             UI.Button { text = "后勤申领", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
                             UI.Button { text = "出勤配置", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
                             UI.Button { text = "回收资历", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
-                            UI.Button { text = "天赋", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
+                            UI.Button { text = "回收资历", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
                         },
                     },
                     UI.Panel {
@@ -3668,7 +3675,7 @@ function CreateUI()
                         borderColor = { 90, 160, 210, 120 },
                         children = {
                             UI.Label { text = "出勤准备", fontSize = 20, fontColor = { 180, 230, 255, 255 } },
-                            UI.Label { id = "deployGoldLabel", text = "后勤账户: 0 金币", fontSize = 13, fontColor = { 255, 220, 100, 240 } },
+                            UI.Label { id = "deployGoldLabel", text = GameText.meta.account .. "0", fontSize = 13, fontColor = { 255, 220, 100, 240 } },
                             UI.Label { id = "deployWarehouseLabel", text = "仓库库存 0 件 | 可售估值 0", fontSize = 12, fontColor = { 170, 210, 220, 220 } },
                             UI.Label { id = "deployRecentLabel", text = "最近带回: 无", fontSize = 12, fontColor = { 170, 185, 200, 220 } },
                             UI.Label { id = "deployBonusLabel", text = "当前主要加成: 无", fontSize = 12, fontColor = { 210, 220, 170, 230 } },
@@ -3695,8 +3702,8 @@ function CreateUI()
                                 alignItems = "center",
                                 width = "100%",
                                 children = {
-                                    UI.Label { id = "deployModuleTitleLabel", text = "天赋", fontSize = 20, fontColor = { 210, 238, 245, 255 } },
-                                    UI.Label { id = "deployModuleMetaLabel", text = "后勤账户 0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
+                                    UI.Label { id = "deployModuleTitleLabel", text = "回收资历", fontSize = 20, fontColor = { 210, 238, 245, 255 } },
+                                    UI.Label { id = "deployModuleMetaLabel", text = GameText.meta.account .. "0 | 0 项", fontSize = 12, fontColor = { 240, 210, 120, 230 } },
                                 },
                             },
                             UI.Panel { id = "deployFilterBar", flexDirection = "row", flexWrap = "wrap", gap = 7, width = "100%", children = {} },
@@ -3721,8 +3728,8 @@ function CreateUI()
                         borderColor = { 110, 190, 180, 120 },
                         children = {
                             UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
-                            UI.Label { id = "deployLoadoutLabel", text = "当前装备 无 | 本次带入 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
-                            UI.Label { text = "局内效果见本局生效装备与天赋", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                            UI.Label { id = "deployLoadoutLabel", text = "当前作业装备 无 | 本次带入 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { text = "局内效果见本局生效作业装备与回收资历", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
                         },
                     },
                     UI.Panel {
@@ -3741,7 +3748,7 @@ function CreateUI()
                         borderColor = { 110, 190, 180, 155 },
                         children = {
                             UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
-                            UI.Label { id = "deploySummaryEquipmentLabel", text = "已带装备: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { id = "deploySummaryEquipmentLabel", text = "已带作业装备: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
                             UI.Label { id = "deploySummaryConsumableLabel", text = "已带消耗品: 无", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
                             UI.Label { id = "deploySummaryEffectLabel", text = "本局效果: 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
                         },
@@ -3779,13 +3786,13 @@ function CreateUI()
                 borderColor = { 200, 80, 80, 120 },
                 children = {
                     UI.Label {
-                        text = "🔧 GM 调试面板",
+                        text = "调试终端",
                         fontSize = 18,
                         fontColor = { 255, 100, 100, 255 },
                     },
                     UI.Label {
                         id = "gmGoldLabel",
-                        text = "当前金币: 0",
+                        text = "当前结算币: 0",
                         fontSize = 13,
                         fontColor = { 255, 220, 80, 255 },
                     },
@@ -3796,7 +3803,7 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Button {
-                                text = "+100 金币",
+                                text = "+100 结算币",
                                 width = 100,
                                 onClick = function()
                                     MetaProgress.AddGold(100)
@@ -3804,7 +3811,7 @@ function CreateUI()
                                 end,
                             },
                             UI.Button {
-                                text = "+500 金币",
+                                text = "+500 结算币",
                                 width = 100,
                                 onClick = function()
                                     MetaProgress.AddGold(500)
@@ -3812,7 +3819,7 @@ function CreateUI()
                                 end,
                             },
                             UI.Button {
-                                text = "+9999 金币",
+                                text = "+9999 结算币",
                                 width = 100,
                                 onClick = function()
                                     MetaProgress.AddGold(9999)
@@ -3836,7 +3843,7 @@ function CreateUI()
                                 end,
                             },
                             UI.Button {
-                                text = "解锁全部天赋",
+                                text = "登记全部资历",
                                 width = 120,
                                 onClick = function()
                                     GMUnlockAllTalents()
@@ -3852,7 +3859,7 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Button {
-                                text = "装备全部物品",
+                                text = "配置全部物品",
                                 width = 120,
                                 onClick = function()
                                     GMEquipAll()
@@ -3860,7 +3867,7 @@ function CreateUI()
                                 end,
                             },
                             UI.Button {
-                                text = "清空装备",
+                                text = "清空配置",
                                 width = 100,
                                 onClick = function()
                                     GMUnequipAll()
@@ -3893,7 +3900,7 @@ function CreateUI()
                     },
                 }
             },
-            -- === 装备商店页 ===
+            -- === 后勤申领页 ===
             UI.Panel {
                 id = "menuPage_equip",
                 visible = false,
@@ -3913,20 +3920,20 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Label {
-                                text = "装备商店",
+                                text = "后勤申领",
                                 fontSize = 18,
                                 fontColor = { 160, 210, 255, 255 },
                             },
                             UI.Label {
                                 id = "equipGoldLabel",
-                                text = "金币 0",
+                                text = "结算币 0",
                                 fontSize = 13,
                                 fontColor = { 255, 220, 80, 255 },
                             },
                         }
                     },
                     UI.Label {
-                        text = "选择携带进入地牢的装备(最多 2 件)",
+                        text = "选择本次出勤配置的作业装备(最多 2 件)",
                         fontSize = 11,
                         fontColor = { 140, 150, 170, 180 },
                     },
@@ -3943,14 +3950,14 @@ function CreateUI()
                         marginTop = 8,
                         children = {
                             UI.Button {
-                                text = "天赋",
+                                text = "回收资历",
                                 width = 80,
                                 onClick = function()
                                     OpenDeployTalents()
                                 end,
                             },
                             UI.Button {
-                                text = "仓库",
+                                text = "后勤仓库",
                                 width = 80,
                                 onClick = function()
                                     OpenDeployWarehouse()
@@ -3967,7 +3974,7 @@ function CreateUI()
                     },
                 }
             },
-            -- === 天赋面板页 ===
+            -- === 回收资历面板页 ===
             UI.Panel {
                 id = "menuPage_talent",
                 visible = false,
@@ -3987,20 +3994,20 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Label {
-                                text = "天赋",
+                                text = "回收资历",
                                 fontSize = 18,
                                 fontColor = { 255, 220, 100, 255 },
                             },
                             UI.Label {
                                 id = "talentGoldLabel",
-                                text = "金币 0",
+                                text = "结算币 0",
                                 fontSize = 13,
                                 fontColor = { 255, 220, 80, 255 },
                             },
                         }
                     },
                     UI.Label {
-                        text = "永久解锁, 机制型增强",
+                        text = "作业许可记录，登记后在正式局生效",
                         fontSize = 11,
                         fontColor = { 140, 150, 170, 180 },
                     },
@@ -4017,14 +4024,14 @@ function CreateUI()
                         marginTop = 8,
                         children = {
                             UI.Button {
-                                text = "装备",
+                                text = "作业装备",
                                 width = 80,
                                 onClick = function()
                                     OpenDeployShop()
                                 end,
                             },
                             UI.Button {
-                                text = "仓库",
+                                text = "后勤仓库",
                                 width = 80,
                                 onClick = function()
                                     OpenDeployWarehouse()
@@ -4061,10 +4068,10 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Label { text = "后勤申领", fontSize = 18, fontColor = { 170, 220, 255, 255 } },
-                            UI.Label { id = "requisitionGoldLabel", text = "金币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
+                            UI.Label { id = "requisitionGoldLabel", text = "结算币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
                         },
                     },
-                    UI.Label { id = "requisitionLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                    UI.Label { id = "requisitionLoadoutLabel", text = "作业装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
                     UI.Panel { id = "requisitionItemList", gap = 6, width = "100%", marginTop = 4, children = {} },
                     UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() OpenDeployOverview() end },
                 },
@@ -4088,10 +4095,10 @@ function CreateUI()
                         width = "100%",
                         children = {
                             UI.Label { text = "出勤配置", fontSize = 18, fontColor = { 180, 235, 210, 255 } },
-                            UI.Label { id = "loadoutGoldLabel", text = "金币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
+                            UI.Label { id = "loadoutGoldLabel", text = "结算币 0", fontSize = 13, fontColor = { 255, 220, 80, 255 } },
                         },
                     },
-                    UI.Label { id = "loadoutLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
+                    UI.Label { id = "loadoutLoadoutLabel", text = "作业装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
                     UI.Panel { id = "loadoutItemList", gap = 6, width = "100%", marginTop = 4, children = {} },
                     UI.Button { text = "返回", width = 80, marginTop = 8, onClick = function() OpenDeployOverview() end },
                 },
@@ -4139,7 +4146,7 @@ function CreateUI()
                             },
                             UI.Label {
                                 id = "warehouseGoldLabel",
-                                text = "金币 0",
+                                text = "结算币 0",
                                 fontSize = 13,
                                 fontColor = { 255, 220, 80, 255 },
                             },
@@ -4159,10 +4166,10 @@ function CreateUI()
                             UI.Button { text = "全部", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("all") end },
                             UI.Button { text = "回收", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("recovered") end },
                             UI.Button { text = "消耗", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("consumable") end },
-                            UI.Button { text = "装备", width = 50, height = 26, onClick = function() OnSetWarehouseFilter("equipment") end },
+                            UI.Button { text = "作业装备", width = 68, height = 26, onClick = function() OnSetWarehouseFilter("equipment") end },
                         },
                     },
-                    UI.Label { id = "warehouseLoadoutLabel", text = "装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
+                    UI.Label { id = "warehouseLoadoutLabel", text = "作业装备 无 | 带入 无", fontSize = 11, fontColor = { 150, 170, 190, 210 } },
                     UI.Panel {
                         id = "warehouseItemList",
                         gap = 6,
@@ -4176,14 +4183,14 @@ function CreateUI()
                         marginTop = 8,
                         children = {
                             UI.Button {
-                                text = "装备",
+                                text = "后勤申领",
                                 width = 80,
                                 onClick = function()
                                     OpenDeployShop()
                                 end,
                             },
                             UI.Button {
-                                text = "天赋",
+                                text = "回收资历",
                                 width = 80,
                                 onClick = function()
                                     OpenDeployTalents()
@@ -4231,7 +4238,7 @@ function CreateUI()
                             UI.Button { text = "后勤申领", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_requisition.png", onClick = function() OpenDeployShop() end },
                             UI.Button { text = "出勤配置", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_loadout.png", onClick = function() OpenDeployLoadout() end },
                             UI.Button { text = "回收资历", width = 116, height = 36, backgroundImage = "ui/deploy/ui_button_nav_recovery.png", onClick = function() OpenDeployRecovery() end },
-                            UI.Button { text = "天赋", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
+                            UI.Button { text = "回收资历", width = 100, height = 36, backgroundImage = "ui/deploy/ui_button_nav_talent_selected.png", onClick = function() OpenDeployTalents() end },
                         },
                     },
                     UI.Panel {
@@ -4249,7 +4256,7 @@ function CreateUI()
                         borderColor = { 110, 190, 180, 120 },
                         children = {
                             UI.Label { text = "出勤摘要", fontSize = 16, fontColor = { 210, 240, 230, 255 } },
-                            UI.Label { text = "已带装备 / 已带消耗品 / 本局效果", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
+                            UI.Label { text = "已带作业装备 / 已带消耗品 / 本局效果", fontSize = 12, fontColor = { 190, 210, 230, 230 } },
                             UI.Label { text = "详情随当前模块列表刷新", fontSize = 11, fontColor = { 150, 190, 175, 220 } },
                         },
                     },
@@ -4296,7 +4303,7 @@ function CreateUI()
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        text = "游戏结束",
+                        text = GameText.settlement.failure,
                         fontSize = 22,
                         fontColor = { 255, 80, 80, 255 },
                     },
@@ -4307,21 +4314,21 @@ function CreateUI()
                         children = {
                             UI.Label {
                                 id = "failureReasonLine",
-                                text = "撤离失败",
+                                text = GameText.settlement.failureReason,
                                 fontSize = 13,
                                 fontColor = { 230, 190, 190, 235 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "failureGoldLine",
-                                text = "金币 0 (已安全保留)",
+                                text = "待结算币已丢失",
                                 fontSize = 13,
                                 fontColor = { 255, 220, 120, 235 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "failurePartsLine",
-                                text = "零件 0 (将丢失)",
+                                text = "回收物 0 件已丢失",
                                 fontSize = 12,
                                 fontColor = { 210, 190, 170, 220 },
                                 textAlign = "center",
@@ -4349,13 +4356,13 @@ function CreateUI()
                         children = {
                             UI.Label {
                                 id = "failureSalvageInfo",
-                                text = "可抢救零件",
+                                text = "可抢救物资",
                                 fontSize = 13,
                                 fontColor = { 255, 210, 150, 230 },
                             },
                             UI.Button {
                                 id = "salvagePartButton",
-                                text = "抢救 1 零件换金币",
+                                text = "抢救 1 件物资",
                                 variant = "primary",
                                 width = 170,
                                 onClick = function()
@@ -4364,7 +4371,7 @@ function CreateUI()
                             },
                             UI.Button {
                                 id = "acceptLossButton",
-                                text = "放弃零件",
+                                text = "接受结算",
                                 width = 170,
                                 onClick = function()
                                     ApplyFailureSalvage("accept")
@@ -4408,7 +4415,7 @@ function CreateUI()
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        text = "确认撤离?",
+                        text = GameText.extraction.title,
                         fontSize = 20,
                         fontColor = { 100, 220, 255, 255 },
                     },
@@ -4419,35 +4426,35 @@ function CreateUI()
                         children = {
                             UI.Label {
                                 id = "extractGoldLine",
-                                text = "安全金币:+0",
+                                text = "待结算收益 0 | 已锁定收益 0",
                                 fontSize = 13,
                                 fontColor = { 255, 230, 120, 240 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "extractPartsLine",
-                                text = "零件折算:+0 金币 (0 个)",
+                                text = "入库异常回收物 0 件",
                                 fontSize = 13,
                                 fontColor = { 170, 220, 255, 230 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "extractTotalLine",
-                                text = "本次撤离预计:+0 金币",
+                                text = "预计入账结算币 +0",
                                 fontSize = 14,
                                 fontColor = { 120, 255, 150, 245 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "extractSearchLine",
-                                text = "已搜索房间:0 | 协议等级:5",
+                                text = "已搜索区域:0 | 撤离协议:5",
                                 fontSize = 12,
                                 fontColor = { 180, 195, 215, 220 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "extractProtocolLine",
-                                text = "协议等级:5",
+                                text = "当前撤离协议:5",
                                 fontSize = 12,
                                 fontColor = { 150, 185, 220, 210 },
                                 textAlign = "center",
@@ -4455,7 +4462,7 @@ function CreateUI()
                         }
                     },
                     UI.Label {
-                        text = "撤离后零件将转换为金币带出",
+                        text = "成功撤离后，待结算与已锁定收益将入账",
                         fontSize = 12,
                         fontColor = { 140, 200, 140, 200 },
                     },
@@ -4465,12 +4472,12 @@ function CreateUI()
                         marginTop = 6,
                         children = {
                             UI.Button {
-                                text = "确认撤离",
+                                text = GameText.extraction.confirm,
                                 variant = "primary",
                                 onClick = function() ConfirmExtract() end,
                             },
                             UI.Button {
-                                text = "继续探索",
+                                text = GameText.extraction.cancel,
                                 onClick = function() CancelExtract() end,
                             },
                         }
@@ -4502,7 +4509,7 @@ function CreateUI()
                 alignItems = "center",
                 children = {
                     UI.Label {
-                        text = "撤离成功!",
+                        text = GameText.settlement.success,
                         fontSize = 22,
                         fontColor = { 80, 255, 120, 255 },
                     },
@@ -4513,14 +4520,14 @@ function CreateUI()
                         children = {
                             UI.Label {
                                 id = "winGoldLine",
-                                text = "获得金币:+0 (总计 0)",
+                                text = "结算币入账 +0 (结算币 0)",
                                 fontSize = 14,
                                 fontColor = { 200, 255, 200, 240 },
                                 textAlign = "center",
                             },
                             UI.Label {
                                 id = "winConvertLine",
-                                text = "局内金币 0 + 零件 0 个 -> +0",
+                                text = "待结算 0 + 回收物 0 件 -> +0",
                                 fontSize = 12,
                                 fontColor = { 160, 220, 180, 220 },
                                 textAlign = "center",

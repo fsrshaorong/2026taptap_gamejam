@@ -1,6 +1,6 @@
 -- ============================================================================
 -- MetaProgress.lua — 局外持久化进度管理
--- 管理:全局金币,已解锁天赋,已购买/装备的带入物品,统计数据
+-- 管理:全局结算币,已登记回收资历,已申领/装备的带入物品,统计数据
 -- ============================================================================
 
 local Balance = require("systems.Balance")
@@ -47,7 +47,7 @@ MetaProgress.ITEMS = {
     {
         id = "compass",
         name = "罗盘",
-        desc = "开局显示撤离点所在象限",
+        desc = "开局显示撤离信标所在象限",
         price = Balance.shop.compass.price,
         category = "机制",
         icon = "[NAV]",
@@ -72,11 +72,12 @@ table.insert(MetaProgress.ITEMS, {
 })
 
 local ITEM_BALANCE_TEXT = {
-    armor = { name = "防护背心", desc = "+20 最大生命", price = Balance.shop.armor.price },
-    whetstone = { name = "磨刀石", desc = "+2 战斗力", price = Balance.shop.whetstone.price },
-    medkit = { name = "急救包", desc = "首次踩雷免疫伤害", price = Balance.shop.medkit.price },
-    compass = { name = "罗盘", desc = "开局显示撤离点所在象限", price = Balance.shop.compass.price },
-    backpack = { name = "大背包", desc = "保留原型背包收益加成", price = Balance.shop.backpack.price },
+    armor = { name = "防护背心", desc = "最大生命 +20。不是保险，只是布料厚一点。", price = Balance.shop.armor.price },
+    whetstone = { name = "磨刀石", desc = "初始战斗力 +2。后勤称这属于基础安全措施。", price = Balance.shop.whetstone.price },
+    medkit = { name = "急救包", desc = "出发携带急救物资。后勤提醒：不是装饰品。", price = Balance.shop.medkit.price },
+    insulated_gloves = { name = "绝缘套", desc = "雷险伤害 -10。不能保证安全，只能保证好看一点。", price = Balance.shop.insulated_gloves.price },
+    compass = { name = "罗盘", desc = "显示撤离信标方向提示。它偶尔也会表达意见。", price = Balance.shop.compass.price },
+    backpack = { name = "大背包", desc = "回收包容量 +2。拿得更多，不代表跑得更快。", price = Balance.shop.backpack.price },
 }
 
 for _, item in ipairs(MetaProgress.ITEMS) do
@@ -121,37 +122,37 @@ MetaProgress.CONSUMABLES = {
 MetaProgress.TALENTS = {
     {
         id = "talent_map",
-        direction = "小地图",
+        direction = "区域扫描图",
         name = "邻域感知",
         desc = "进入房间时高亮 8 邻域",
         price = Balance.talents.talent_map,
     },
     {
         id = "talent_mine",
-        direction = "雷房",
+        direction = "雷险区",
         name = "厚皮",
         desc = "雷伤降低 10 点",
         price = Balance.talents.talent_mine,
     },
     {
         id = "talent_monster",
-        direction = "怪物",
+        direction = "异常体",
         name = "威压",
-        desc = "怪物逃跑时间 +2 秒",
+        desc = "异常体避让窗口 +2 秒",
         price = Balance.talents.talent_monster,
     },
     {
         id = "talent_extract",
         direction = "撤离",
-        name = "保险金",
-        desc = "失败保底额外 +10 金币",
+        name = "旧保险金",
+        desc = "失败时旧保险金额外 +10 结算币",
         price = Balance.talents.talent_extract,
     },
     {
         id = "talent_event",
         direction = "事件",
         name = "议价",
-        desc = "NPC 交易价格 15->20",
+        desc = "旅商折价率改善",
         price = Balance.talents.talent_event,
     },
 }
@@ -499,16 +500,16 @@ function MetaProgress.Save()
 end
 
 -- ============================================================================
--- 金币操作
+-- 结算币操作
 -- ============================================================================
 
---- 获取当前金币
+--- 获取当前结算币
 ---@return number
 function MetaProgress.GetGold()
     return data.gold
 end
 
---- 增加金币(局结算时调用)
+--- 增加结算币(局结算时调用)
 ---@param amount number
 function MetaProgress.AddGold(amount)
     amount = toNonNegativeNumber(amount)
@@ -518,7 +519,7 @@ function MetaProgress.AddGold(amount)
     MetaProgress.Save()
 end
 
---- 消费金币(购买物品/天赋时调用)
+--- 消费结算币(申领物品/登记资历时调用)
 ---@param amount number
 ---@return boolean 是否成功
 function MetaProgress.SpendGold(amount)
@@ -554,7 +555,7 @@ function MetaProgress.BuyItem(itemId)
         return false, "物品不存在"
     end
     if data.gold < item.price then
-        return false, "金币不足"
+        return false, "结算币不足"
     end
     data.gold = data.gold - item.price
     data.ownedItems[itemId] = true
@@ -580,7 +581,7 @@ function MetaProgress.ToggleEquip(itemId)
     end
     -- 未装备, 尝试装备
     if #data.equippedItems >= MAX_EQUIPPED then
-        return false, "最多装备 " .. MAX_EQUIPPED .. " 件"
+        return false, "最多携带作业装备 " .. MAX_EQUIPPED .. " 件"
     end
     table.insert(data.equippedItems, itemId)
     MetaProgress.Save()
@@ -767,7 +768,7 @@ function MetaProgress.BuyConsumable(itemId, count)
     count = toNonNegativeNumber(count or 1)
     if count <= 0 then return false, "invalid_count" end
     local price = toNonNegativeNumber(def.price) * count
-    if data.gold < price then return false, "金币不足" end
+    if data.gold < price then return false, "结算币不足" end
     data.gold = data.gold - price
     data.consumables = normalizeConsumables(data.consumables)
     data.consumables[itemId] = (data.consumables[itemId] or 0) + count
@@ -864,10 +865,10 @@ function MetaProgress.UnlockTalent(talentId)
     end
     local talent = MetaProgress.GetTalentDef(talentId)
     if not talent then
-        return false, "天赋不存在"
+        return false, "回收资历不存在"
     end
     if data.gold < talent.price then
-        return false, "金币不足"
+        return false, "结算币不足"
     end
     data.gold = data.gold - talent.price
     data.unlockedTalents[talentId] = true
@@ -1235,7 +1236,7 @@ function MetaProgress.GetTalentEffects()
 end
 
 -- ============================================================================
--- GM 调试方法(免费获取, 不扣金币)
+-- GM 调试方法(免费获取, 不扣结算币)
 -- ============================================================================
 
 --- GM:免费给予物品

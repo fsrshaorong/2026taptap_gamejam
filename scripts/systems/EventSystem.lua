@@ -187,8 +187,8 @@ local function getTraderOptions(ctx)
         local price = Balance.TraderSaleValue(item.baseValue or item.value)
         table.insert(options, option(
             "sell_item:" .. item.itemId,
-            GameText.events.trader.sellLabel .. ": " .. (item.name or item.itemId),
-            "旅商只收一件实物回收物。",
+            string.format(GameText.events.trader.sellFormat, item.name or item.itemId, item.baseValue or item.value or 0, price),
+            GameText.events.trader.intro,
             (item.name or item.itemId) .. " x1",
             "已锁定 +" .. price,
             "该物品会从回收包移除",
@@ -197,16 +197,16 @@ local function getTraderOptions(ctx)
         ))
     end
     if #options == 0 then
-        table.insert(options, option("no_item", "没有可出售物", GameText.events.trader.noItem, "无", "无", "无", false, GameText.events.trader.noItem))
+        table.insert(options, option("no_item", GameText.events.trader.noItem, GameText.events.trader.noItem, "无", "无", "无", false, GameText.events.trader.noItem))
     end
-    table.insert(options, option("leave", "离开", "暂不交易。", "无", "无", "无", true, nil))
+    table.insert(options, option("leave", GameText.events.trader.leave, "暂不交易。", "无", "无", "无", true, nil))
     return options
 end
 
 local function getDiceOptions(ctx)
     local canBet = (ctx.pendingGold or ctx.gold or 0) >= Balance.gambler.bet
     return {
-        option("bet_small", "下注 " .. Balance.gambler.bet .. " 待结算币", "掷出 1-4 输，5 小赢，6 大赢。", "待结算币 " .. Balance.gambler.bet, "5:+20 / 6:+60", "1-4:-20", canBet, "待结算币不足"),
+        option("bet_small", GameText.events.dice.label, GameText.events.dice.intro, "待结算币 " .. Balance.gambler.bet, "5:+20 / 6:+60", "1-4:-20", canBet, GameText.events.dice.disabled),
         option("leave", "离开", "不下注。", "无", "无", "无", true, nil),
     }
 end
@@ -220,14 +220,14 @@ local function getAltarOptions(ctx, state)
     local reward = Balance.altar.rewards[step] or { gold = 0, itemQuality = "common" }
     local canOffer = (ctx.hp or 0) > cost
     return {
-        option("offer_hp", "献祭生命 " .. cost, "献祭消耗会逐次提高。", "生命 " .. cost, "待结算币 +" .. reward.gold .. " / 回收物 x1", "生命归零则失败", canOffer, "生命不足"),
-        option("leave", "离开", "暂不献祭。", "无", "无", "无", true, nil),
+        option("offer_hp", GameText.events.altar.label .. " " .. cost, GameText.events.altar.intro, "生命 " .. cost, "待结算币 +" .. reward.gold .. " / 异常回收物 x1", GameText.events.altar.risk or "当前生命不足则不可献祭", canOffer, GameText.events.altar.disabled),
+        option("leave", GameText.events.altar.leave, "暂不献祭。", "无", "无", "无", true, nil),
     }
 end
 
 local function getTrapOptions(ctx)
     return {
-        option("disarm", "处理机关", "使用战力进行一次检定。", "一次检定", "成功: 待结算币 +25 / 回收物 x2", "失败: 生命 -1 / 压力 +5", true, nil),
+        option("disarm", GameText.events.trap.label, "使用战斗力进行一次检定。", "一次检定", "成功: 待结算币 +25 / 回收物 x2", "失败: 生命 -1 / 协议压力 +5", true, nil),
         option("leave", "离开", "不处理机关。", "无", "无", "无", true, nil),
     }
 end
@@ -306,7 +306,7 @@ function EventSystem._ExecTrader(x, y, ctx, optionId)
         if item.itemId == itemId and (item.count or 0) > 0 then
             local price = Balance.TraderSaleValue(item.baseValue or item.value)
             EventSystem.MarkCompleted(x, y, optionId)
-            return result(true, "旅商收走 " .. (item.name or itemId) .. "，已锁定 +" .. price .. "。", {
+            return result(true, string.format(GameText.events.trader.success .. "已锁定 +%d。", price), {
                 safeGoldDelta = price,
                 sellItemId = itemId,
                 sellCount = 1,
@@ -324,12 +324,12 @@ function EventSystem._ExecDice(x, y, ctx, optionId)
     ctx = ctx or {}
     if optionId ~= "bet_small" then return result(false, "未知下注项。", { eventType = "dice", optionId = optionId }) end
     if (ctx.pendingGold or ctx.gold or 0) < Balance.gambler.bet then
-        return result(false, "待结算币不足。", { eventType = "dice", optionId = optionId })
+        return result(false, GameText.events.dice.disabled, { eventType = "dice", optionId = optionId })
     end
     local roll = (x * 197 + y * 83 + EventSystem.seed * 59 + (ctx.pendingGold or ctx.gold or 0)) % 6 + 1
     EventSystem.MarkCompleted(x, y, optionId)
     if roll <= Balance.gambler.loseMaxRoll then
-        return result(true, "掷出 " .. roll .. "，下注失败: 待结算币 -" .. Balance.gambler.bet .. "。", {
+        return result(true, string.format(GameText.events.dice.lose, roll), {
             pendingGoldDelta = -Balance.gambler.bet,
             completed = true,
             closePanel = true,
@@ -338,7 +338,7 @@ function EventSystem._ExecDice(x, y, ctx, optionId)
         })
     end
     local net = (roll == Balance.gambler.bigWinRoll) and Balance.gambler.bigWinNet or Balance.gambler.smallWinNet
-    return result(true, "掷出 " .. roll .. "，下注成功: 待结算币 +" .. net .. "。", {
+    return result(true, roll == Balance.gambler.bigWinRoll and GameText.events.dice.bigWin or GameText.events.dice.smallWin, {
         pendingGoldDelta = net,
         completed = true,
         closePanel = true,
@@ -356,16 +356,16 @@ function EventSystem._ExecAltar(x, y, ctx, optionId)
     local cost = Balance.altar.hpCosts[step]
     if not cost then
         EventSystem.MarkCompleted(x, y, optionId)
-        return result(false, "祭坛已经沉默。", { eventType = "altar", optionId = optionId })
+        return result(false, GameText.events.altar.maxed, { eventType = "altar", optionId = optionId })
     end
     if (ctx.hp or 0) <= cost then
-        return result(false, "生命不足，不能继续献祭。", { eventType = "altar", optionId = optionId })
+        return result(false, GameText.events.altar.disabled, { eventType = "altar", optionId = optionId })
     end
     state.altarStep = step
     local reward = Balance.altar.rewards[step] or { gold = 0, itemQuality = "common" }
     local completed = step >= #Balance.altar.hpCosts
     if completed then EventSystem.MarkCompleted(x, y, optionId) end
-    return result(true, "祭坛响应: 生命 -" .. cost .. "，待结算币 +" .. reward.gold .. "，回收物 +1。", {
+    return result(true, string.format(GameText.events.altar.success, cost, reward.gold), {
         hpDelta = -cost,
         pendingGoldDelta = reward.gold,
         rewardItemQuality = reward.itemQuality,
